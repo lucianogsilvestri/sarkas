@@ -1,151 +1,632 @@
-  <!DOCTYPE html>
+  
 
-<html>
+<!DOCTYPE html>
+
+
+<html lang="en" >
+
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>sarkas.utilities.maths &#8212; Sarkas 1.0.0 documentation</title>
+    <title>sarkas.utilities.maths &#8212; Sarkas 1.1.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=e353d410970836974a52" rel="stylesheet" />
+<link href="../../../_static/styles/bootstrap.css?digest=e353d410970836974a52" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=e353d410970836974a52" rel="stylesheet" />
+
+  
+  <link href="../../../_static/vendor/fontawesome/6.1.2/css/all.min.css?digest=e353d410970836974a52" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.1.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.1.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.1.2/webfonts/fa-regular-400.woff2" />
+
     <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/bootstrap-sphinx.css" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/panels-bootstrap.5fd3999ee7762ccc51105388f4a9d115.css" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/panels-main.c949a650a448cc0ae9fd3441c0e17fb0.css" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/panels-variables.06eb56fa6e07937060861dad626602ad.css" />
+    <link rel="stylesheet" href="../../../_static/styles/sphinx-book-theme.css?digest=14f4ca6b54d191a8c7657f6c759bf11a5fb86285" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
     <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" />
     <link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css2?family=RocknRoll+One&display=swap" />
     <link rel="stylesheet" type="text/css" href="../../../_static/my-style.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/design-style.1e8bd061cd6da7fc9cf755528e8ffc24.min.css" />
     <link rel="stylesheet" href="../../../_static/my-styles.css" type="text/css" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=e353d410970836974a52" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=e353d410970836974a52" />
+
     
     <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
     <script src="../../../_static/jquery.js"></script>
     <script src="../../../_static/underscore.js"></script>
+    <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
     <script src="../../../_static/doctools.js"></script>
-    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-    <script src="../../../_static/js/myscript.js"></script>
+    <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/clipboard.min.js"></script>
+    <script src="../../../_static/copybutton.js"></script>
+    <script src="../../../_static/scripts/sphinx-book-theme.js?digest=5a5c038af52cf7bc1a1ec88eea08e6366ee68824"></script>
+    <script src="../../../_static/design-tabs.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/sarkas/utilities/maths';</script>
     <script type="text/javascript" src="../../../_static/language_data.js"></script>
   
     <link rel="index" title="Index" href="../../../genindex.html" />
     <link rel="search" title="Search" href="../../../search.html" />
-<meta charset='utf-8'>
-<meta http-equiv='X-UA-Compatible' content='IE=edge,chrome=1'>
-<meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1'>
-<meta name="apple-mobile-web-app-capable" content="yes">
-<script type="text/javascript" src="../../../_static/js/jquery-1.12.4.min.js "></script>
-<script type="text/javascript" src="../../../_static/js/jquery-fix.js "></script>
-<script type="text/javascript" src="../../../_static/bootstrap-3.4.1/js/bootstrap.min.js "></script>
-<script type="text/javascript" src="../../../_static/bootstrap-sphinx.js "></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
 
-  </head><body>
+  
+  
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__primary"
+          id="__primary"/>
+  <label class="overlay overlay-primary" for="__primary"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__secondary"
+          id="__secondary"/>
+  <label class="overlay overlay-secondary" for="__secondary"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+  
+    <nav class="bd-header navbar navbar-expand-lg bd-navbar">
+    </nav>
+  
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
 
-  <div id="navbar" class="navbar navbar-default navbar-fixed-top">
-    <div class="container">
-      <div class="navbar-header">
-        <!-- .btn-navbar is used as the toggle for collapsed navbar content -->
-        <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".nav-collapse">
-          <span class="icon-bar"></span>
-          <span class="icon-bar"></span>
-          <span class="icon-bar"></span>
-        </button>
-        <a class="navbar-brand" href="../../../index.html"><span><img src="../../../_static/logo_s_orange.png"></span>
-          ARKAS</a>
-        <span class="navbar-text navbar-version pull-left"><b></b></span>
-      </div>
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+  
 
-        <div class="collapse navbar-collapse nav-collapse">
-          <ul class="nav navbar-nav">
-            
-                <li><a href="../../../documentation/get_started.html">Get Started</a></li>
-                <li><a href="../../../examples/examples.html">Examples</a></li>
-                <li><a href="../../../code_development/code_dev.html">Code Development</a></li>
-                <li><a href="../../../api/api.html">API</a></li>
-                <li><a href="../../../credits/credits.html">Credits</a></li>
-            
-            
-              <li class="dropdown globaltoc-container">
-  <a role="button"
-     id="dLabelGlobalToc"
-     data-toggle="dropdown"
-     data-target="#"
-     href="../../../index.html">Site <b class="caret"></b></a>
-  <ul class="dropdown-menu globaltoc"
-      role="menu"
-      aria-labelledby="dLabelGlobalToc"><p class="caption" role="heading"><span class="caption-text">Documentation:</span></p>
-<ul>
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/Sarkas_v1_for_dark_bg.svg" class="logo__image only-light" alt="Logo image"/>
+    <script>document.write(`<img src="../../../_static/Sarkas_v1_for_dark_bg.svg" class="logo__image only-dark" alt="Logo image"/>`);</script>
+  
+  
+</a></div>
+        <div class="sidebar-primary-item"><nav class="bd-links" id="bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        
+        <ul class="nav bd-sidenav bd-sidenav__home-link">
+            <li class="toctree-l1">
+                <a class="reference internal" href="../../../index.html">
+                    SARKAS: Python MD code for plasma physics
+                </a>
+            </li>
+        </ul>
+        <p aria-level="2" class="caption" role="heading"><span class="caption-text">Documentation:</span></p>
+<ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../../../documentation/why_sarkas.html">Why Sarkas</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../documentation/get_started.html">Get Started</a></li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">Theory:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../../../theory/theory.html">Theoretical Background</a></li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">Code Dev:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../../../code_development/code_dev.html">Code Development</a></li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">Simulations:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../../../examples/examples.html">Examples</a></li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">API:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../../../api/api.html">API reference</a></li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">Credits:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../../../credits/credits.html">Credits</a></li>
-</ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../documentation/get_started.html">Get Started</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-1"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../documentation/Tutorial_NB/Quickstart.html">Quickstart</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../documentation/tutorial.html">Tutorial</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-2"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../documentation/input_file.html">Input File</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../documentation/Tutorial_NB/Pre_Simulation_Testing.html">Pre Simulation Testing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../documentation/Tutorial_NB/Simulation_Docs.html">Running a Simulation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../documentation/Tutorial_NB/Post_Processing_Docs.html">Data Analysis</a></li>
 </ul>
 </li>
-              
-                <li class="dropdown">
-  <a role="button"
-     id="dLabelLocalToc"
-     data-toggle="dropdown"
-     data-target="#"
-     href="#">Page <b class="caret"></b></a>
-  <ul class="dropdown-menu localtoc"
-      role="menu"
-      aria-labelledby="dLabelLocalToc"></ul>
+</ul>
 </li>
-              
-            
-            
-            
-            
-            
-              <li class="hidden-sm"></li>
-            
-          </ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../documentation/features.html">Available Features</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-3"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../documentation/Features_files/integrators.html">Integrators</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../documentation/Features_files/Berendsen_NB/Berendsen_Thermostat.html">Thermostats</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../documentation/Features_files/potentials.html">Potentials</a></li>
+</ul>
+</li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Theory:</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../theory/theory.html">Theoretical Background</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-4"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../theory/PPPM.html">Particle-Particle Particle-Mesh Algorithm</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../theory/force_error.html">Force Error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../theory/coupling_constant.html">Coupling Constant</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../theory/electron_properties.html">Electron Properties</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../theory/references.html">References</a></li>
+</ul>
+</li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Code Dev:</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../code_development/code_dev.html">Code Development</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-5"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../code_development/dev_setup.html">Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../code_development/dev_report_issues.html">Reporting Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../code_development/dev_docs.html">Documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../code_development/dev_contributing.html">Contributing to Sarkas</a></li>
+</ul>
+</li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Simulations:</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../examples/examples.html">Examples</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-6"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/OCP/OCP.html">One Component Plasma (OCP)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/BIM/H-He_Mixture.html">H-He Mixture</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/QSP/QSP_Tutorial.html">Quantum Statistical Potential Simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/Magnetized_OCP/Magnetized_Plasma.html">Magnetized Plasma</a></li>
 
-          
+
+
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/Yukawa_vs_EGS/Yukawa_vs_Exact-Gradient_Corrected_Potential.html">Yukawa vs Egs potential</a></li>
+
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/Moliere/Moliere_Simulation.html">Moliere Potential</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/UNP/UCP_Experiment_Validation.html">MD for Experiment Validation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/Ultrafast_EC/Ultrafast_EC_Validation.html">Ultrafast electron cooling in an expanding ultracold plasma</a></li>
+</ul>
+</li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">API:</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../api/api.html">API reference</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-7"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../api/core_pckg/sarkas.core.html">sarkas.core</a><input class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-8"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/core_pckg/sarkas.core.Parameters.html">sarkas.core.Parameters</a><input class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-9"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.__init__.html">sarkas.core.Parameters.__init__</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.calc_coupling_constant.html">sarkas.core.Parameters.calc_coupling_constant</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.calc_electron_properties.html">sarkas.core.Parameters.calc_electron_properties</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.calc_magnetic_parameters.html">sarkas.core.Parameters.calc_magnetic_parameters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.calc_parameters.html">sarkas.core.Parameters.calc_parameters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.check_units.html">sarkas.core.Parameters.check_units</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.create_species_arrays.html">sarkas.core.Parameters.create_species_arrays</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.create_unit_dict.html">sarkas.core.Parameters.create_unit_dict</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.from_dict.html">sarkas.core.Parameters.from_dict</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.pretty_print.html">sarkas.core.Parameters.pretty_print</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.set_species_attributes.html">sarkas.core.Parameters.set_species_attributes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.setup.html">sarkas.core.Parameters.setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.sim_box_setup.html">sarkas.core.Parameters.sim_box_setup</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../api/core_pckg/sarkas.processes.html">sarkas.processes</a><input class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-10"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/core_pckg/sarkas.processes.PostProcess.html">sarkas.processes.PostProcess</a><input class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-11"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.__init__.html">sarkas.processes.PostProcess.__init__</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.common_parser.html">sarkas.processes.PostProcess.common_parser</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.directory_sizes.html">sarkas.processes.PostProcess.directory_sizes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.evolve_loop.html">sarkas.processes.PostProcess.evolve_loop</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.evolve_loop_threading.html">sarkas.processes.PostProcess.evolve_loop_threading</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.initialization.html">sarkas.processes.PostProcess.initialization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.print_initial_state.html">sarkas.processes.PostProcess.print_initial_state</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.run.html">sarkas.processes.PostProcess.run</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.setup.html">sarkas.processes.PostProcess.setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.setup_from_simulation.html">sarkas.processes.PostProcess.setup_from_simulation</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/core_pckg/sarkas.processes.PreProcess.html">sarkas.processes.PreProcess</a><input class="toctree-checkbox" id="toctree-checkbox-12" name="toctree-checkbox-12" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-12"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.__init__.html">sarkas.processes.PreProcess.__init__</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.analytical_approx_pppm.html">sarkas.processes.PreProcess.analytical_approx_pppm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.common_parser.html">sarkas.processes.PreProcess.common_parser</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.directory_sizes.html">sarkas.processes.PreProcess.directory_sizes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.evolve_loop.html">sarkas.processes.PreProcess.evolve_loop</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.evolve_loop_threading.html">sarkas.processes.PreProcess.evolve_loop_threading</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.green_function_timer.html">sarkas.processes.PreProcess.green_function_timer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.initialization.html">sarkas.processes.PreProcess.initialization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_color_map.html">sarkas.processes.PreProcess.make_color_map</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_fit_plot.html">sarkas.processes.PreProcess.make_fit_plot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_force_v_timing_plot.html">sarkas.processes.PreProcess.make_force_v_timing_plot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_lagrangian_plot.html">sarkas.processes.PreProcess.make_lagrangian_plot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_line_plot.html">sarkas.processes.PreProcess.make_line_plot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_pppm_color_map.html">sarkas.processes.PreProcess.make_pppm_color_map</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_pppm_line_plot.html">sarkas.processes.PreProcess.make_pppm_line_plot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_pppm_plots_dir.html">sarkas.processes.PreProcess.make_pppm_plots_dir</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_timing_plots.html">sarkas.processes.PreProcess.make_timing_plots</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.postproc_estimates.html">sarkas.processes.PreProcess.postproc_estimates</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.pppm_approximation.html">sarkas.processes.PreProcess.pppm_approximation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.print_initial_state.html">sarkas.processes.PreProcess.print_initial_state</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.remove_preproc_dumps.html">sarkas.processes.PreProcess.remove_preproc_dumps</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.run.html">sarkas.processes.PreProcess.run</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.setup.html">sarkas.processes.PreProcess.setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.time_acceleration.html">sarkas.processes.PreProcess.time_acceleration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.time_evolution_loop.html">sarkas.processes.PreProcess.time_evolution_loop</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.time_n_space_estimates.html">sarkas.processes.PreProcess.time_n_space_estimates</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.timing_study_calculation.html">sarkas.processes.PreProcess.timing_study_calculation</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/core_pckg/sarkas.processes.Process.html">sarkas.processes.Process</a><input class="toctree-checkbox" id="toctree-checkbox-13" name="toctree-checkbox-13" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-13"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Process_mthds/sarkas.processes.Process.__init__.html">sarkas.processes.Process.__init__</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Process_mthds/sarkas.processes.Process.common_parser.html">sarkas.processes.Process.common_parser</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Process_mthds/sarkas.processes.Process.directory_sizes.html">sarkas.processes.Process.directory_sizes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Process_mthds/sarkas.processes.Process.evolve_loop.html">sarkas.processes.Process.evolve_loop</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Process_mthds/sarkas.processes.Process.evolve_loop_threading.html">sarkas.processes.Process.evolve_loop_threading</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Process_mthds/sarkas.processes.Process.initialization.html">sarkas.processes.Process.initialization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Process_mthds/sarkas.processes.Process.print_initial_state.html">sarkas.processes.Process.print_initial_state</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Process_mthds/sarkas.processes.Process.setup.html">sarkas.processes.Process.setup</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/core_pckg/sarkas.processes.Simulation.html">sarkas.processes.Simulation</a><input class="toctree-checkbox" id="toctree-checkbox-14" name="toctree-checkbox-14" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-14"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.__init__.html">sarkas.processes.Simulation.__init__</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.check_restart.html">sarkas.processes.Simulation.check_restart</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.common_parser.html">sarkas.processes.Simulation.common_parser</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.directory_sizes.html">sarkas.processes.Simulation.directory_sizes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.equilibrate.html">sarkas.processes.Simulation.equilibrate</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.evolve_loop.html">sarkas.processes.Simulation.evolve_loop</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.evolve_loop_threading.html">sarkas.processes.Simulation.evolve_loop_threading</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.initialization.html">sarkas.processes.Simulation.initialization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.magnetize.html">sarkas.processes.Simulation.magnetize</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.print_initial_state.html">sarkas.processes.Simulation.print_initial_state</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.produce.html">sarkas.processes.Simulation.produce</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.run.html">sarkas.processes.Simulation.run</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.setup.html">sarkas.processes.Simulation.setup</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.html">sarkas.potentials</a><input class="toctree-checkbox" id="toctree-checkbox-15" name="toctree-checkbox-15" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-15"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.core.html">sarkas.potentials.core</a><input class="toctree-checkbox" id="toctree-checkbox-16" name="toctree-checkbox-16" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-16"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.core.Potential.html">sarkas.potentials.core.Potential</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.coulomb.html">sarkas.potentials.coulomb</a><input class="toctree-checkbox" id="toctree-checkbox-17" name="toctree-checkbox-17" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-17"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.coulomb.potential_derivatives.html">sarkas.potentials.coulomb.potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.coulomb.pretty_print_info.html">sarkas.potentials.coulomb.pretty_print_info</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.coulomb.update_params.html">sarkas.potentials.coulomb.update_params</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.egs.html">sarkas.potentials.egs</a><input class="toctree-checkbox" id="toctree-checkbox-18" name="toctree-checkbox-18" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-18"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.egs.calc_force_error_quad.html">sarkas.potentials.egs.calc_force_error_quad</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.egs.force_error_integrand.html">sarkas.potentials.egs.force_error_integrand</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.egs.potential_derivatives.html">sarkas.potentials.egs.potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.egs.pretty_print_info.html">sarkas.potentials.egs.pretty_print_info</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.egs.update_params.html">sarkas.potentials.egs.update_params</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.fitted_pot.html">sarkas.potentials.fitted_pot</a><input class="toctree-checkbox" id="toctree-checkbox-19" name="toctree-checkbox-19" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-19"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.fitted_pot.calc_force_error_quad.html">sarkas.potentials.fitted_pot.calc_force_error_quad</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.fitted_pot.force_error_integrand.html">sarkas.potentials.fitted_pot.force_error_integrand</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.fitted_pot.potential_derivatives.html">sarkas.potentials.fitted_pot.potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.fitted_pot.pretty_print_info.html">sarkas.potentials.fitted_pot.pretty_print_info</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.fitted_pot.update_params.html">sarkas.potentials.fitted_pot.update_params</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.force_pm.html">sarkas.potentials.force_pm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.force_pp.html">sarkas.potentials.force_pp</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.hs_yukawa.html">sarkas.potentials.hs_yukawa</a><input class="toctree-checkbox" id="toctree-checkbox-20" name="toctree-checkbox-20" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-20"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.hs_yukawa.pretty_print_info.html">sarkas.potentials.hs_yukawa.pretty_print_info</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.hs_yukawa.update_params.html">sarkas.potentials.hs_yukawa.update_params</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.lennardjones.html">sarkas.potentials.lennardjones</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-21"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.lennardjones.potential_derivatives.html">sarkas.potentials.lennardjones.potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.lennardjones.pretty_print_info.html">sarkas.potentials.lennardjones.pretty_print_info</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.lennardjones.update_params.html">sarkas.potentials.lennardjones.update_params</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.moliere.html">sarkas.potentials.moliere</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-22"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.moliere.calc_force_error_quad.html">sarkas.potentials.moliere.calc_force_error_quad</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.moliere.force_error_integrand.html">sarkas.potentials.moliere.force_error_integrand</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.moliere.potential_derivatives.html">sarkas.potentials.moliere.potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.moliere.update_params.html">sarkas.potentials.moliere.update_params</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.qsp.html">sarkas.potentials.qsp</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-23"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.qsp.deutsch_potential_derivatives.html">sarkas.potentials.qsp.deutsch_potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.qsp.hansen_potential_derivatives.html">sarkas.potentials.qsp.hansen_potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.qsp.kelbg_potential_derivatives.html">sarkas.potentials.qsp.kelbg_potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.qsp.pretty_print_info.html">sarkas.potentials.qsp.pretty_print_info</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.qsp.update_params.html">sarkas.potentials.qsp.update_params</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.tests.html">sarkas.potentials.tests</a><input class="toctree-checkbox" id="toctree-checkbox-24" name="toctree-checkbox-24" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-24"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.tests.test_coulomb.html">sarkas.potentials.tests.test_coulomb</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.tests.test_egs.html">sarkas.potentials.tests.test_egs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.tests.test_force_pm.html">sarkas.potentials.tests.test_force_pm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.tests.test_force_pp.html">sarkas.potentials.tests.test_force_pp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.tests.test_lennardjones.html">sarkas.potentials.tests.test_lennardjones</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.tests.test_moliere.html">sarkas.potentials.tests.test_moliere</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.tests.test_qsp.html">sarkas.potentials.tests.test_qsp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.tests.test_yukawa.html">sarkas.potentials.tests.test_yukawa</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.yukawa.html">sarkas.potentials.yukawa</a><input class="toctree-checkbox" id="toctree-checkbox-25" name="toctree-checkbox-25" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-25"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.yukawa.calc_force_error_quad.html">sarkas.potentials.yukawa.calc_force_error_quad</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.yukawa.force_deriv.html">sarkas.potentials.yukawa.force_deriv</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.yukawa.force_error_integrand.html">sarkas.potentials.yukawa.force_error_integrand</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.yukawa.potential_derivatives.html">sarkas.potentials.yukawa.potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.yukawa.pretty_print_info.html">sarkas.potentials.yukawa.pretty_print_info</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/potentials_subpckg/sarkas.potentials.yukawa.update_params.html">sarkas.potentials.yukawa.update_params</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../api/time_evolution_subpckg/sarkas.time_evolution.html">sarkas.time_evolution</a><input class="toctree-checkbox" id="toctree-checkbox-26" name="toctree-checkbox-26" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-26"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/time_evolution_subpckg/sarkas.time_evolution.integrators.html">sarkas.time_evolution.integrators</a><input class="toctree-checkbox" id="toctree-checkbox-27" name="toctree-checkbox-27" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-27"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/time_evolution_subpckg/sarkas.time_evolution.integrators.Integrator.html">sarkas.time_evolution.integrators.Integrator</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/time_evolution_subpckg/sarkas.time_evolution.thermostats.html">sarkas.time_evolution.thermostats</a><input class="toctree-checkbox" id="toctree-checkbox-28" name="toctree-checkbox-28" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-28"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/time_evolution_subpckg/sarkas.time_evolution.thermostats.Thermostat.html">sarkas.time_evolution.thermostats.Thermostat</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.html">sarkas.tools</a><input class="toctree-checkbox" id="toctree-checkbox-29" name="toctree-checkbox-29" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-29"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.html">sarkas.tools.observables</a><input class="toctree-checkbox" id="toctree-checkbox-30" name="toctree-checkbox-30" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-30"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.arg_update_doc.html">sarkas.tools.observables.arg_update_doc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.avg_slice_doc.html">sarkas.tools.observables.avg_slice_doc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.calc_Skw.html">sarkas.tools.observables.calc_Skw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.calc_diff_flux_acf.html">sarkas.tools.observables.calc_diff_flux_acf</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.calc_moments.html">sarkas.tools.observables.calc_moments</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.calc_nkt.html">sarkas.tools.observables.calc_nkt</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.calc_pressure_tensor.html">sarkas.tools.observables.calc_pressure_tensor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.calc_slice_doc.html">sarkas.tools.observables.calc_slice_doc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.calc_vacf.html">sarkas.tools.observables.calc_vacf</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.calc_vkt.html">sarkas.tools.observables.calc_vkt</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.calculate_herm_coeff.html">sarkas.tools.observables.calculate_herm_coeff</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.col_mapper.html">sarkas.tools.observables.col_mapper</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.compute_doc.html">sarkas.tools.observables.compute_doc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.grad_expansion.html">sarkas.tools.observables.grad_expansion</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.kspace_setup.html">sarkas.tools.observables.kspace_setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.load_from_restart.html">sarkas.tools.observables.load_from_restart</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.plot_labels.html">sarkas.tools.observables.plot_labels</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.setup_doc.html">sarkas.tools.observables.setup_doc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.CurrentCorrelationFunction.html">sarkas.tools.observables.CurrentCorrelationFunction</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.DiffusionFlux.html">sarkas.tools.observables.DiffusionFlux</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.DynamicStructureFactor.html">sarkas.tools.observables.DynamicStructureFactor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.ElectricCurrent.html">sarkas.tools.observables.ElectricCurrent</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.EnergyCurrent.html">sarkas.tools.observables.EnergyCurrent</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.Observable.html">sarkas.tools.observables.Observable</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.PressureTensor.html">sarkas.tools.observables.PressureTensor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.RadialDistributionFunction.html">sarkas.tools.observables.RadialDistributionFunction</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.StaticStructureFactor.html">sarkas.tools.observables.StaticStructureFactor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.Thermodynamics.html">sarkas.tools.observables.Thermodynamics</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.VelocityAutoCorrelationFunction.html">sarkas.tools.observables.VelocityAutoCorrelationFunction</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.VelocityDistribution.html">sarkas.tools.observables.VelocityDistribution</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.transport.html">sarkas.tools.transport</a><input class="toctree-checkbox" id="toctree-checkbox-31" name="toctree-checkbox-31" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-31"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.transport.Diffusion.html">sarkas.tools.transport.Diffusion</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.transport.ElectricalConductivity.html">sarkas.tools.transport.ElectricalConductivity</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.transport.InterDiffusion.html">sarkas.tools.transport.InterDiffusion</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.transport.ThermalConductivity.html">sarkas.tools.transport.ThermalConductivity</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.transport.TransportCoefficients.html">sarkas.tools.transport.TransportCoefficients</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.transport.Viscosity.html">sarkas.tools.transport.Viscosity</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.html">sarkas.utilities</a><input class="toctree-checkbox" id="toctree-checkbox-32" name="toctree-checkbox-32" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-32"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.exceptions.html">sarkas.utilities.exceptions</a><input class="toctree-checkbox" id="toctree-checkbox-33" name="toctree-checkbox-33" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-33"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.exceptions.AlgorithmError.html">sarkas.utilities.exceptions.AlgorithmError</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.exceptions.AlgorithmWarning.html">sarkas.utilities.exceptions.AlgorithmWarning</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.exceptions.ParticlesError.html">sarkas.utilities.exceptions.ParticlesError</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.exceptions.ParticlesWarning.html">sarkas.utilities.exceptions.ParticlesWarning</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.exceptions.PhysicsWarning.html">sarkas.utilities.exceptions.PhysicsWarning</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.exceptions.SarkasError.html">sarkas.utilities.exceptions.SarkasError</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.exceptions.SarkasWarning.html">sarkas.utilities.exceptions.SarkasWarning</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.exceptions.TimerError.html">sarkas.utilities.exceptions.TimerError</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.fdints.html">sarkas.utilities.fdints</a><input class="toctree-checkbox" id="toctree-checkbox-34" name="toctree-checkbox-34" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-34"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.fdints.fd_doc_hparams.html">sarkas.utilities.fdints.fd_doc_hparams</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.fdints.fd_doc_iparams.html">sarkas.utilities.fdints.fd_doc_iparams</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.fdints.fermidirac_integral.html">sarkas.utilities.fdints.fermidirac_integral</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.io.html">sarkas.utilities.io</a><input class="toctree-checkbox" id="toctree-checkbox-35" name="toctree-checkbox-35" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-35"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.io.alpha_to_int.html">sarkas.utilities.io.alpha_to_int</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.io.convert_bytes.html">sarkas.utilities.io.convert_bytes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.io.num_sort.html">sarkas.utilities.io.num_sort</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.io.print_to_logger.html">sarkas.utilities.io.print_to_logger</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.io.InputOutput.html">sarkas.utilities.io.InputOutput</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.maths.html">sarkas.utilities.maths</a><input class="toctree-checkbox" id="toctree-checkbox-36" name="toctree-checkbox-36" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-36"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.maths.betamp.html">sarkas.utilities.maths.betamp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.maths.correlationfunction.html">sarkas.utilities.maths.correlationfunction</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.maths.force_error_analytic_lcl.html">sarkas.utilities.maths.force_error_analytic_lcl</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.maths.force_error_analytic_pp.html">sarkas.utilities.maths.force_error_analytic_pp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.maths.force_error_approx_pm.html">sarkas.utilities.maths.force_error_approx_pm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.maths.force_error_approx_pppm.html">sarkas.utilities.maths.force_error_approx_pppm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.maths.yukawa_green_function.html">sarkas.utilities.maths.yukawa_green_function</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.misc.html">sarkas.utilities.misc</a><input class="toctree-checkbox" id="toctree-checkbox-37" name="toctree-checkbox-37" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-37"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.misc.add_col_to_df.html">sarkas.utilities.misc.add_col_to_df</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.tests.html">sarkas.utilities.tests</a><input class="toctree-checkbox" id="toctree-checkbox-38" name="toctree-checkbox-38" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-38"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.tests.test_fdints.html">sarkas.utilities.tests.test_fdints</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.tests.test_maths.html">sarkas.utilities.tests.test_maths</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.timing.html">sarkas.utilities.timing</a><input class="toctree-checkbox" id="toctree-checkbox-39" name="toctree-checkbox-39" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-39"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.timing.datetime_stamp.html">sarkas.utilities.timing.datetime_stamp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.timing.time_stamp.html">sarkas.utilities.timing.time_stamp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../api/util_subpckg/sarkas.utilities.timing.SarkasTimer.html">sarkas.utilities.timing.SarkasTimer</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Credits:</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../credits/credits.html">Credits</a><input class="toctree-checkbox" id="toctree-checkbox-40" name="toctree-checkbox-40" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-40"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../credits/pub_research.html">Publications</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../credits/team.html">Dev Team</a></li>
+</ul>
+</li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><label class="sidebar-toggle primary-toggle btn btn-sm" for="__primary" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</label></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+<a href="https://github.com/murillo-group/sarkas" target="_blank"
+   class="btn btn-sm btn-source-repository-button"
+   title="Source repository"
+   data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fab fa-github"></i>
+  </span>
+
+</a>
+
+
+
+
+<button onclick="toggleFullScreen()"
+  class="btn btn-sm btn-fullscreen-button"
+  title="Fullscreen mode"
+  data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-expand"></i>
+  </span>
+
+</button>
+
+
+<script>
+document.write(`
+  <button class="theme-switch-button btn btn-sm btn-outline-primary navbar-btn rounded-circle" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch" data-mode="light"><i class="fa-solid fa-sun"></i></span>
+    <span class="theme-switch" data-mode="dark"><i class="fa-solid fa-moon"></i></span>
+    <span class="theme-switch" data-mode="auto"><i class="fa-solid fa-circle-half-stroke"></i></span>
+  </button>
+`);
+</script>
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+  </button>
+`);
+</script>
+
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1></h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
             
-<form class="navbar-form navbar-right" action="../../../search.html" method="get">
- <div class="form-group">
-  <input type="text" name="q" class="form-control" placeholder="Search" />
- </div>
-  <input type="hidden" name="check_keywords" value="yes" />
-  <input type="hidden" name="area" value="default" />
-</form>
-          
         </div>
     </div>
-  </div>
+</div>
 
-<div class="container">
-  <div class="row">
-    <div class="body col-md-12 content" role="main">
-      
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article" role="main">
+                  
   <h1>Source code for sarkas.utilities.maths</h1><div class="highlight"><pre>
 <span></span><span class="sd">&quot;&quot;&quot;Module of mathematical functions.&quot;&quot;&quot;</span>
 
-<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
-<span class="kn">import</span> <span class="nn">numba</span> <span class="k">as</span> <span class="nn">nb</span>
 <span class="kn">import</span> <span class="nn">scipy.signal</span> <span class="k">as</span> <span class="nn">scp_signal</span>
+<span class="kn">from</span> <span class="nn">numba</span> <span class="kn">import</span> <span class="n">njit</span>
+<span class="kn">from</span> <span class="nn">numpy</span> <span class="kn">import</span> <span class="n">arange</span><span class="p">,</span> <span class="n">array</span><span class="p">,</span> <span class="n">exp</span><span class="p">,</span> <span class="n">inf</span><span class="p">,</span> <span class="n">ndarray</span><span class="p">,</span> <span class="n">pi</span><span class="p">,</span> <span class="n">sqrt</span><span class="p">,</span> <span class="n">trapz</span><span class="p">,</span> <span class="n">zeros_like</span>
+<span class="kn">from</span> <span class="nn">scipy.integrate</span> <span class="kn">import</span> <span class="n">quad</span>
 
-<span class="n">TWOPI</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span>
+<span class="n">TWOPI</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">pi</span>
 
 
-<div class="viewcode-block" id="correlationfunction"><a class="viewcode-back" href="../../../api/sarkas.utilities.maths.html#sarkas.utilities.maths.correlationfunction">[docs]</a><span class="k">def</span> <span class="nf">correlationfunction</span><span class="p">(</span><span class="n">At</span><span class="p">,</span> <span class="n">Bt</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="correlationfunction"><a class="viewcode-back" href="../../../api/util_subpckg/sarkas.utilities.maths.correlationfunction.html#sarkas.utilities.maths.correlationfunction">[docs]</a><span class="k">def</span> <span class="nf">correlationfunction</span><span class="p">(</span><span class="n">At</span><span class="p">,</span> <span class="n">Bt</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Calculate the correlation function between :math:`\\mathbf{A}(t)` and :math:`\\mathbf{B}(t)` using</span>
 <span class="sd">    :func:`scipy.signal.correlate`</span>
 
@@ -167,27 +648,42 @@
 <span class="sd">    -------</span>
 <span class="sd">    full_corr : numpy.ndarray</span>
 <span class="sd">        Correlation function :math:`C_{AB}(\\tau)`</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; t = np.linspace( 0.0, 6.0 * np.pi, 3000)</span>
+<span class="sd">    &gt;&gt;&gt; w0 = 0.5</span>
+<span class="sd">    &gt;&gt;&gt; At = np.cos(w0 * t)</span>
+<span class="sd">    &gt;&gt;&gt; Bt = np.sin(w0 * t)</span>
+<span class="sd">    &gt;&gt;&gt; corr_t = correlationfunction(At, Bt)</span>
+
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">no_steps</span> <span class="o">=</span> <span class="n">At</span><span class="o">.</span><span class="n">size</span>
 
     <span class="c1"># Calculate the full correlation function.</span>
     <span class="n">full_corr</span> <span class="o">=</span> <span class="n">scp_signal</span><span class="o">.</span><span class="n">correlate</span><span class="p">(</span><span class="n">At</span><span class="p">,</span> <span class="n">Bt</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;full&quot;</span><span class="p">)</span>
     <span class="c1"># Normalization of the full correlation function, Similar to norm_counter</span>
-    <span class="n">norm_corr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">no_steps</span> <span class="o">-</span> <span class="n">ii</span> <span class="k">for</span> <span class="n">ii</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">no_steps</span><span class="p">)])</span>
+    <span class="n">norm_corr</span> <span class="o">=</span> <span class="n">array</span><span class="p">([</span><span class="n">no_steps</span> <span class="o">-</span> <span class="n">ii</span> <span class="k">for</span> <span class="n">ii</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">no_steps</span><span class="p">)])</span>
     <span class="c1"># Find the mid point of the array</span>
     <span class="n">mid</span> <span class="o">=</span> <span class="n">full_corr</span><span class="o">.</span><span class="n">size</span> <span class="o">//</span> <span class="mi">2</span>
     <span class="c1"># I want only the second half of the array, i.e. the positive lags only</span>
     <span class="k">return</span> <span class="n">full_corr</span><span class="p">[</span><span class="n">mid</span><span class="p">:]</span> <span class="o">/</span> <span class="n">norm_corr</span></div>
 
 
-<span class="nd">@nb</span><span class="o">.</span><span class="n">njit</span>
+<span class="nd">@njit</span>
 <span class="k">def</span> <span class="nf">fast_integral_loop</span><span class="p">(</span><span class="n">time</span><span class="p">,</span> <span class="n">integrand</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;Compute the integral with varying upper limit.</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Numba&#39;d function to compute the following integral with a varying upper limit</span>
+
+<span class="sd">    .. math::</span>
+<span class="sd">        I(\\tau) = \\int_0^{\\tau} f(t) dt</span>
+
+<span class="sd">    It uses :func:`numpy.trapz`. This function is used in the calculation of the transport coefficients.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    time: numpy.ndarray</span>
-<span class="sd">        Domain of integration.</span>
+<span class="sd">        Domain of integration</span>
 
 <span class="sd">    integrand: numpy.ndarray</span>
 <span class="sd">        Integrand.</span>
@@ -199,16 +695,15 @@
 
 
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">integral</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">integrand</span><span class="p">)</span>
+    <span class="n">integral</span> <span class="o">=</span> <span class="n">zeros_like</span><span class="p">(</span><span class="n">integrand</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">it</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">time</span><span class="p">)):</span>
-        <span class="n">integral</span><span class="p">[</span><span class="n">it</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trapz</span><span class="p">(</span><span class="n">integrand</span><span class="p">[:</span><span class="n">it</span><span class="p">],</span> <span class="n">x</span><span class="o">=</span><span class="n">time</span><span class="p">[:</span><span class="n">it</span><span class="p">])</span>
+        <span class="n">integral</span><span class="p">[</span><span class="n">it</span><span class="p">]</span> <span class="o">=</span> <span class="n">trapz</span><span class="p">(</span><span class="n">integrand</span><span class="p">[:</span><span class="n">it</span><span class="p">],</span> <span class="n">x</span><span class="o">=</span><span class="n">time</span><span class="p">[:</span><span class="n">it</span><span class="p">])</span>
 
     <span class="k">return</span> <span class="n">integral</span>
 
 
-<span class="nd">@nb</span><span class="o">.</span><span class="n">njit</span>
-<span class="k">def</span> <span class="nf">yukawa_green_function</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">kappa</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="yukawa_green_function"><a class="viewcode-back" href="../../../api/util_subpckg/sarkas.utilities.maths.yukawa_green_function.html#sarkas.utilities.maths.yukawa_green_function">[docs]</a><span class="k">def</span> <span class="nf">yukawa_green_function</span><span class="p">(</span><span class="n">k</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">alpha</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">kappa</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Evaluate the Green&#39;s function of Coulomb/Yukawa potential.</span>
 
 <span class="sd">    .. math::</span>
@@ -217,10 +712,10 @@
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
-<span class="sd">    k : numpy.ndarray, float</span>
+<span class="sd">    k : float, numpy.ndarray</span>
 <span class="sd">        Range or value at which to calculate the function.</span>
 
-<span class="sd">    alpha: float</span>
+<span class="sd">    alpha : float</span>
 <span class="sd">        Ewald screening parameter.</span>
 
 <span class="sd">    kappa : float</span>
@@ -231,38 +726,105 @@
 <span class="sd">    _ : numpy.ndarray, float</span>
 <span class="sd">        Green&#39;s function. See equation above</span>
 
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; k = np.linspace(0, 2, 100)</span>
+<span class="sd">    &gt;&gt;&gt; alpha = 0.2</span>
+<span class="sd">    &gt;&gt;&gt; kappa = 0.5</span>
+<span class="sd">    &gt;&gt;&gt; G_k = yukawa_green_function(k = k, alpha = alpha, kappa = kappa)</span>
+
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">return</span> <span class="mf">4.0</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="p">(</span><span class="n">k</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="n">kappa</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">alpha</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">kappa</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="n">k</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+    <span class="k">return</span> <span class="mf">4.0</span> <span class="o">*</span> <span class="n">pi</span> <span class="o">*</span> <span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="p">(</span><span class="n">k</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">kappa</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">alpha</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">kappa</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">k</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span></div>
 
 
-<span class="nd">@nb</span><span class="o">.</span><span class="n">njit</span>
-<span class="k">def</span> <span class="nf">betamp</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">p</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">kappa</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Calculate the integral of the Yukawa Green&#39;s function</span>
+<div class="viewcode-block" id="betamp"><a class="viewcode-back" href="../../../api/util_subpckg/sarkas.utilities.maths.betamp.html#sarkas.utilities.maths.betamp">[docs]</a><span class="k">def</span> <span class="nf">betamp</span><span class="p">(</span><span class="n">m</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">p</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">alpha</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">kappa</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate the integral of the Yukawa Green&#39;s function using :func:`scipy.integrate.quad`.</span>
 
 <span class="sd">    .. math::</span>
 
 <span class="sd">        \\beta(p,m) = \\int_0^\\infty dk \\, G_k^2 k^{2 (p + m + 2)}.</span>
 
 <span class="sd">    See eq.(37) in :cite:`Dharuman2017`.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    m : int</span>
+<span class="sd">        :math:`m` index of the sum.</span>
+
+<span class="sd">    p : int</span>
+<span class="sd">        :math:`p` index of the sum</span>
+
+<span class="sd">    alpha : float</span>
+<span class="sd">        Ewald screening parameter :math:`\\alpha`.</span>
+
+<span class="sd">    kappa : float</span>
+<span class="sd">        Inverse screening length.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    intgrl : float</span>
+<span class="sd">        The integral :math:`\\beta(m,p)`.</span>
+
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">xa</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.0001</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">5000</span><span class="p">)</span>
-    <span class="n">Gk</span> <span class="o">=</span> <span class="n">yukawa_green_function</span><span class="p">(</span><span class="n">xa</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">kappa</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">trapz</span><span class="p">(</span><span class="n">Gk</span> <span class="o">*</span> <span class="n">Gk</span> <span class="o">*</span> <span class="n">xa</span> <span class="o">**</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">m</span> <span class="o">+</span> <span class="n">p</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)),</span> <span class="n">x</span><span class="o">=</span><span class="n">xa</span><span class="p">)</span>
+    <span class="n">exponent</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">m</span> <span class="o">+</span> <span class="n">p</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)</span>
+    <span class="n">intgrl</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">quad</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">yukawa_green_function</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">kappa</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">x</span> <span class="o">**</span> <span class="p">(</span><span class="n">exponent</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="n">inf</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">intgrl</span></div>
 
 
-<span class="nd">@nb</span><span class="o">.</span><span class="n">njit</span>
-<span class="k">def</span> <span class="nf">force_error_approx_pppm</span><span class="p">(</span><span class="n">kappa</span><span class="p">,</span> <span class="n">rc</span><span class="p">,</span> <span class="n">p</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">alpha</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Calculate the total force error for a given value of the PPPM parameters.</span>
+<div class="viewcode-block" id="force_error_approx_pppm"><a class="viewcode-back" href="../../../api/util_subpckg/sarkas.utilities.maths.force_error_approx_pppm.html#sarkas.utilities.maths.force_error_approx_pppm">[docs]</a><span class="k">def</span> <span class="nf">force_error_approx_pppm</span><span class="p">(</span><span class="n">potential</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculates the force error, :math:`\Delta F_{\rm {pm}}`, for the PPPM algorithm using approximations given in :cite:`Dharuman2017`.</span>
+<span class="sd">    The formula for :math:`\Delta F_{\rm {pm}}` can be found in :ref:`force_error`.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    potential: :class:`sarkas.potentials.core.Potential`</span>
+<span class="sd">       Potential class with all the required information.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    tot_force_error: float</span>
+<span class="sd">        Total force error given by the L2 norm of the PP and PM force errors.</span>
+
+<span class="sd">    pppm_pm_err: float</span>
+<span class="sd">        PM force error.</span>
+
+<span class="sd">    pppm_pp_err: float</span>
+<span class="sd">        PM force error.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="n">potential</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;yukawa&quot;</span><span class="p">:</span>
+        <span class="n">kappa</span> <span class="o">=</span> <span class="n">potential</span><span class="o">.</span><span class="n">a_ws</span> <span class="o">/</span> <span class="n">potential</span><span class="o">.</span><span class="n">screening_length</span>
+        <span class="n">alpha</span> <span class="o">=</span> <span class="n">potential</span><span class="o">.</span><span class="n">pppm_alpha_ewald</span> <span class="o">*</span> <span class="n">potential</span><span class="o">.</span><span class="n">a_ws</span>
+        <span class="n">ha</span> <span class="o">=</span> <span class="n">potential</span><span class="o">.</span><span class="n">pppm_h_array</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="n">potential</span><span class="o">.</span><span class="n">a_ws</span>
+        <span class="n">pppm_pm_err</span> <span class="o">=</span> <span class="n">force_error_approx_pm</span><span class="p">(</span><span class="n">kappa</span><span class="p">,</span> <span class="n">potential</span><span class="o">.</span><span class="n">pppm_cao</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">ha</span><span class="p">,</span> <span class="n">alpha</span><span class="p">)</span>
+
+    <span class="k">elif</span> <span class="n">potential</span><span class="o">.</span><span class="n">type</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;coulomb&quot;</span><span class="p">,</span> <span class="s2">&quot;qsp&quot;</span><span class="p">]:</span>
+        <span class="n">alpha</span> <span class="o">=</span> <span class="n">potential</span><span class="o">.</span><span class="n">pppm_alpha_ewald</span> <span class="o">*</span> <span class="n">potential</span><span class="o">.</span><span class="n">a_ws</span>
+        <span class="n">ha</span> <span class="o">=</span> <span class="n">potential</span><span class="o">.</span><span class="n">pppm_h_array</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="n">potential</span><span class="o">.</span><span class="n">a_ws</span>
+        <span class="n">pppm_pm_err</span> <span class="o">=</span> <span class="n">force_error_approx_pm</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">potential</span><span class="o">.</span><span class="n">pppm_cao</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">ha</span><span class="p">,</span> <span class="n">alpha</span><span class="p">)</span>
+
+    <span class="n">rescaling_constant</span> <span class="o">=</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">potential</span><span class="o">.</span><span class="n">total_num_density</span><span class="p">)</span> <span class="o">*</span> <span class="n">potential</span><span class="o">.</span><span class="n">a_ws</span><span class="o">**</span><span class="mi">2</span>
+    <span class="n">pppm_pp_err</span> <span class="o">=</span> <span class="n">force_error_analytic_pp</span><span class="p">(</span>
+        <span class="n">potential</span><span class="o">.</span><span class="n">type</span><span class="p">,</span> <span class="n">potential</span><span class="o">.</span><span class="n">rc</span><span class="p">,</span> <span class="n">potential</span><span class="o">.</span><span class="n">screening_length</span><span class="p">,</span> <span class="n">potential</span><span class="o">.</span><span class="n">pppm_alpha_ewald</span><span class="p">,</span> <span class="n">rescaling_constant</span>
+    <span class="p">)</span>
+    <span class="n">pppm_pm_err</span> <span class="o">*=</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">potential</span><span class="o">.</span><span class="n">total_num_density</span> <span class="o">*</span> <span class="n">potential</span><span class="o">.</span><span class="n">a_ws</span><span class="o">**</span><span class="mi">3</span><span class="p">)</span>
+    <span class="n">force_error_tot</span> <span class="o">=</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">pppm_pm_err</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">pppm_pp_err</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">force_error_tot</span><span class="p">,</span> <span class="n">pppm_pm_err</span><span class="p">,</span> <span class="n">pppm_pp_err</span></div>
+
+
+<div class="viewcode-block" id="force_error_approx_pm"><a class="viewcode-back" href="../../../api/util_subpckg/sarkas.utilities.maths.force_error_approx_pm.html#sarkas.utilities.maths.force_error_approx_pm">[docs]</a><span class="k">def</span> <span class="nf">force_error_approx_pm</span><span class="p">(</span><span class="n">kappa</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">p</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">h</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">alpha</span><span class="p">:</span> <span class="nb">float</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculates the PM part of the force error, :math:`\Delta F_{\rm {pm}}`,  for a given value of the PPPM parameters.</span>
+<span class="sd">    The formula for :math:`\Delta F_{\rm {pm}}` can be found in :ref:`force_error`.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    kappa : float</span>
 <span class="sd">        Inverse screening length.</span>
-
-<span class="sd">    rc : float</span>
-<span class="sd">        Cutoff length.</span>
 
 <span class="sd">    p : int</span>
 <span class="sd">        Charge assignment order.</span>
@@ -275,33 +837,23 @@
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-
-<span class="sd">    Tot_Delta_F : float</span>
-<span class="sd">        Total force error given by</span>
-
-<span class="sd">        .. math::</span>
-<span class="sd">            \\Delta F = \\sqrt{\\Delta F_{\\textrm {pp}}^2 + \\Delta F_{\\textrm {pm}}^2 }</span>
-
-<span class="sd">    pp_force_error : float</span>
-<span class="sd">        PP force error.</span>
-
 <span class="sd">    pm_force_error: float</span>
 <span class="sd">        PM force error.</span>
 
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="c1"># Coefficients from :cite:`Deserno1998`</span>
     <span class="k">if</span> <span class="n">p</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-        <span class="n">Cmp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">2</span> <span class="o">/</span> <span class="mi">3</span><span class="p">])</span>
+        <span class="n">Cmp</span> <span class="o">=</span> <span class="n">array</span><span class="p">([</span><span class="mi">2</span> <span class="o">/</span> <span class="mi">3</span><span class="p">])</span>
     <span class="k">elif</span> <span class="n">p</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
-        <span class="n">Cmp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">2</span> <span class="o">/</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">8</span> <span class="o">/</span> <span class="mi">189</span><span class="p">])</span>
+        <span class="n">Cmp</span> <span class="o">=</span> <span class="n">array</span><span class="p">([</span><span class="mi">2</span> <span class="o">/</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">8</span> <span class="o">/</span> <span class="mi">189</span><span class="p">])</span>
     <span class="k">elif</span> <span class="n">p</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
-        <span class="n">Cmp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">4</span> <span class="o">/</span> <span class="mi">495</span><span class="p">,</span> <span class="mi">2</span> <span class="o">/</span> <span class="mi">225</span><span class="p">,</span> <span class="mi">8</span> <span class="o">/</span> <span class="mi">1485</span><span class="p">])</span>
+        <span class="n">Cmp</span> <span class="o">=</span> <span class="n">array</span><span class="p">([</span><span class="mi">4</span> <span class="o">/</span> <span class="mi">495</span><span class="p">,</span> <span class="mi">2</span> <span class="o">/</span> <span class="mi">225</span><span class="p">,</span> <span class="mi">8</span> <span class="o">/</span> <span class="mi">1485</span><span class="p">])</span>
     <span class="k">elif</span> <span class="n">p</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
-        <span class="n">Cmp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">2</span> <span class="o">/</span> <span class="mi">4725</span><span class="p">,</span> <span class="mi">16</span> <span class="o">/</span> <span class="mi">10395</span><span class="p">,</span> <span class="mi">5528</span> <span class="o">/</span> <span class="mi">3869775</span><span class="p">,</span> <span class="mi">32</span> <span class="o">/</span> <span class="mi">42525</span><span class="p">])</span>
+        <span class="n">Cmp</span> <span class="o">=</span> <span class="n">array</span><span class="p">([</span><span class="mi">2</span> <span class="o">/</span> <span class="mi">4725</span><span class="p">,</span> <span class="mi">16</span> <span class="o">/</span> <span class="mi">10395</span><span class="p">,</span> <span class="mi">5528</span> <span class="o">/</span> <span class="mi">3869775</span><span class="p">,</span> <span class="mi">32</span> <span class="o">/</span> <span class="mi">42525</span><span class="p">])</span>
     <span class="k">elif</span> <span class="n">p</span> <span class="o">==</span> <span class="mi">5</span><span class="p">:</span>
-        <span class="n">Cmp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">4</span> <span class="o">/</span> <span class="mi">93555</span><span class="p">,</span> <span class="mi">2764</span> <span class="o">/</span> <span class="mi">11609325</span><span class="p">,</span> <span class="mi">8</span> <span class="o">/</span> <span class="mi">25515</span><span class="p">,</span> <span class="mi">7234</span> <span class="o">/</span> <span class="mi">32531625</span><span class="p">,</span> <span class="mi">350936</span> <span class="o">/</span> <span class="mi">3206852775</span><span class="p">])</span>
+        <span class="n">Cmp</span> <span class="o">=</span> <span class="n">array</span><span class="p">([</span><span class="mi">4</span> <span class="o">/</span> <span class="mi">93555</span><span class="p">,</span> <span class="mi">2764</span> <span class="o">/</span> <span class="mi">11609325</span><span class="p">,</span> <span class="mi">8</span> <span class="o">/</span> <span class="mi">25515</span><span class="p">,</span> <span class="mi">7234</span> <span class="o">/</span> <span class="mi">32531625</span><span class="p">,</span> <span class="mi">350936</span> <span class="o">/</span> <span class="mi">3206852775</span><span class="p">])</span>
     <span class="k">elif</span> <span class="n">p</span> <span class="o">==</span> <span class="mi">6</span><span class="p">:</span>
-        <span class="n">Cmp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+        <span class="n">Cmp</span> <span class="o">=</span> <span class="n">array</span><span class="p">(</span>
             <span class="p">[</span>
                 <span class="mi">2764</span> <span class="o">/</span> <span class="mi">638512875</span><span class="p">,</span>
                 <span class="mi">16</span> <span class="o">/</span> <span class="mi">467775</span><span class="p">,</span>
@@ -312,7 +864,7 @@
             <span class="p">]</span>
         <span class="p">)</span>
     <span class="k">elif</span> <span class="n">p</span> <span class="o">==</span> <span class="mi">7</span><span class="p">:</span>
-        <span class="n">Cmp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+        <span class="n">Cmp</span> <span class="o">=</span> <span class="n">array</span><span class="p">(</span>
             <span class="p">[</span>
                 <span class="mi">8</span> <span class="o">/</span> <span class="mi">18243225</span><span class="p">,</span>
                 <span class="mi">7234</span> <span class="o">/</span> <span class="mi">1550674125</span><span class="p">,</span>
@@ -325,94 +877,250 @@
         <span class="p">)</span>
 
     <span class="n">somma</span> <span class="o">=</span> <span class="mf">0.0</span>
-    <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">p</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">arange</span><span class="p">(</span><span class="n">p</span><span class="p">):</span>
         <span class="n">expp</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">m</span> <span class="o">+</span> <span class="n">p</span><span class="p">)</span>
         <span class="n">somma</span> <span class="o">+=</span> <span class="n">Cmp</span><span class="p">[</span><span class="n">m</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">expp</span><span class="p">))</span> <span class="o">*</span> <span class="n">betamp</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">p</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">kappa</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">h</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">)</span> <span class="o">**</span> <span class="n">expp</span>
     <span class="c1"># eq.(36) in :cite:`Dharuman2017`</span>
-    <span class="n">pm_force_error</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mf">3.0</span> <span class="o">*</span> <span class="n">somma</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span>
+    <span class="n">pm_force_error</span> <span class="o">=</span> <span class="n">sqrt</span><span class="p">(</span><span class="mf">3.0</span> <span class="o">*</span> <span class="n">somma</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">pi</span><span class="p">)</span>
 
-    <span class="c1"># eq.(30) from :cite:`Dharuman2017`</span>
-    <span class="n">pp_force_error</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="p">((</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">kappa</span> <span class="o">/</span> <span class="n">alpha</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">-</span> <span class="n">alpha</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">rc</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">rc</span><span class="p">)</span>
-    <span class="c1"># eq.(42) from :cite:`Dharuman2017`</span>
-    <span class="n">Tot_DeltaF</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">pm_force_error</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="n">pp_force_error</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
-
-    <span class="k">return</span> <span class="n">Tot_DeltaF</span><span class="p">,</span> <span class="n">pp_force_error</span><span class="p">,</span> <span class="n">pm_force_error</span>
+    <span class="k">return</span> <span class="n">pm_force_error</span></div>
 
 
-<span class="nd">@nb</span><span class="o">.</span><span class="n">njit</span>
-<span class="k">def</span> <span class="nf">force_error_analytic_pp</span><span class="p">(</span><span class="n">potential_type</span><span class="p">,</span> <span class="n">cutoff_length</span><span class="p">,</span> <span class="n">potential_matrix</span><span class="p">,</span> <span class="n">rescaling_const</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Calculate the force error from its analytic formula.</span>
+<div class="viewcode-block" id="force_error_analytic_pp"><a class="viewcode-back" href="../../../api/util_subpckg/sarkas.utilities.maths.force_error_analytic_pp.html#sarkas.utilities.maths.force_error_analytic_pp">[docs]</a><span class="k">def</span> <span class="nf">force_error_analytic_pp</span><span class="p">(</span>
+    <span class="n">potential_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">cutoff_length</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">screening_length</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">alpha_ewald</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">rescaling_const</span><span class="p">:</span> <span class="nb">float</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate the short-range part of the force error from the approximation formula given in :cite:`Dharuman2017`.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    potential_type: str</span>
+<span class="sd">        Choice of potential.</span>
+
+<span class="sd">    cutoff_length: float</span>
+<span class="sd">        Short range cutoff.</span>
+
+<span class="sd">    screening_length: float</span>
+<span class="sd">        Screening length in case of screened potentials like yukawa. Pass 0 if coulomb</span>
+
+<span class="sd">    alpha_ewald: float</span>
+<span class="sd">        Ewald screening parameter.</span>
+
+<span class="sd">    rescaling_const: float</span>
+<span class="sd">        Constant by which to rescale the force error. \n</span>
+<span class="sd">        In case of electric forces = :math:`Q^2/(4 \\pi \\epsilon_0) 1/a^2`.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pppm_pp_err: float</span>
+<span class="sd">        Short range force error in units of `rescaling_const`.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">potential_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;yukawa&quot;</span><span class="p">]:</span>
+        <span class="n">kappa</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">screening_length</span>
+
+        <span class="c1"># PP force error calculation. Note that the equation was derived for a single component plasma.</span>
+        <span class="n">kappa_over_alpha</span> <span class="o">=</span> <span class="o">-</span><span class="mf">0.25</span> <span class="o">*</span> <span class="p">(</span><span class="n">kappa</span> <span class="o">/</span> <span class="n">alpha_ewald</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
+        <span class="n">alpha_times_rcut</span> <span class="o">=</span> <span class="o">-</span><span class="p">((</span><span class="n">alpha_ewald</span> <span class="o">*</span> <span class="n">cutoff_length</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="c1"># eq.(30) from :cite:`Dharuman2017`</span>
+        <span class="n">pppm_pp_err</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">exp</span><span class="p">(</span><span class="n">kappa_over_alpha</span> <span class="o">+</span> <span class="n">alpha_times_rcut</span><span class="p">)</span> <span class="o">/</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">cutoff_length</span><span class="p">)</span>
+        <span class="c1"># Renormalize</span>
+        <span class="n">pppm_pp_err</span> <span class="o">*=</span> <span class="n">rescaling_const</span>
+
+    <span class="k">elif</span> <span class="n">potential_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;coulomb&quot;</span><span class="p">,</span> <span class="s2">&quot;qsp&quot;</span><span class="p">]:</span>
+
+        <span class="c1"># PP force error calculation. Note that the equation was derived for a single component plasma.</span>
+        <span class="n">alpha_times_rcut</span> <span class="o">=</span> <span class="o">-</span><span class="p">((</span><span class="n">alpha_ewald</span> <span class="o">*</span> <span class="n">cutoff_length</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">pppm_pp_err</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">exp</span><span class="p">(</span><span class="n">alpha_times_rcut</span><span class="p">)</span> <span class="o">/</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">cutoff_length</span><span class="p">)</span>
+        <span class="c1"># Renormalize</span>
+        <span class="n">pppm_pp_err</span> <span class="o">*=</span> <span class="n">rescaling_const</span>
+
+    <span class="k">return</span> <span class="n">pppm_pp_err</span></div>
+
+
+<div class="viewcode-block" id="force_error_analytic_lcl"><a class="viewcode-back" href="../../../api/util_subpckg/sarkas.utilities.maths.force_error_analytic_lcl.html#sarkas.utilities.maths.force_error_analytic_lcl">[docs]</a><span class="k">def</span> <span class="nf">force_error_analytic_lcl</span><span class="p">(</span>
+    <span class="n">potential_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">cutoff_length</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">potential_matrix</span><span class="p">:</span> <span class="n">ndarray</span><span class="p">,</span> <span class="n">rescaling_const</span><span class="p">:</span> <span class="nb">float</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate the force error from its analytic formula.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    potential_type : str</span>
 <span class="sd">        Type of potential used.</span>
 
-<span class="sd">    potential_matrix: numpy.ndarray</span>
+<span class="sd">    potential_matrix : numpy.ndarray</span>
 <span class="sd">        Potential parameters.</span>
 
-<span class="sd">    cutoff_length : float, numpy.ndarray</span>
+<span class="sd">    cutoff_length : float</span>
 <span class="sd">        Cutoff radius of the potential.</span>
 
 <span class="sd">    rescaling_const: float</span>
-<span class="sd">        Constant by which to rescale the force error.</span>
+<span class="sd">        Constant by which to rescale the force error. \n</span>
+<span class="sd">        In case of electric forces = :math:`Q^2/(4 \\pi \\epsilon_0) 1/a^2`.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    force_error: float</span>
-<span class="sd">        Force error in units of Q^2/(4pi eps0) 1/a^2.</span>
+<span class="sd">        Force error in units of `rescaling_const`.</span>
+
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Yukawa, QSP, EGS force errors are calculated the same way.</span>
+
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; # Look more about potential matrix</span>
+<span class="sd">    &gt;&gt;&gt; potential_matrix = np.zeros((2, 2, 2))</span>
+<span class="sd">    &gt;&gt;&gt; kappa = 2.0 # in units of a_ws</span>
+<span class="sd">    &gt;&gt;&gt; potential_matrix[1,:,:] = kappa</span>
+<span class="sd">    &gt;&gt;&gt; rc = 6.0 # in units of a_ws</span>
+<span class="sd">    &gt;&gt;&gt; const = 1.0 # Rescaling const</span>
+<span class="sd">    &gt;&gt;&gt; force_error_analytic_lcl(&quot;yukawa&quot;, rc, potential_matrix, const)</span>
+<span class="sd">    2.1780665692875655e-05</span>
+
+<span class="sd">    Lennard jones potential</span>
+
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; potential_matrix = np.zeros( (5,2,2))</span>
+<span class="sd">    &gt;&gt;&gt; sigma = 3.4e-10</span>
+<span class="sd">    &gt;&gt;&gt; pot_const = 4.0 * 1.656e-21    # 4*epsilon</span>
+<span class="sd">    &gt;&gt;&gt; high_pow, low_pow = 12, 6</span>
+<span class="sd">    &gt;&gt;&gt; potential_matrix[0] = pot_const</span>
+<span class="sd">    &gt;&gt;&gt; potential_matrix[1] = sigma</span>
+<span class="sd">    &gt;&gt;&gt; potential_matrix[2] = high_pow</span>
+<span class="sd">    &gt;&gt;&gt; potential_matrix[3] = low_pow</span>
+<span class="sd">    &gt;&gt;&gt; rc = 10 * sigma</span>
+<span class="sd">    &gt;&gt;&gt; force_error_analytic_lcl(&quot;lj&quot;, rc, potential_matrix, 1.0)</span>
+<span class="sd">    1.4590050212983888e-16</span>
+
+<span class="sd">    Moliere potential</span>
+
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; from scipy.constants import epsilon_0, pi, elementary_charge</span>
+<span class="sd">    &gt;&gt;&gt; charge = 4.0 * elementary_charge  # = 4e [C] mks units</span>
+<span class="sd">    &gt;&gt;&gt; coul_const = 1.0 / (4.0 * pi * epsilon_0)</span>
+<span class="sd">    &gt;&gt;&gt; screening_charges = np.array([0.5, -0.5, 1.0])</span>
+<span class="sd">    &gt;&gt;&gt; screening_lengths = np.array([5.99988000e-11, 1.47732309e-11, 1.47732309e-11])  # [m]</span>
+<span class="sd">    &gt;&gt;&gt; params_len = len(screening_lengths)</span>
+<span class="sd">    &gt;&gt;&gt; pot_mat = np.zeros((2 * params_len + 1, 2, 2))</span>
+<span class="sd">    &gt;&gt;&gt; pot_mat[0] = coul_const * charge ** 2</span>
+<span class="sd">    &gt;&gt;&gt; pot_mat[1: params_len + 1] = screening_charges.reshape((3, 1, 1))</span>
+<span class="sd">    &gt;&gt;&gt; pot_mat[params_len + 1:] = 1. / screening_lengths.reshape((3, 1, 1))</span>
+<span class="sd">    &gt;&gt;&gt; rc = 6.629e-10</span>
+<span class="sd">    &gt;&gt;&gt; force_error_analytic_lcl(&quot;moliere&quot;, rc, pot_mat, 1.0)</span>
+<span class="sd">    2.1223648580087958e-14</span>
 
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="k">if</span> <span class="n">potential_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;yukawa&quot;</span><span class="p">,</span> <span class="s2">&quot;egs&quot;</span><span class="p">,</span> <span class="s2">&quot;qsp&quot;</span><span class="p">]:</span>
-        <span class="n">force_error</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">TWOPI</span> <span class="o">*</span> <span class="n">potential_matrix</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">cutoff_length</span> <span class="o">*</span> <span class="n">potential_matrix</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">potential_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;yukawa&quot;</span><span class="p">,</span> <span class="s2">&quot;egs&quot;</span><span class="p">,</span> <span class="s2">&quot;qsp&quot;</span><span class="p">,</span> <span class="s2">&quot;hs_yukawa&quot;</span><span class="p">]:</span>
+        <span class="n">force_error</span> <span class="o">=</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">TWOPI</span> <span class="o">*</span> <span class="n">potential_matrix</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span> <span class="o">*</span> <span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">cutoff_length</span> <span class="o">*</span> <span class="n">potential_matrix</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
     <span class="k">elif</span> <span class="n">potential_type</span> <span class="o">==</span> <span class="s2">&quot;moliere&quot;</span><span class="p">:</span>
-        <span class="c1"># Choose the smallest screening length for force error calculation</span>
+        <span class="c1"># The first column of the potential matrix is 2*p + 1 long, where p is the</span>
+        <span class="c1"># number of screening lengths.</span>
+        <span class="c1"># The inverse of the screening_lengths is stored starting from p + 1.</span>
+        <span class="c1"># Find p</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="nb">int</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">potential_matrix</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="c1"># Choose the smallest screening length ( i.e. max kappa) for force error calculation</span>
+        <span class="n">kappa</span> <span class="o">=</span> <span class="n">potential_matrix</span><span class="p">[</span><span class="n">p</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
 
-        <span class="n">force_error</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">TWOPI</span> <span class="o">*</span> <span class="n">potential_matrix</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">())</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span>
-            <span class="o">-</span><span class="n">cutoff_length</span> <span class="o">*</span> <span class="n">potential_matrix</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
-        <span class="p">)</span>
+        <span class="n">force_error</span> <span class="o">=</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">TWOPI</span> <span class="o">*</span> <span class="n">kappa</span><span class="p">)</span> <span class="o">*</span> <span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">cutoff_length</span> <span class="o">*</span> <span class="n">kappa</span><span class="p">)</span>
 
     <span class="k">elif</span> <span class="n">potential_type</span> <span class="o">==</span> <span class="s2">&quot;lj&quot;</span><span class="p">:</span>
         <span class="c1"># choose the highest sigma in case of multispecies</span>
         <span class="n">sigma</span> <span class="o">=</span> <span class="n">potential_matrix</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="p">:,</span> <span class="p">:]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
         <span class="n">high_pow</span> <span class="o">=</span> <span class="n">potential_matrix</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
         <span class="n">exponent</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">high_pow</span> <span class="o">-</span> <span class="mi">1</span>
-        <span class="n">force_error_tmp</span> <span class="o">=</span> <span class="n">high_pow</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">sigma</span> <span class="o">**</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">high_pow</span><span class="p">)</span> <span class="o">/</span> <span class="n">cutoff_length</span> <span class="o">**</span> <span class="n">exponent</span>
+        <span class="n">force_error_tmp</span> <span class="o">=</span> <span class="n">high_pow</span><span class="o">**</span><span class="mi">2</span> <span class="o">*</span> <span class="n">sigma</span> <span class="o">**</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">high_pow</span><span class="p">)</span> <span class="o">/</span> <span class="n">cutoff_length</span><span class="o">**</span><span class="n">exponent</span>
         <span class="n">force_error_tmp</span> <span class="o">/=</span> <span class="n">exponent</span>
-        <span class="n">force_error</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">force_error_tmp</span><span class="p">)</span>
+        <span class="n">force_error</span> <span class="o">=</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">force_error_tmp</span><span class="p">)</span>
 
+    <span class="k">elif</span> <span class="n">potential_type</span> <span class="o">==</span> <span class="s2">&quot;fitted&quot;</span><span class="p">:</span>
+        <span class="n">force_error</span> <span class="o">=</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">TWOPI</span> <span class="o">*</span> <span class="n">potential_matrix</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span> <span class="o">*</span> <span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">cutoff_length</span> <span class="o">*</span> <span class="n">potential_matrix</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
     <span class="c1"># Renormalize</span>
     <span class="n">force_error</span> <span class="o">*=</span> <span class="n">rescaling_const</span>
 
-    <span class="k">return</span> <span class="n">force_error</span>
+    <span class="k">return</span> <span class="n">force_error</span></div>
 </pre></div>
 
+                </article>
+              
+
+              
+              
+                <footer class="bd-footer-article">
+                  
+<div class="footer-article-items footer-article__inner">
+  
+    <div class="footer-article-item"><!-- Previous / next buttons -->
+<div class="prev-next-area">
+</div></div>
+  
+</div>
+
+                </footer>
+              
+            </div>
+            
+            
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By MurilloGroup
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  <p class="copyright">
+    
+      © Copyright 2019-2022, MurilloGroup.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    <p class="last-updated">
+  Last updated on Aug 13, 2023.
+  <br/>
+</p>
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
     </div>
-      
   </div>
-</div> 
-<footer class="footer">
-  <div class="container">
-    <p class="pull-right">
-      <a href="#">Back to top</a>
-      
-    </p>
-    <p>
-        &copy; Copyright 2019-2021, MurilloGroup.<br/>
-      Last updated on Jan 12, 2022.<br/>
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.3.2.<br/>
-    </p>
-  </div>
-</footer>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../../../_static/scripts/bootstrap.js?digest=e353d410970836974a52"></script>
+<script src="../../../_static/scripts/pydata-sphinx-theme.js?digest=e353d410970836974a52"></script>
+ 
+  <footer class="bd-footer">
+  </footer>
 
   <script type="text/javascript">
     jQuery(function () {
         SphinxRtdTheme.Navigation.enable(true);
       })
   </script>
-  
+
   <style>
     /* Sidebar header (and topbar for mobile) */
     /* .wy-side-nav-search,  */
@@ -425,17 +1133,16 @@
     }
     .wy-menu-vertical p.caption {
 	  color: #fff;
-	}
-	.wy-menu-vertical a {
-	  color: #eee;
-	}
-	.wy-menu-vertical a:hover {
-    background-color: #18453b;
-  }
- /* .wy-nav-content {
-    max-width: 900px !important;
-  } */
-}
+    }
+    .wy-menu-vertical a {
+      color: #eee;
+    }
+    .wy-menu-vertical a:hover {
+      background-color: #18453b;
+    }
+    /* .wy-nav-content {
+      max-width: 900px !important;
+    } */
   </style>
 
   </body>

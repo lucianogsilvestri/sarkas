@@ -1,447 +1,1301 @@
-  <!DOCTYPE html>
+  
 
-<html>
+<!DOCTYPE html>
+
+
+<html lang="en" >
+
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+<meta property="og:title" content="Particle-Particle Particle-Mesh Algorithm" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://murillo-group.github.io/sarkas/theory/PPPM.html" />
+<meta property="og:site_name" content="SARKAS: Python MD code for plasma physics" />
+<meta property="og:description" content="The Particle-Particle Particle-Mesh (PPPM or P3M) algorithm is a Fourier-based Ewald summation method formulated by Hockney and Eastwood in the late 1980s. Ewald Sum: The Ewald summation is a metho..." />
+<meta property="og:image:width" content="1146" />
+<meta property="og:image:height" content="600" />
+<meta property="og:image" content="https://murillo-group.github.io/sarkas/_images/social_previews/summary_theory_PPPM_1466bd6d.png" />
+<meta property="og:image:alt" content="The Particle-Particle Particle-Mesh (PPPM or P3M) algorithm is a Fourier-based Ewald summation method formulated by Hockney and Eastwood in the late 1980s. E..." />
+<meta name="description" content="The Particle-Particle Particle-Mesh (PPPM or P3M) algorithm is a Fourier-based Ewald summation method formulated by Hockney and Eastwood in the late 1980s. Ewald Sum: The Ewald summation is a metho..." />
+<meta name="twitter:card" content="summary_large_image" />
+<meta property="twitter:card" content="summary">
+<meta property="twitter:title" content="SARKAS: Python MD code for plasma physics">
+<meta property="twitter:description" content="A fast pure-Python molecular dynamics suite for non-ideal plasmas.">
 
-    <title>Particle-Particle Particle-Mesh Algorithm &#8212; Sarkas 1.0.0 documentation</title>
+    <title>Particle-Particle Particle-Mesh Algorithm &#8212; Sarkas 1.1.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=e353d410970836974a52" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=e353d410970836974a52" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=e353d410970836974a52" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.1.2/css/all.min.css?digest=e353d410970836974a52" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.1.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.1.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.1.2/webfonts/fa-regular-400.woff2" />
+
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/bootstrap-sphinx.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/panels-bootstrap.5fd3999ee7762ccc51105388f4a9d115.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/panels-main.c949a650a448cc0ae9fd3441c0e17fb0.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/panels-variables.06eb56fa6e07937060861dad626602ad.css" />
+    <link rel="stylesheet" href="../_static/styles/sphinx-book-theme.css?digest=14f4ca6b54d191a8c7657f6c759bf11a5fb86285" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
     <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" />
     <link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css2?family=RocknRoll+One&display=swap" />
     <link rel="stylesheet" type="text/css" href="../_static/my-style.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/design-style.1e8bd061cd6da7fc9cf755528e8ffc24.min.css" />
     <link rel="stylesheet" href="../_static/my-styles.css" type="text/css" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=e353d410970836974a52" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=e353d410970836974a52" />
+
     
     <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
     <script src="../_static/jquery.js"></script>
     <script src="../_static/underscore.js"></script>
+    <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
     <script src="../_static/doctools.js"></script>
-    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="../_static/sphinx_highlight.js"></script>
+    <script src="../_static/clipboard.min.js"></script>
+    <script src="../_static/copybutton.js"></script>
+    <script src="../_static/scripts/sphinx-book-theme.js?digest=5a5c038af52cf7bc1a1ec88eea08e6366ee68824"></script>
+    <script src="../_static/design-tabs.js"></script>
+    <script>window.MathJax = {"options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
     <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-    <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
-    <script src="../_static/js/myscript.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'theory/PPPM';</script>
     <script type="text/javascript" src="../_static/language_data.js"></script>
   
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Force Error" href="force_error.html" />
-    <link rel="prev" title="Thermostats" href="Berendsen_NB/Berendsen_Thermostat.html" />
-<meta charset='utf-8'>
-<meta http-equiv='X-UA-Compatible' content='IE=edge,chrome=1'>
-<meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1'>
-<meta name="apple-mobile-web-app-capable" content="yes">
-<script type="text/javascript" src="../_static/js/jquery-1.12.4.min.js "></script>
-<script type="text/javascript" src="../_static/js/jquery-fix.js "></script>
-<script type="text/javascript" src="../_static/bootstrap-3.4.1/js/bootstrap.min.js "></script>
-<script type="text/javascript" src="../_static/bootstrap-sphinx.js "></script>
+    <link rel="prev" title="Theoretical Background" href="theory.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
 
-  </head><body>
-
-  <div id="navbar" class="navbar navbar-default navbar-fixed-top">
-    <div class="container">
-      <div class="navbar-header">
-        <!-- .btn-navbar is used as the toggle for collapsed navbar content -->
-        <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".nav-collapse">
-          <span class="icon-bar"></span>
-          <span class="icon-bar"></span>
-          <span class="icon-bar"></span>
-        </button>
-        <a class="navbar-brand" href="../index.html"><span><img src="../_static/logo_s_orange.png"></span>
-          ARKAS</a>
-        <span class="navbar-text navbar-version pull-left"><b></b></span>
-      </div>
-
-        <div class="collapse navbar-collapse nav-collapse">
-          <ul class="nav navbar-nav">
-            
-                <li><a href="../documentation/get_started.html">Get Started</a></li>
-                <li><a href="../examples/examples.html">Examples</a></li>
-                <li><a href="../code_development/code_dev.html">Code Development</a></li>
-                <li><a href="../api/api.html">API</a></li>
-                <li><a href="../credits/credits.html">Credits</a></li>
-            
-            
-              <li class="dropdown globaltoc-container">
-  <a role="button"
-     id="dLabelGlobalToc"
-     data-toggle="dropdown"
-     data-target="#"
-     href="../index.html">Site <b class="caret"></b></a>
-  <ul class="dropdown-menu globaltoc"
-      role="menu"
-      aria-labelledby="dLabelGlobalToc"><p class="caption" role="heading"><span class="caption-text">Documentation:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../documentation/why_sarkas.html">Why Sarkas</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../documentation/get_started.html">Get Started</a></li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">Theory:</span></p>
-<ul class="current">
-<li class="toctree-l1 current"><a class="reference internal" href="theory.html">Theoretical Background</a></li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">Code Dev:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../code_development/code_dev.html">Code Development</a></li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">Simulations:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/examples.html">Examples</a></li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">API:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../api/api.html">API reference</a></li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">Credits:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../credits/credits.html">Credits</a></li>
-</ul>
-</ul>
-</li>
-              
-                <li class="dropdown">
-  <a role="button"
-     id="dLabelLocalToc"
-     data-toggle="dropdown"
-     data-target="#"
-     href="#">Page <b class="caret"></b></a>
-  <ul class="dropdown-menu localtoc"
-      role="menu"
-      aria-labelledby="dLabelLocalToc"><ul>
-<li><a class="reference internal" href="#">Particle-Particle Particle-Mesh Algorithm</a><ul>
-<li><a class="reference internal" href="#ewald-sum">Ewald Sum</a><ul>
-<li><a class="reference internal" href="#short-range-term">Short-range term</a></li>
-<li><a class="reference internal" href="#long-range-term">Long-range term</a></li>
-</ul>
-</li>
-</ul>
-</li>
-</ul>
-</ul>
-</li>
-              
-            
-            
-            
-            
-            
-              <li class="hidden-sm"></li>
-            
-          </ul>
-
-          
-            
-<form class="navbar-form navbar-right" action="../search.html" method="get">
- <div class="form-group">
-  <input type="text" name="q" class="form-control" placeholder="Search" />
- </div>
-  <input type="hidden" name="check_keywords" value="yes" />
-  <input type="hidden" name="area" value="default" />
-</form>
-          
-        </div>
-    </div>
+  
+  
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__primary"
+          id="__primary"/>
+  <label class="overlay overlay-primary" for="__primary"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__secondary"
+          id="__secondary"/>
+  <label class="overlay overlay-secondary" for="__secondary"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
   </div>
+  
+    <nav class="bd-header navbar navbar-expand-lg bd-navbar">
+    </nav>
+  
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
 
-<div class="container">
-  <div class="row">
-      <div class="col-md-3">
-        <div id="sidebar" class="bs-sidenav" role="complementary"><!-- <div class="sidenav-header">
-    <div class="h4"> 
-      Sarkas Documentation
-    </div>
   
-  </div> -->
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
   
-  <p class="caption" role="heading"><span class="caption-text">Documentation:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../documentation/why_sarkas.html">Why Sarkas</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../documentation/why_sarkas.html#problem">Problem</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../documentation/why_sarkas.html#solution">Solution</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../documentation/why_sarkas.html#old-school">Old School</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../documentation/why_sarkas.html#new-school">New School</a></li>
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/Sarkas_v1_for_dark_bg.svg" class="logo__image only-light" alt="Logo image"/>
+    <script>document.write(`<img src="../_static/Sarkas_v1_for_dark_bg.svg" class="logo__image only-dark" alt="Logo image"/>`);</script>
+  
+  
+</a></div>
+        <div class="sidebar-primary-item"><nav class="bd-links" id="bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        
+        <ul class="nav bd-sidenav bd-sidenav__home-link">
+            <li class="toctree-l1">
+                <a class="reference internal" href="../index.html">
+                    SARKAS: Python MD code for plasma physics
+                </a>
+            </li>
+        </ul>
+        <p aria-level="2" class="caption" role="heading"><span class="caption-text">Documentation:</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../documentation/why_sarkas.html">Why Sarkas</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../documentation/get_started.html">Get Started</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-1"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../documentation/Tutorial_NB/Quickstart.html">Quickstart</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../documentation/tutorial.html">Tutorial</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-2"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../documentation/input_file.html">Input File</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../documentation/Tutorial_NB/Pre_Simulation_Testing.html">Pre Simulation Testing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../documentation/Tutorial_NB/Simulation_Docs.html">Running a Simulation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../documentation/Tutorial_NB/Post_Processing_Docs.html">Data Analysis</a></li>
 </ul>
 </li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="../documentation/get_started.html">Get Started</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../documentation/get_started.html#virtual-environment">Virtual Environment</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../documentation/get_started.html#installation">Installation</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../documentation/get_started.html#external-packages">External packages</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../documentation/get_started.html#known-issues">Known Issues</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="../documentation/get_started.html#run-the-code">Run the code</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../documentation/Tutorial_NB/Quickstart.html">Quickstart</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../documentation/tutorial.html">Tutorial</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../documentation/features.html">Available Features</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-3"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../documentation/Features_files/integrators.html">Integrators</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../documentation/Features_files/Berendsen_NB/Berendsen_Thermostat.html">Thermostats</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../documentation/Features_files/potentials.html">Potentials</a></li>
 </ul>
 </li>
 </ul>
-</li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">Theory:</span></p>
-<ul class="current">
-<li class="toctree-l1 current"><a class="reference internal" href="theory.html">Theoretical Background</a><ul class="current">
-<li class="toctree-l2"><a class="reference internal" href="coupling_constant.html">Coupling Constant</a></li>
-<li class="toctree-l2"><a class="reference internal" href="electron_properties.html">Electron Properties</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="electron_properties.html#fermi-integral">Fermi Integral</a></li>
-<li class="toctree-l3"><a class="reference internal" href="electron_properties.html#thermodynamics-electron-gas">Thermodynamics Electron Gas</a></li>
-<li class="toctree-l3"><a class="reference internal" href="electron_properties.html#dimensionless-parameters">Dimensionless Parameters</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="integrators.html">Integrators</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="integrators.html#phase-space-distribution">Phase Space Distribution</a></li>
-<li class="toctree-l3"><a class="reference internal" href="integrators.html#velocity-verlet">Velocity Verlet</a></li>
-<li class="toctree-l3"><a class="reference internal" href="integrators.html#magnetic-velocity-verlet">Magnetic Velocity Verlet</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="potentials.html">Potentials</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="potentials.html#coulomb-potential">Coulomb Potential</a></li>
-<li class="toctree-l3"><a class="reference internal" href="potentials.html#yukawa-potential">Yukawa Potential</a></li>
-<li class="toctree-l3"><a class="reference internal" href="potentials.html#exact-gradient-corrected-screened-yukawa-potential">Exact Gradient-corrected Screened Yukawa Potential</a></li>
-<li class="toctree-l3"><a class="reference internal" href="potentials.html#quantum-statistical-potentials">Quantum Statistical Potentials</a></li>
-<li class="toctree-l3"><a class="reference internal" href="potentials.html#moliere-potential">Moliere Potential</a></li>
-<li class="toctree-l3"><a class="reference internal" href="potentials.html#lennard-jones">Lennard Jones</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="Berendsen_NB/Berendsen_Thermostat.html">Thermostats</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="Berendsen_NB/Berendsen_Thermostat.html#Berendsen-Thermostat">Berendsen Thermostat</a></li>
-</ul>
-</li>
-<li class="toctree-l2 current"><a class="current reference internal" href="#">Particle-Particle Particle-Mesh Algorithm</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#ewald-sum">Ewald Sum</a></li>
-</ul>
-</li>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Theory:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="theory.html">Theoretical Background</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-4"><i class="fa-solid fa-chevron-down"></i></label><ul class="current">
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Particle-Particle Particle-Mesh Algorithm</a></li>
 <li class="toctree-l2"><a class="reference internal" href="force_error.html">Force Error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="coupling_constant.html">Coupling Constant</a></li>
+<li class="toctree-l2"><a class="reference internal" href="electron_properties.html">Electron Properties</a></li>
 <li class="toctree-l2"><a class="reference internal" href="references.html">References</a></li>
 </ul>
 </li>
 </ul>
-<p class="caption" role="heading"><span class="caption-text">Code Dev:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../code_development/code_dev.html">Code Development</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../code_development/dev_setup.html">Setup</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../code_development/dev_setup.html#updating-your-repository">Updating your repository</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../code_development/dev_setup.html#forking-and-cloning-sarkas-repository">Forking and Cloning Sarkas repository</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../code_development/dev_setup.html#create-a-virtual-environment">Create a virtual environment</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../code_development/dev_setup.html#install-sarkas-in-development-mode">Install Sarkas in development mode</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../code_development/dev_setup.html#docker-image">Docker Image</a></li>
-</ul>
-</li>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Code Dev:</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../code_development/code_dev.html">Code Development</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-5"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../code_development/dev_setup.html">Setup</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../code_development/dev_report_issues.html">Reporting Issues</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../code_development/dev_docs.html">Documentation</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../code_development/dev_docs.html#writing-documentation">Writing Documentation</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../code_development/dev_docs.html#building-documentation">Building Documentation</a></li>
-</ul>
-</li>
+<li class="toctree-l2"><a class="reference internal" href="../code_development/dev_docs.html">Documentation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../code_development/dev_contributing.html">Contributing to Sarkas</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../code_development/code_dev.html#imposter-syndrome-disclaimer">Imposter Syndrome Disclaimer</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../code_development/code_dev.html#how-can-i-contribute">How can I contribute?</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../code_development/code_dev.html#reporting-a-bug">Reporting a Bug</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../code_development/code_dev.html#editing-the-documentation">Editing the Documentation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../code_development/code_dev.html#making-a-patch">Making a Patch</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../code_development/code_dev.html#spreading-the-word-of-mouth">Spreading the word of mouth</a></li>
 </ul>
 </li>
 </ul>
-<p class="caption" role="heading"><span class="caption-text">Simulations:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/examples.html">Examples</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../examples/OCP/OCP.html">One Component Plasma (OCP)</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../examples/OCP/OCP.html#PreProcessing">PreProcessing</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../examples/OCP/OCP.html#Simulation">Simulation</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../examples/OCP/OCP.html#PostProcessing">PostProcessing</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../examples/OCP/OCP.html#Radial-Distribution-Function">Radial Distribution Function</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../examples/OCP/OCP.html#Dynamic-Structure-Factor">Dynamic Structure Factor</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../examples/OCP/OCP.html#Diffusion">Diffusion</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="../examples/BIM/H-He_Mixture.html">H-He Mixture</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../examples/BIM/H-He_Mixture.html#Simulation">Simulation</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../examples/BIM/H-He_Mixture.html#PostProcessing">PostProcessing</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../examples/BIM/H-He_Mixture.html#Interdiffusion">Interdiffusion</a></li>
-</ul>
-</li>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Simulations:</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../examples/examples.html">Examples</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-6"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../examples/OCP/OCP.html">One Component Plasma (OCP)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/BIM/H-He_Mixture.html">H-He Mixture</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../examples/QSP/QSP_Tutorial.html">Quantum Statistical Potential Simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../examples/Magnetized_OCP/Magnetized_Plasma.html">Magnetized Plasma</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../examples/Magnetized_OCP/Magnetized_Plasma.html#Preprocessing">Preprocessing</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../examples/Magnetized_OCP/Magnetized_Plasma.html#Simulation">Simulation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../examples/Magnetized_OCP/Magnetized_Plasma.html#PostProcessing">PostProcessing</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../examples/Magnetized_OCP/Magnetized_Plasma.html#Transport">Transport</a></li>
-</ul>
-</li>
+
+
+
 <li class="toctree-l2"><a class="reference internal" href="../examples/Yukawa_vs_EGS/Yukawa_vs_Exact-Gradient_Corrected_Potential.html">Yukawa vs Egs potential</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../examples/Yukawa_vs_EGS/Yukawa_vs_Exact-Gradient_Corrected_Potential.html#PreProcessing">PreProcessing</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../examples/Yukawa_vs_EGS/Yukawa_vs_Exact-Gradient_Corrected_Potential.html#Simulation">Simulation</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="../examples/Moliere/Moliere_Simulation.html">Moliere Potential</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../examples/Moliere/Moliere_Simulation.html#Simulation">Simulation</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../examples/Moliere/Moliere_Simulation.html#Post-Processing">Post Processing</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="../examples/UNP/UCP_Experiment_Validation.html">MD for Experiment Validation</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../examples/UNP/UCP_Experiment_Validation.html#Ultracold-Neutral-Plasmas">Ultracold Neutral Plasmas</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../examples/UNP/UCP_Experiment_Validation.html#Disorder-Induced-Heating">Disorder Induced Heating</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../examples/UNP/UCP_Experiment_Validation.html#PreProcessing">PreProcessing</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../examples/UNP/UCP_Experiment_Validation.html#Simulation">Simulation</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../examples/UNP/UCP_Experiment_Validation.html#PostProcessing">PostProcessing</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="../examples/Ultrafast_EC/Ultrafast_EC_Validation.html">Ultrafast electron cooling in an expanding ultracold plasma</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../examples/Ultrafast_EC/Ultrafast_EC_Validation.html#Ultracold-Microplasma">Ultracold Microplasma</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../examples/Ultrafast_EC/Ultrafast_EC_Validation.html#Initialization">Initialization</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../examples/Ultrafast_EC/Ultrafast_EC_Validation.html#Simulation">Simulation</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../examples/Ultrafast_EC/Ultrafast_EC_Validation.html#PostProcessing">PostProcessing</a></li>
+
+<li class="toctree-l2"><a class="reference internal" href="../examples/Moliere/Moliere_Simulation.html">Moliere Potential</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/UNP/UCP_Experiment_Validation.html">MD for Experiment Validation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/Ultrafast_EC/Ultrafast_EC_Validation.html">Ultrafast electron cooling in an expanding ultracold plasma</a></li>
 </ul>
 </li>
 </ul>
-</li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">API:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../api/api.html">API reference</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../api/sarkas.core.html">sarkas.core module</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../api/sarkas.processes.html">sarkas.processes module</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../api/api.html#potentials">Potentials</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../api/sarkas.potentials.core.html">sarkas.potentials.core module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../api/sarkas.potentials.coulomb.html">sarkas.potentials.coulomb module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../api/sarkas.potentials.egs.html">sarkas.potentials.egs module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../api/sarkas.potentials.force_pm.html">sarkas.potentials.force_pm module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../api/sarkas.potentials.force_pp.html">sarkas.potentials.force_pp module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../api/sarkas.potentials.lennardjones.html">sarkas.potentials.lennardjones module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../api/sarkas.potentials.moliere.html">sarkas.potentials.moliere module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../api/sarkas.potentials.qsp.html">sarkas.potentials.qsp module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../api/sarkas.potentials.yukawa.html">sarkas.potentials.yukawa module</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="../api/api.html#time-evolution">Time Evolution</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../api/sarkas.time_evolution.html">sarkas.time_evolution package</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="../api/api.html#tools">Tools</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../api/sarkas.tools.html">sarkas.tools package</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="../api/api.html#utilities">Utilities</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../api/sarkas.utilities.html">sarkas.utilities package</a></li>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">API:</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../api/api.html">API reference</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-7"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../api/core_pckg/sarkas.core.html">sarkas.core</a><input class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-8"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/core_pckg/sarkas.core.Parameters.html">sarkas.core.Parameters</a><input class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-9"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.__init__.html">sarkas.core.Parameters.__init__</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.calc_coupling_constant.html">sarkas.core.Parameters.calc_coupling_constant</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.calc_electron_properties.html">sarkas.core.Parameters.calc_electron_properties</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.calc_magnetic_parameters.html">sarkas.core.Parameters.calc_magnetic_parameters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.calc_parameters.html">sarkas.core.Parameters.calc_parameters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.check_units.html">sarkas.core.Parameters.check_units</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.create_species_arrays.html">sarkas.core.Parameters.create_species_arrays</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.create_unit_dict.html">sarkas.core.Parameters.create_unit_dict</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.from_dict.html">sarkas.core.Parameters.from_dict</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.pretty_print.html">sarkas.core.Parameters.pretty_print</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.set_species_attributes.html">sarkas.core.Parameters.set_species_attributes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.setup.html">sarkas.core.Parameters.setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Parameters_mthds/sarkas.core.Parameters.sim_box_setup.html">sarkas.core.Parameters.sim_box_setup</a></li>
 </ul>
 </li>
 </ul>
 </li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">Credits:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../credits/credits.html">Credits</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../credits/credits.html#citing-sarkas">Citing Sarkas</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../credits/pub_research.html">Publications</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../credits/team.html">Dev Team</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../api/core_pckg/sarkas.processes.html">sarkas.processes</a><input class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-10"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/core_pckg/sarkas.processes.PostProcess.html">sarkas.processes.PostProcess</a><input class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-11"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.__init__.html">sarkas.processes.PostProcess.__init__</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.common_parser.html">sarkas.processes.PostProcess.common_parser</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.directory_sizes.html">sarkas.processes.PostProcess.directory_sizes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.evolve_loop.html">sarkas.processes.PostProcess.evolve_loop</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.evolve_loop_threading.html">sarkas.processes.PostProcess.evolve_loop_threading</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.initialization.html">sarkas.processes.PostProcess.initialization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.print_initial_state.html">sarkas.processes.PostProcess.print_initial_state</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.run.html">sarkas.processes.PostProcess.run</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.setup.html">sarkas.processes.PostProcess.setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PostProcess_mthds/sarkas.processes.PostProcess.setup_from_simulation.html">sarkas.processes.PostProcess.setup_from_simulation</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../credits/credits.html#funding">Funding</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/core_pckg/sarkas.processes.PreProcess.html">sarkas.processes.PreProcess</a><input class="toctree-checkbox" id="toctree-checkbox-12" name="toctree-checkbox-12" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-12"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.__init__.html">sarkas.processes.PreProcess.__init__</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.analytical_approx_pppm.html">sarkas.processes.PreProcess.analytical_approx_pppm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.common_parser.html">sarkas.processes.PreProcess.common_parser</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.directory_sizes.html">sarkas.processes.PreProcess.directory_sizes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.evolve_loop.html">sarkas.processes.PreProcess.evolve_loop</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.evolve_loop_threading.html">sarkas.processes.PreProcess.evolve_loop_threading</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.green_function_timer.html">sarkas.processes.PreProcess.green_function_timer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.initialization.html">sarkas.processes.PreProcess.initialization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_color_map.html">sarkas.processes.PreProcess.make_color_map</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_fit_plot.html">sarkas.processes.PreProcess.make_fit_plot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_force_v_timing_plot.html">sarkas.processes.PreProcess.make_force_v_timing_plot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_lagrangian_plot.html">sarkas.processes.PreProcess.make_lagrangian_plot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_line_plot.html">sarkas.processes.PreProcess.make_line_plot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_pppm_color_map.html">sarkas.processes.PreProcess.make_pppm_color_map</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_pppm_line_plot.html">sarkas.processes.PreProcess.make_pppm_line_plot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_pppm_plots_dir.html">sarkas.processes.PreProcess.make_pppm_plots_dir</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.make_timing_plots.html">sarkas.processes.PreProcess.make_timing_plots</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.postproc_estimates.html">sarkas.processes.PreProcess.postproc_estimates</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.pppm_approximation.html">sarkas.processes.PreProcess.pppm_approximation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.print_initial_state.html">sarkas.processes.PreProcess.print_initial_state</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.remove_preproc_dumps.html">sarkas.processes.PreProcess.remove_preproc_dumps</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.run.html">sarkas.processes.PreProcess.run</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.setup.html">sarkas.processes.PreProcess.setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.time_acceleration.html">sarkas.processes.PreProcess.time_acceleration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.time_evolution_loop.html">sarkas.processes.PreProcess.time_evolution_loop</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.time_n_space_estimates.html">sarkas.processes.PreProcess.time_n_space_estimates</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/PreProcess_mthds/sarkas.processes.PreProcess.timing_study_calculation.html">sarkas.processes.PreProcess.timing_study_calculation</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/core_pckg/sarkas.processes.Process.html">sarkas.processes.Process</a><input class="toctree-checkbox" id="toctree-checkbox-13" name="toctree-checkbox-13" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-13"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Process_mthds/sarkas.processes.Process.__init__.html">sarkas.processes.Process.__init__</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Process_mthds/sarkas.processes.Process.common_parser.html">sarkas.processes.Process.common_parser</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Process_mthds/sarkas.processes.Process.directory_sizes.html">sarkas.processes.Process.directory_sizes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Process_mthds/sarkas.processes.Process.evolve_loop.html">sarkas.processes.Process.evolve_loop</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Process_mthds/sarkas.processes.Process.evolve_loop_threading.html">sarkas.processes.Process.evolve_loop_threading</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Process_mthds/sarkas.processes.Process.initialization.html">sarkas.processes.Process.initialization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Process_mthds/sarkas.processes.Process.print_initial_state.html">sarkas.processes.Process.print_initial_state</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Process_mthds/sarkas.processes.Process.setup.html">sarkas.processes.Process.setup</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/core_pckg/sarkas.processes.Simulation.html">sarkas.processes.Simulation</a><input class="toctree-checkbox" id="toctree-checkbox-14" name="toctree-checkbox-14" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-14"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.__init__.html">sarkas.processes.Simulation.__init__</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.check_restart.html">sarkas.processes.Simulation.check_restart</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.common_parser.html">sarkas.processes.Simulation.common_parser</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.directory_sizes.html">sarkas.processes.Simulation.directory_sizes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.equilibrate.html">sarkas.processes.Simulation.equilibrate</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.evolve_loop.html">sarkas.processes.Simulation.evolve_loop</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.evolve_loop_threading.html">sarkas.processes.Simulation.evolve_loop_threading</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.initialization.html">sarkas.processes.Simulation.initialization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.magnetize.html">sarkas.processes.Simulation.magnetize</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.print_initial_state.html">sarkas.processes.Simulation.print_initial_state</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.produce.html">sarkas.processes.Simulation.produce</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.run.html">sarkas.processes.Simulation.run</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/core_pckg/Simulation_mthds/sarkas.processes.Simulation.setup.html">sarkas.processes.Simulation.setup</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.html">sarkas.potentials</a><input class="toctree-checkbox" id="toctree-checkbox-15" name="toctree-checkbox-15" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-15"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.core.html">sarkas.potentials.core</a><input class="toctree-checkbox" id="toctree-checkbox-16" name="toctree-checkbox-16" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-16"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.core.Potential.html">sarkas.potentials.core.Potential</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.coulomb.html">sarkas.potentials.coulomb</a><input class="toctree-checkbox" id="toctree-checkbox-17" name="toctree-checkbox-17" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-17"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.coulomb.potential_derivatives.html">sarkas.potentials.coulomb.potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.coulomb.pretty_print_info.html">sarkas.potentials.coulomb.pretty_print_info</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.coulomb.update_params.html">sarkas.potentials.coulomb.update_params</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.egs.html">sarkas.potentials.egs</a><input class="toctree-checkbox" id="toctree-checkbox-18" name="toctree-checkbox-18" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-18"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.egs.calc_force_error_quad.html">sarkas.potentials.egs.calc_force_error_quad</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.egs.force_error_integrand.html">sarkas.potentials.egs.force_error_integrand</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.egs.potential_derivatives.html">sarkas.potentials.egs.potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.egs.pretty_print_info.html">sarkas.potentials.egs.pretty_print_info</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.egs.update_params.html">sarkas.potentials.egs.update_params</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.fitted_pot.html">sarkas.potentials.fitted_pot</a><input class="toctree-checkbox" id="toctree-checkbox-19" name="toctree-checkbox-19" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-19"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.fitted_pot.calc_force_error_quad.html">sarkas.potentials.fitted_pot.calc_force_error_quad</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.fitted_pot.force_error_integrand.html">sarkas.potentials.fitted_pot.force_error_integrand</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.fitted_pot.potential_derivatives.html">sarkas.potentials.fitted_pot.potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.fitted_pot.pretty_print_info.html">sarkas.potentials.fitted_pot.pretty_print_info</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.fitted_pot.update_params.html">sarkas.potentials.fitted_pot.update_params</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.force_pm.html">sarkas.potentials.force_pm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.force_pp.html">sarkas.potentials.force_pp</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.hs_yukawa.html">sarkas.potentials.hs_yukawa</a><input class="toctree-checkbox" id="toctree-checkbox-20" name="toctree-checkbox-20" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-20"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.hs_yukawa.pretty_print_info.html">sarkas.potentials.hs_yukawa.pretty_print_info</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.hs_yukawa.update_params.html">sarkas.potentials.hs_yukawa.update_params</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.lennardjones.html">sarkas.potentials.lennardjones</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-21"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.lennardjones.potential_derivatives.html">sarkas.potentials.lennardjones.potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.lennardjones.pretty_print_info.html">sarkas.potentials.lennardjones.pretty_print_info</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.lennardjones.update_params.html">sarkas.potentials.lennardjones.update_params</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.moliere.html">sarkas.potentials.moliere</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-22"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.moliere.calc_force_error_quad.html">sarkas.potentials.moliere.calc_force_error_quad</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.moliere.force_error_integrand.html">sarkas.potentials.moliere.force_error_integrand</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.moliere.potential_derivatives.html">sarkas.potentials.moliere.potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.moliere.update_params.html">sarkas.potentials.moliere.update_params</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.qsp.html">sarkas.potentials.qsp</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-23"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.qsp.deutsch_potential_derivatives.html">sarkas.potentials.qsp.deutsch_potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.qsp.hansen_potential_derivatives.html">sarkas.potentials.qsp.hansen_potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.qsp.kelbg_potential_derivatives.html">sarkas.potentials.qsp.kelbg_potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.qsp.pretty_print_info.html">sarkas.potentials.qsp.pretty_print_info</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.qsp.update_params.html">sarkas.potentials.qsp.update_params</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.tests.html">sarkas.potentials.tests</a><input class="toctree-checkbox" id="toctree-checkbox-24" name="toctree-checkbox-24" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-24"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.tests.test_coulomb.html">sarkas.potentials.tests.test_coulomb</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.tests.test_egs.html">sarkas.potentials.tests.test_egs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.tests.test_force_pm.html">sarkas.potentials.tests.test_force_pm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.tests.test_force_pp.html">sarkas.potentials.tests.test_force_pp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.tests.test_lennardjones.html">sarkas.potentials.tests.test_lennardjones</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.tests.test_moliere.html">sarkas.potentials.tests.test_moliere</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.tests.test_qsp.html">sarkas.potentials.tests.test_qsp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.tests.test_yukawa.html">sarkas.potentials.tests.test_yukawa</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.yukawa.html">sarkas.potentials.yukawa</a><input class="toctree-checkbox" id="toctree-checkbox-25" name="toctree-checkbox-25" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-25"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.yukawa.calc_force_error_quad.html">sarkas.potentials.yukawa.calc_force_error_quad</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.yukawa.force_deriv.html">sarkas.potentials.yukawa.force_deriv</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.yukawa.force_error_integrand.html">sarkas.potentials.yukawa.force_error_integrand</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.yukawa.potential_derivatives.html">sarkas.potentials.yukawa.potential_derivatives</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.yukawa.pretty_print_info.html">sarkas.potentials.yukawa.pretty_print_info</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/potentials_subpckg/sarkas.potentials.yukawa.update_params.html">sarkas.potentials.yukawa.update_params</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../api/time_evolution_subpckg/sarkas.time_evolution.html">sarkas.time_evolution</a><input class="toctree-checkbox" id="toctree-checkbox-26" name="toctree-checkbox-26" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-26"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/time_evolution_subpckg/sarkas.time_evolution.integrators.html">sarkas.time_evolution.integrators</a><input class="toctree-checkbox" id="toctree-checkbox-27" name="toctree-checkbox-27" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-27"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/time_evolution_subpckg/sarkas.time_evolution.integrators.Integrator.html">sarkas.time_evolution.integrators.Integrator</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/time_evolution_subpckg/sarkas.time_evolution.thermostats.html">sarkas.time_evolution.thermostats</a><input class="toctree-checkbox" id="toctree-checkbox-28" name="toctree-checkbox-28" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-28"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/time_evolution_subpckg/sarkas.time_evolution.thermostats.Thermostat.html">sarkas.time_evolution.thermostats.Thermostat</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.html">sarkas.tools</a><input class="toctree-checkbox" id="toctree-checkbox-29" name="toctree-checkbox-29" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-29"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.html">sarkas.tools.observables</a><input class="toctree-checkbox" id="toctree-checkbox-30" name="toctree-checkbox-30" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-30"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.arg_update_doc.html">sarkas.tools.observables.arg_update_doc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.avg_slice_doc.html">sarkas.tools.observables.avg_slice_doc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.calc_Skw.html">sarkas.tools.observables.calc_Skw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.calc_diff_flux_acf.html">sarkas.tools.observables.calc_diff_flux_acf</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.calc_moments.html">sarkas.tools.observables.calc_moments</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.calc_nkt.html">sarkas.tools.observables.calc_nkt</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.calc_pressure_tensor.html">sarkas.tools.observables.calc_pressure_tensor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.calc_slice_doc.html">sarkas.tools.observables.calc_slice_doc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.calc_vacf.html">sarkas.tools.observables.calc_vacf</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.calc_vkt.html">sarkas.tools.observables.calc_vkt</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.calculate_herm_coeff.html">sarkas.tools.observables.calculate_herm_coeff</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.col_mapper.html">sarkas.tools.observables.col_mapper</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.compute_doc.html">sarkas.tools.observables.compute_doc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.grad_expansion.html">sarkas.tools.observables.grad_expansion</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.kspace_setup.html">sarkas.tools.observables.kspace_setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.load_from_restart.html">sarkas.tools.observables.load_from_restart</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.plot_labels.html">sarkas.tools.observables.plot_labels</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.setup_doc.html">sarkas.tools.observables.setup_doc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.CurrentCorrelationFunction.html">sarkas.tools.observables.CurrentCorrelationFunction</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.DiffusionFlux.html">sarkas.tools.observables.DiffusionFlux</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.DynamicStructureFactor.html">sarkas.tools.observables.DynamicStructureFactor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.ElectricCurrent.html">sarkas.tools.observables.ElectricCurrent</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.EnergyCurrent.html">sarkas.tools.observables.EnergyCurrent</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.Observable.html">sarkas.tools.observables.Observable</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.PressureTensor.html">sarkas.tools.observables.PressureTensor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.RadialDistributionFunction.html">sarkas.tools.observables.RadialDistributionFunction</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.StaticStructureFactor.html">sarkas.tools.observables.StaticStructureFactor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.Thermodynamics.html">sarkas.tools.observables.Thermodynamics</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.VelocityAutoCorrelationFunction.html">sarkas.tools.observables.VelocityAutoCorrelationFunction</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.observables.VelocityDistribution.html">sarkas.tools.observables.VelocityDistribution</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.transport.html">sarkas.tools.transport</a><input class="toctree-checkbox" id="toctree-checkbox-31" name="toctree-checkbox-31" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-31"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.transport.Diffusion.html">sarkas.tools.transport.Diffusion</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.transport.ElectricalConductivity.html">sarkas.tools.transport.ElectricalConductivity</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.transport.InterDiffusion.html">sarkas.tools.transport.InterDiffusion</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.transport.ThermalConductivity.html">sarkas.tools.transport.ThermalConductivity</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.transport.TransportCoefficients.html">sarkas.tools.transport.TransportCoefficients</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/tools_subpckg/sarkas.tools.transport.Viscosity.html">sarkas.tools.transport.Viscosity</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.html">sarkas.utilities</a><input class="toctree-checkbox" id="toctree-checkbox-32" name="toctree-checkbox-32" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-32"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.exceptions.html">sarkas.utilities.exceptions</a><input class="toctree-checkbox" id="toctree-checkbox-33" name="toctree-checkbox-33" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-33"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.exceptions.AlgorithmError.html">sarkas.utilities.exceptions.AlgorithmError</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.exceptions.AlgorithmWarning.html">sarkas.utilities.exceptions.AlgorithmWarning</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.exceptions.ParticlesError.html">sarkas.utilities.exceptions.ParticlesError</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.exceptions.ParticlesWarning.html">sarkas.utilities.exceptions.ParticlesWarning</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.exceptions.PhysicsWarning.html">sarkas.utilities.exceptions.PhysicsWarning</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.exceptions.SarkasError.html">sarkas.utilities.exceptions.SarkasError</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.exceptions.SarkasWarning.html">sarkas.utilities.exceptions.SarkasWarning</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.exceptions.TimerError.html">sarkas.utilities.exceptions.TimerError</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.fdints.html">sarkas.utilities.fdints</a><input class="toctree-checkbox" id="toctree-checkbox-34" name="toctree-checkbox-34" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-34"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.fdints.fd_doc_hparams.html">sarkas.utilities.fdints.fd_doc_hparams</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.fdints.fd_doc_iparams.html">sarkas.utilities.fdints.fd_doc_iparams</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.fdints.fermidirac_integral.html">sarkas.utilities.fdints.fermidirac_integral</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.io.html">sarkas.utilities.io</a><input class="toctree-checkbox" id="toctree-checkbox-35" name="toctree-checkbox-35" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-35"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.io.alpha_to_int.html">sarkas.utilities.io.alpha_to_int</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.io.convert_bytes.html">sarkas.utilities.io.convert_bytes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.io.num_sort.html">sarkas.utilities.io.num_sort</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.io.print_to_logger.html">sarkas.utilities.io.print_to_logger</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.io.InputOutput.html">sarkas.utilities.io.InputOutput</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.maths.html">sarkas.utilities.maths</a><input class="toctree-checkbox" id="toctree-checkbox-36" name="toctree-checkbox-36" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-36"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.maths.betamp.html">sarkas.utilities.maths.betamp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.maths.correlationfunction.html">sarkas.utilities.maths.correlationfunction</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.maths.force_error_analytic_lcl.html">sarkas.utilities.maths.force_error_analytic_lcl</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.maths.force_error_analytic_pp.html">sarkas.utilities.maths.force_error_analytic_pp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.maths.force_error_approx_pm.html">sarkas.utilities.maths.force_error_approx_pm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.maths.force_error_approx_pppm.html">sarkas.utilities.maths.force_error_approx_pppm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.maths.yukawa_green_function.html">sarkas.utilities.maths.yukawa_green_function</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.misc.html">sarkas.utilities.misc</a><input class="toctree-checkbox" id="toctree-checkbox-37" name="toctree-checkbox-37" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-37"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.misc.add_col_to_df.html">sarkas.utilities.misc.add_col_to_df</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.tests.html">sarkas.utilities.tests</a><input class="toctree-checkbox" id="toctree-checkbox-38" name="toctree-checkbox-38" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-38"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.tests.test_fdints.html">sarkas.utilities.tests.test_fdints</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.tests.test_maths.html">sarkas.utilities.tests.test_maths</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.timing.html">sarkas.utilities.timing</a><input class="toctree-checkbox" id="toctree-checkbox-39" name="toctree-checkbox-39" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-39"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.timing.datetime_stamp.html">sarkas.utilities.timing.datetime_stamp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.timing.time_stamp.html">sarkas.utilities.timing.time_stamp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/util_subpckg/sarkas.utilities.timing.SarkasTimer.html">sarkas.utilities.timing.SarkasTimer</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Credits:</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../credits/credits.html">Credits</a><input class="toctree-checkbox" id="toctree-checkbox-40" name="toctree-checkbox-40" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-40"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../credits/pub_research.html">Publications</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../credits/team.html">Dev Team</a></li>
 </ul>
 </li>
 </ul>
 
+    </div>
+</nav></div>
+    </div>
   
-        </div>
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
       </div>
-    <div class="body col-md-9 content" role="main">
       
-  <section id="particle-particle-particle-mesh-algorithm">
-<h1>Particle-Particle Particle-Mesh Algorithm<a class="headerlink" href="#particle-particle-particle-mesh-algorithm" title="Permalink to this headline">¶</a></h1>
+      <main id="main-content" class="bd-main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><label class="sidebar-toggle primary-toggle btn btn-sm" for="__primary" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</label></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+<a href="https://github.com/murillo-group/sarkas" target="_blank"
+   class="btn btn-sm btn-source-repository-button"
+   title="Source repository"
+   data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fab fa-github"></i>
+  </span>
+
+</a>
+
+
+
+
+
+
+<div class="dropdown dropdown-download-buttons">
+  <button class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Download this page">
+    <i class="fas fa-download"></i>
+  </button>
+  <ul class="dropdown-menu">
+      
+      
+      
+      <li><a href="../_sources/theory/PPPM.ipynb" target="_blank"
+   class="btn btn-sm btn-download-source-button dropdown-item"
+   title="Download source file"
+   data-bs-placement="left" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-file"></i>
+  </span>
+<span class="btn__text-container">.ipynb</span>
+</a>
+</li>
+      
+      
+      
+      
+      <li>
+<button onclick="window.print()"
+  class="btn btn-sm btn-download-pdf-button dropdown-item"
+  title="Print to PDF"
+  data-bs-placement="left" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-file-pdf"></i>
+  </span>
+<span class="btn__text-container">.pdf</span>
+</button>
+</li>
+      
+  </ul>
+</div>
+
+
+
+
+<button onclick="toggleFullScreen()"
+  class="btn btn-sm btn-fullscreen-button"
+  title="Fullscreen mode"
+  data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-expand"></i>
+  </span>
+
+</button>
+
+
+<script>
+document.write(`
+  <button class="theme-switch-button btn btn-sm btn-outline-primary navbar-btn rounded-circle" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch" data-mode="light"><i class="fa-solid fa-sun"></i></span>
+    <span class="theme-switch" data-mode="dark"><i class="fa-solid fa-moon"></i></span>
+    <span class="theme-switch" data-mode="auto"><i class="fa-solid fa-circle-half-stroke"></i></span>
+  </button>
+`);
+</script>
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+  </button>
+`);
+</script>
+<label class="sidebar-toggle secondary-toggle btn btn-sm" for="__secondary"title="Toggle secondary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="fa-solid fa-list"></span>
+</label>
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1>Particle-Particle Particle-Mesh Algorithm</h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+            <div>
+                <h2> Content </h2>
+            </div>
+            <nav aria-label="Page">
+                <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ewald-sum">Ewald Sum</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#total-charge-density">Total charge density</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#short-range-term">Short-range term</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#long-range-term">Long-range term</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#assigning-charges-onto-the-mesh">Assigning charges onto the mesh</a></li>
+</ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article" role="main">
+                  
+  <section class="tex2jax_ignore mathjax_ignore" id="particle-particle-particle-mesh-algorithm">
+<h1>Particle-Particle Particle-Mesh Algorithm<a class="headerlink" href="#particle-particle-particle-mesh-algorithm" title="Permalink to this heading">#</a></h1>
+<p>The Particle-Particle Particle-Mesh (PPPM or P3M) algorithm is a Fourier-based Ewald summation method formulated by Hockney and Eastwood in the late 1980s.</p>
 <section id="ewald-sum">
-<h2>Ewald Sum<a class="headerlink" href="#ewald-sum" title="Permalink to this headline">¶</a></h2>
+<h2>Ewald Sum<a class="headerlink" href="#ewald-sum" title="Permalink to this heading">#</a></h2>
+<p>The Ewald summation is a method to compute the potential energy of long-range interaction in periodic systems. More details can be found in this Wikipedia <a class="reference external" href="https://en.wikipedia.org/wiki/Ewald_summation">article</a>. In the following we will concentrate on explaining how it is used in the context of Sarkas.</p>
 <p>Long range forces are calculated using the Ewald method which consists in dividing the potential into a short
 and a long range part. Physically this is equivalent to adding and subtracting a screening cloud around each charge.
 This screening cloud is usually chosen to be given by a Gaussian charged density distribution, but it need not be.
-The choice of a Gaussian is due to spherical symmetry.</p>
+The primary reason for choosing a Gaussian is its spherical symmetry. In the following we will calculate the charge density with its surrounding clouds and the corresponding energy density of each.</p>
+<section id="total-charge-density">
+<h3>Total charge density<a class="headerlink" href="#total-charge-density" title="Permalink to this heading">#</a></h3>
+<p>Consider a system of <span class="math notranslate nohighlight">\(N\)</span> randomly distributed charges whose distribution is given by</p>
+<div class="math notranslate nohighlight">
+\[ \rho_N ( \mathbf r) = \sum_{i = 1}^{N} q_i \delta( \mathbf r - \mathbf r_i). \]</div>
+<p>At each point <span class="math notranslate nohighlight">\(\mathbf r_i\)</span> we add and substract a Gaussian screening cloud</p>
+<div class="math notranslate nohighlight">
+\[ \rho_S (\mathbf r) = -\frac{q_i \alpha^{3/2}}{\pi} e^{-\alpha^2 (\mathbf r - \mathbf r_i)^2}. \]</div>
 <p>The total charge density at point <span class="math notranslate nohighlight">\(\mathbf r\)</span> is then</p>
 <div class="math notranslate nohighlight">
-\[\rho(\mathbf r) = \sum_{i}^N  \left \{ \left ( q_i\delta( \mathbf r - \mathbf r_i) - \frac{q_i\alpha^{3/2}}{\pi} e^{-\alpha^2 \left( \mathbf r - \mathbf r_i \right )^2 } \right ) + \frac{q_i\alpha^{3/2}}{\pi} e^{-\alpha^2 \left( \mathbf r- \mathbf r_i \right )^2 } \right \},\]</div>
-<p>where the first term is the charge density due to the real particles and the last two terms are a negative
-and positive screening cloud. The first two terms are in parenthesis to emphasizes the splitting into</p>
+\[
+\rho(\mathbf r) = \sum_{i}^N  \left \{ \left ( q_i\delta( \mathbf r - \mathbf r_i) - \frac{q_i\alpha^{3/2}}{\pi} e^{-\alpha^2 \left( \mathbf r - \mathbf r_i \right )^2 } \right ) + \frac{q_i\alpha^{3/2}}{\pi} e^{-\alpha^2 \left( \mathbf r- \mathbf r_i \right )^2 } \right \},
+\]</div>
+<p>where, again, the first term is the charge density due to the real particles and the last two terms are the negative
+and positive screening clouds. The first two terms are in parenthesis to emphasizes the splitting into</p>
 <div class="math notranslate nohighlight">
-\[\rho(\mathbf r)  = \rho_{\mathcal R}(\mathbf r) + \rho_{\mathcal F}(\mathbf r)\]</div>
+\[
+    \rho(\mathbf r)  = \rho_{\mathcal R}(\mathbf r) + \rho_{\mathcal F}(\mathbf r)
+\]</div>
 <div class="math notranslate nohighlight">
-\[\rho_{\mathcal R} (\mathbf r) = \sum_{i}^N \left ( q_i\delta( \mathbf r- \mathbf r_i) - \frac{q_i\alpha^{3/2}}{\pi} e^{-\alpha^2 \left( \mathbf r- \mathbf r_i \right )^2 } \right ), \quad \rho_{\mathcal F}(\mathbf r) = \sum_{i}^N \frac{q_i\alpha^{3/2}}{\pi} e^{-\alpha^2 \left( \mathbf r- \mathbf r_i \right )^2 }\]</div>
+\[
+    \rho_{\mathcal R} (\mathbf r) = \sum_{i}^N \left ( q_i\delta( \mathbf r- \mathbf r_i) - \frac{q_i\alpha^{3/2}}{\pi} e^{-\alpha^2 \left( \mathbf r- \mathbf r_i \right )^2 } \right ), \quad \rho_{\mathcal F}(\mathbf r) = \sum_{i}^N \frac{q_i\alpha^{3/2}}{\pi} e^{-\alpha^2 \left( \mathbf r- \mathbf r_i \right )^2 }
+\]</div>
 <p>where <span class="math notranslate nohighlight">\(\rho_{\mathcal R}(\mathbf r)\)</span> indicates the charge density leading to the short range part of the potential
-and <span class="math notranslate nohighlight">\(\rho_{\mathcal F}(\mathbf r)\)</span> leading to the long range part.
-The subscripts <span class="math notranslate nohighlight">\(\mathcal R, \mathcal F\)</span> stand for Real and Fourier space indicating the way the calculation
-will be done.</p>
+and <span class="math notranslate nohighlight">\(\rho_{\mathcal F}(\mathbf r)\)</span> leading to the long range part. The subscripts <span class="math notranslate nohighlight">\(\mathcal R, \mathcal F\)</span> stand for Real and Fourier space indicating the way the calculation will be done.</p>
 <p>The potential at every point <span class="math notranslate nohighlight">\(\mathbf r\)</span> is calculated from Poisson’s equation</p>
 <div class="math notranslate nohighlight">
-\[-\nabla^2 \phi( \mathbf r) = 4\pi \rho_{\mathcal R} (\mathbf r) + 4\pi \rho_{\mathcal F}( \mathbf r).\]</div>
+\[
+    -\nabla^2 \phi( \mathbf r) = 4\pi \rho_{\mathcal R} (\mathbf r) + 4\pi \rho_{\mathcal F}( \mathbf r).
+\]</div>
+</section>
 <section id="short-range-term">
-<h3>Short-range term<a class="headerlink" href="#short-range-term" title="Permalink to this headline">¶</a></h3>
+<h3>Short-range term<a class="headerlink" href="#short-range-term" title="Permalink to this heading">#</a></h3>
 <p>The short range term is calculated in the usual way</p>
 <div class="math notranslate nohighlight">
-\[-\nabla^2 \phi_{\mathcal R}( \mathbf r) = 4\pi \sum_{i}^N  \left ( q_i\delta( \mathbf r- \mathbf r_i) - \frac{q_i\alpha^{3/2}}{\pi} e^{-\alpha^2 \left( \mathbf r- \mathbf r_i \right )^2 } \right ).\]</div>
+\[
+    -\nabla^2 \phi_{\mathcal R}( \mathbf r) = 4\pi \sum_{i}^N  \left ( q_i\delta( \mathbf r- \mathbf r_i) - \frac{q_i\alpha^{3/2}}{\pi} e^{-\alpha^2 \left( \mathbf r- \mathbf r_i \right )^2 } \right ).
+\]</div>
 <p>The first term <span class="math notranslate nohighlight">\(\delta(\mathbf r - \mathbf r_i)\)</span> leads to the usual Coulomb potential (<span class="math notranslate nohighlight">\(\sim 1/r\)</span>) while
 the Gaussian leads to the error function</p>
-<div class="math notranslate nohighlight">
-\[\phi_{\mathcal R}( \mathbf r ) = \sum_i^N  \frac{q_i}{r} - \frac{q_i}{r}\text{erf} (\alpha r)  = \sum_i^N \frac{q_i}{r} \text{erfc}(\alpha r)\]</div>
+<div class="math notranslate nohighlight" id="equation-eq-phi-r">
+<span class="eqno">(1)<a class="headerlink" href="#equation-eq-phi-r" title="Permalink to this equation">#</a></span>\[
+    \phi_{\mathcal R}( \mathbf r ) = \sum_i^N  \frac{q_i}{r} - \frac{q_i}{r}\text{erf} (\alpha r)  = \sum_i^N \frac{q_i}{r} \text{erfc}(\alpha r)
+\]</div>
 </section>
 <section id="long-range-term">
-<h3>Long-range term<a class="headerlink" href="#long-range-term" title="Permalink to this headline">¶</a></h3>
+<h3>Long-range term<a class="headerlink" href="#long-range-term" title="Permalink to this heading">#</a></h3>
 <p>The long range term is calculated in Fourier space</p>
 <div class="math notranslate nohighlight">
-\[k^2 \tilde\phi_{\mathcal F}(k) = 4\pi \tilde\rho_{\mathcal F}(k)\]</div>
+\[
+    k^2 \tilde\phi_{\mathcal F}(k) = 4\pi \tilde\rho_{\mathcal F}(k)
+\]</div>
 <p>where</p>
 <div class="math notranslate nohighlight">
-\[\tilde\rho_{\mathcal F}(k) = \frac{1}{V} \int d\mathbf re^{- i \mathbf k \cdot \mathbf r} \rho_{\mathcal F}( \mathbf r ) = \sum_{i}^N \frac{q_i\alpha^{3/2}}{\pi V} \int d\mathbf r e^{- i \mathbf k \cdot \mathbf r}  e^{-\alpha^2 \left( \mathbf r - \mathbf r_i \right )^2 } = \sum_{i}^N \frac{q_i}{V} e^{-i \mathbf k \cdot \mathbf r_i} e^{-k^2/(4\alpha^2)}.\]</div>
+\[
+    \tilde\rho_{\mathcal F}(k) = \frac{1}{V} \int d\mathbf re^{- i \mathbf k \cdot \mathbf r} \rho_{\mathcal F}( \mathbf r ) = \sum_{i}^N \frac{q_i\alpha^{3/2}}{\pi V} \int d\mathbf r e^{- i \mathbf k \cdot \mathbf r}  e^{-\alpha^2 \left( \mathbf r - \mathbf r_i \right )^2 } = \sum_{i}^N \frac{q_i}{V} e^{-i \mathbf k \cdot \mathbf r_i} e^{-k^2/(4\alpha^2)}.
+\]</div>
 <p>The potential is then</p>
 <div class="math notranslate nohighlight">
-\[\tilde \phi_{\mathcal F}(\mathbf k) = \frac{4\pi}{k^2} \frac{1}{V} \sum_{i}^N q_i e^{-i\mathbf k \cdot \mathbf r_i} e^{-k^2/(4\alpha^2)} = \frac{1}{V} \sum_i^N v(k)e^{-k^2/(4 \alpha^2)} q_i e^{-i \mathbf k \cdot \mathbf r_i}\]</div>
+\[
+    \tilde \phi_{\mathcal F}(\mathbf k) = \frac{4\pi}{k^2} \frac{1}{V} \sum_{i}^N q_i e^{-i\mathbf k \cdot \mathbf r_i} e^{-k^2/(4\alpha^2)} = \frac{1}{V} \sum_i^N v(k)e^{-k^2/(4 \alpha^2)} q_i e^{-i \mathbf k \cdot \mathbf r_i}
+\]</div>
 <p>and in real space</p>
-<div class="math notranslate nohighlight">
-\[\phi_{\mathcal R}( \mathbf r ) = \sum_{\mathbf k \neq 0} \tilde \phi_{\mathcal F}(\mathbf k)e^{i \mathbf k \cdot \mathbf r} = \frac{1}{V} \sum_{\mathbf k\neq 0} \sum_{i}^N v(k) e^{-k^2/(4\alpha^2)}q_i e^{i \mathbf k \cdot ( \mathbf r- \mathbf r_i) },\]</div>
-<p>where the <span class="math notranslate nohighlight">\(\mathbf k = 0\)</span> is removed from the sum because of the overall charge neutrality.
-The potential energy created by this long range part is</p>
-<div class="math notranslate nohighlight">
-\[U_{\mathcal F} = \frac {1}{2} \sum_i^N q_i \phi_{\mathcal F}(\mathbf r_i) = \frac{1}{2} \frac{1}{V} \sum_{i,j}^N q_i q_j \sum_{\mathbf k \neq 0 } v(k)  e^{-k^2/(4\alpha^2)}e^{i \mathbf k \cdot ( \mathbf r_i - \mathbf r_j) } = \frac{1}{2} \sum_{\mathbf k \neq 0} |\rho_0(\mathbf k)|^2 v(k) e^{-k^2/(4\alpha^2)},\]</div>
+<div class="math notranslate nohighlight" id="equation-eq-u-r">
+<span class="eqno">(2)<a class="headerlink" href="#equation-eq-u-r" title="Permalink to this equation">#</a></span>\[
+    \phi_{\mathcal R}( \mathbf r ) = \sum_{\mathbf k \neq 0} \tilde \phi_{\mathcal F}(\mathbf k)e^{i \mathbf k \cdot \mathbf r} = \frac{1}{V} \sum_{\mathbf k\neq 0} \sum_{i}^N v(k) e^{-k^2/(4\alpha^2)}q_i e^{i \mathbf k \cdot ( \mathbf r- \mathbf r_i) },
+\]</div>
+<p>where the <span class="math notranslate nohighlight">\(\mathbf k = 0\)</span> is removed from the sum because of the overall charge neutrality.</p>
+<p>The potential energy created by this long range part is</p>
+<div class="math notranslate nohighlight" id="equation-eq-u-f">
+<span class="eqno">(3)<a class="headerlink" href="#equation-eq-u-f" title="Permalink to this equation">#</a></span>\[
+    U_{\mathcal F} = \frac {1}{2} \sum_i^N q_i \phi_{\mathcal F}(\mathbf r_i) = \frac{1}{2} \frac{1}{V} \sum_{i,j}^N q_i q_j \sum_{\mathbf k \neq 0 } v(k)  e^{-k^2/(4\alpha^2)}e^{i \mathbf k \cdot ( \mathbf r_i - \mathbf r_j) } = \frac{1}{2} \sum_{\mathbf k \neq 0} |\rho_0(\mathbf k)|^2 v(k) e^{-k^2/(4\alpha^2)},
+\]</div>
 <p>where I used the definition of the charge density</p>
 <div class="math notranslate nohighlight">
-\[\rho_0(\mathbf k) = \frac 1V \sum_i^N q_i e^{i \mathbf k \cdot \mathbf r_i}.\]</div>
+\[
+    \rho_0(\mathbf k) = \frac 1V \sum_i^N q_i e^{i \mathbf k \cdot \mathbf r_i}.
+\]</div>
 <p>However, in the above sum we are including the self-energy term, i.e. <span class="math notranslate nohighlight">\(\mathbf r_i = \mathbf r_j\)</span>. This term
 can be easily calculated and then removed from <span class="math notranslate nohighlight">\(U_{\mathcal F}\)</span></p>
 <div class="math notranslate nohighlight">
-\[\frac{\mathcal Q^2}{2V} \sum_{\mathbf k} \frac{4\pi}{k^2} e^{-k^2/(4\alpha^2)} \rightarrow \frac{\mathcal Q^2}{2V} \left ( \frac{L}{2\pi} \right )^3 \int dk (4\pi)^2 e^{-k^2/(4\alpha^2) }  = \mathcal Q^2 \frac{(4\pi)^2}{2V} \left ( \frac{L}{2\pi} \right )^3 \sqrt{\pi } \alpha = \mathcal Q^2 \frac{\alpha}{\sqrt{\pi} }\]</div>
+\[
+    \frac{\mathcal Q^2}{2V} \sum_{\mathbf k} \frac{4\pi}{k^2} e^{-k^2/(4\alpha^2)} \rightarrow \frac{\mathcal Q^2}{2V} \left ( \frac{L}{2\pi} \right )^3 \int dk (4\pi)^2 e^{-k^2/(4\alpha^2) }  = \mathcal Q^2 \frac{(4\pi)^2}{2V} \left ( \frac{L}{2\pi} \right )^3 \sqrt{\pi } \alpha = \mathcal Q^2 \frac{\alpha}{\sqrt{\pi} }
+\]</div>
 <p>where <span class="math notranslate nohighlight">\(\mathcal Q^2 = \sum_i^N q_i^2\)</span>, note that in the integral we have re-included <span class="math notranslate nohighlight">\(\mathbf k = 0\)</span>, but
 this is not a problem. Finally the long-range potential energy is</p>
+<div class="math notranslate nohighlight" id="equation-eq-phi-l">
+<span class="eqno">(4)<a class="headerlink" href="#equation-eq-phi-l" title="Permalink to this equation">#</a></span>\[
+    U_{\mathcal L} = U_{\mathcal F} - \mathcal Q^2 \frac{\alpha}{\sqrt{\pi} }.
+\]</div>
+<p>Up to this point we have the analytical expression for our potential; <a class="reference internal" href="#equation-eq-u-r">(2)</a> and <a class="reference internal" href="#equation-eq-u-f">(3)</a>. However, computing the sum over <span class="math notranslate nohighlight">\(\mathbf k\)</span> in the equation for <span class="math notranslate nohighlight">\(U_{\mathcal F}\)</span> is still too slow and we don’t know what value of <span class="math notranslate nohighlight">\(\mathbf k\)</span> to end the sum.</p>
+</section>
+</section>
+<section id="assigning-charges-onto-the-mesh">
+<h2>Assigning charges onto the mesh<a class="headerlink" href="#assigning-charges-onto-the-mesh" title="Permalink to this heading">#</a></h2>
+<p>The idea of particle-mesh algorithms is to speed up the calculation of the reciprocal (space) potential <span class="math notranslate nohighlight">\(U_{\mathcal F}\)</span> by calculating it on a mesh. However, the particles are scattered at random points in space so we need to distribute them onto the mesh points. For simplicity, we assume the number of grid points <span class="math notranslate nohighlight">\(M\)</span> to be identical in all three directions <span class="math notranslate nohighlight">\(M = M_x = M_y = M_z\)</span>. Define the spacing between two grid points <span class="math notranslate nohighlight">\(h = L/M\)</span> and <span class="math notranslate nohighlight">\(\mathbb{M}\)</span> the set of all grid points:</p>
 <div class="math notranslate nohighlight">
-\[U_{\mathcal L} = U_{\mathcal F} - \mathcal Q^2 \frac{\alpha}{\sqrt{\pi} }\]</div>
-</section>
+\[
+    \mathbb{M} = \left \{ \mathbf mh \; : \mathbf m \in \mathbb{Z}^3 \; \textrm{and} \; 0 \leq m_{x,y,z} &lt; M \right \}.
+\]</div>
+<p>The charge density of the mesh, <span class="math notranslate nohighlight">\(\rho_M(\mathbf r)\)</span>, is calculated by</p>
+<div class="math notranslate nohighlight">
+\[
+    \rho_{M}(\mathbf r) = \int U_p(\mathbf r - \mathbf r') \rho(\mathbf r') d\mathbf r', \quad U_p(\mathbf r) = h^{-3} W_p(\mathbf r), \quad  \mathbf r \in \mathbb{M}
+\]</div>
+<p>where <span class="math notranslate nohighlight">\(W_p(\mathbf r)\)</span> is the charge assignment function of order <span class="math notranslate nohighlight">\(p \in \mathbb{N}^+\)</span>. In Sarkas we chose it to be a cardinal B-spline with a Fourier transform</p>
+<div class="math notranslate nohighlight">
+\[
+    \tilde W_{p}(\mathbf k) = h^3 \left [ \frac{\sin(k_xh/2)}{k_x h/2} \frac{\sin(k_y h/2)}{k_y h/2} \frac{\sin(k_z h/2)}{k_z h/2} \right ]^p.
+\]</div>
+<p>Substituting the above into <span class="math notranslate nohighlight">\(\rho_M(\mathbf r)\)</span> we find
+$$</p>
+<div class="amsmath math notranslate nohighlight" id="equation-55b1aff6-1157-4efc-9ea2-ae8ce6cf1ea4">
+<span class="eqno">(5)<a class="headerlink" href="#equation-55b1aff6-1157-4efc-9ea2-ae8ce6cf1ea4" title="Permalink to this equation">#</a></span>\[\begin{eqnarray}
+    \rho_M (\mathbf r) &amp; = &amp; \int d\mathbf r' h^{-3} W( \mathbf r - \mathbf r')\sum_{i} q_i \delta(\mathbf r' - \mathbf r_i), \\
+    &amp; = &amp; h^{-3} \sum_{i} q_i  W( \mathbf r - \mathbf r_i).
+\end{eqnarray}\]</div>
+<p>$$</p>
+<p>except at the boundaries where the periodicity has to be properly taken into account.</p>
+<p>The routine to deposit charges onto the grid is the following,</p>
+<ol class="arabic simple">
+<li><p>Assume the particle is at position <span class="math notranslate nohighlight">\(x_i\)</span>.</p></li>
+<li><p>Choose the charge assignment order <span class="math notranslate nohighlight">\(p\)</span>,</p></li>
+<li><p>Find the coordinate of the closest mesh point to the particle’s location, if <span class="math notranslate nohighlight">\(p\)</span> is odd. If <span class="math notranslate nohighlight">\(p\)</span> is even take the coordinate of the midpoint of between the two nearest mesh points. Denote this by <span class="math notranslate nohighlight">\(x_m\)</span></p></li>
+<li><p>Find the <span class="math notranslate nohighlight">\(p\)</span> mesh points that are closest to the particle, starting from the far left.</p></li>
+<li><p>The fraction of charge to be deposited on each point is given by <span class="math notranslate nohighlight">\(W_p(x_i - x_m)\)</span>.</p></li>
+</ol>
+<p>In the following we show a 1D example by calculating <span class="math notranslate nohighlight">\(W_p(x)\)</span> for two particles each with a different <span class="math notranslate nohighlight">\(p\)</span>. We position the particles near the edges to show the periodic boundary conditions.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Import the usual stuff</span>
+<span class="o">%</span><span class="k">pylab</span>
+<span class="o">%</span><span class="k">matplotlib</span> inline
+
+<span class="n">plt</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">use</span><span class="p">(</span><span class="s2">&quot;MSUstyle&quot;</span><span class="p">)</span>
+
+<span class="c1"># Random number generator</span>
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">123456789</span><span class="p">)</span>
+
+<span class="kn">from</span> <span class="nn">sarkas.potentials.force_pm</span> <span class="kn">import</span> <span class="n">assgnmnt_func</span><span class="p">,</span> <span class="n">calc_charge_dens</span><span class="p">,</span> <span class="n">mesh_point_shift</span><span class="p">,</span> <span class="n">calc_mesh_coord</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Using matplotlib backend: &lt;object object at 0x7fa1fc6ea700&gt;
+Populating the interactive namespace from numpy and matplotlib
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x_1</span> <span class="o">=</span> <span class="mf">0.6</span> <span class="c1"># position of the particle</span>
+<span class="n">x_2</span> <span class="o">=</span> <span class="mf">8.3</span> <span class="c1"># position of the particle</span>
+<span class="n">N_mesh_points</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="c1"># Grid points</span>
+<span class="n">x_mesh</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">N_mesh_points</span><span class="p">)</span>
+<span class="c1"># grid spacing, chosen to be 1</span>
+<span class="n">hx</span> <span class="o">=</span> <span class="n">x_mesh</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">x_mesh</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> 
+
+<span class="c1"># Plot the 1D grid and the particle</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">x_mesh</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">x_mesh</span><span class="p">),</span> <span class="n">c</span> <span class="o">=</span> <span class="s1">&#39;k&#39;</span><span class="p">,</span> <span class="n">s</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span> <span class="n">label</span> <span class="o">=</span> <span class="s2">&quot;Mesh points&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">x_1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">s</span> <span class="o">=</span> <span class="mi">200</span><span class="p">,</span> <span class="n">marker</span> <span class="o">=</span> <span class="s1">&#39;x&#39;</span><span class="p">,</span> <span class="n">label</span> <span class="o">=</span> <span class="s2">&quot;Particle 1&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">x_2</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">s</span> <span class="o">=</span> <span class="mi">200</span><span class="p">,</span> <span class="n">marker</span> <span class="o">=</span> <span class="s1">&#39;x&#39;</span><span class="p">,</span> <span class="n">label</span> <span class="o">=</span> <span class="s2">&quot;Particle 2&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span> <span class="sa">r</span><span class="s2">&quot;$x/h$&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Text(0.5, 0, &#39;$x/h$&#39;)
+</pre></div>
+</div>
+<img alt="../_images/3a5c8c16fd32754be82096c51f360ec8d1e1d29ea669669a224af26de85fbf9f.png" src="../_images/3a5c8c16fd32754be82096c51f360ec8d1e1d29ea669669a224af26de85fbf9f.png" />
+</div>
+</div>
+<p>The above plot shows the position of the two particles, represented by X’s and the location of the mesh points, represented by black dots. Notice that we are rescaling everything by the distance between mesh points, <span class="math notranslate nohighlight">\(h\)</span>, which we choose to be = 1 for simplicity.</p>
+<p>The next code cell calculates the function <span class="math notranslate nohighlight">\(W(x)\)</span> which represents the amount of charge to be assigned to each mesh point. Particle 1 is distributed over three points while Particle 2 over four mesh points.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Calculate the charge assignment function</span>
+
+<span class="c1"># Define the charge assignment order, p</span>
+<span class="n">cao1</span> <span class="o">=</span> <span class="mi">3</span>
+<span class="n">cao2</span> <span class="o">=</span> <span class="mi">4</span>
+
+<span class="c1"># Define x_m to be the coordinate of the particle&#39;s nearest mesh point (if cao is odd)</span>
+<span class="n">x_m1</span> <span class="o">=</span> <span class="n">rint</span><span class="p">(</span><span class="n">x_1</span><span class="o">/</span><span class="n">hx</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span><span class="p">(</span> <span class="n">cao1</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<span class="n">x_m2</span> <span class="o">=</span> <span class="n">rint</span><span class="p">(</span><span class="n">x_2</span><span class="o">/</span><span class="n">hx</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span><span class="p">(</span> <span class="n">cao2</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<span class="c1"># The above branchless programming is because int gives the integer value only and not the closest integer</span>
+
+<span class="c1"># Distance to the nearest mesh point for p odd</span>
+<span class="n">delta_x1</span> <span class="o">=</span> <span class="n">x_1</span><span class="o">/</span><span class="n">hx</span> <span class="o">-</span> <span class="n">x_m1</span> 
+<span class="c1"># Distance to the midpoint between the two nearest mesh points</span>
+<span class="n">delta_x2</span> <span class="o">=</span> <span class="n">x_2</span><span class="o">/</span><span class="n">hx</span> <span class="o">-</span> <span class="n">x_m2</span> <span class="o">-</span> <span class="mf">0.5</span>
+
+<span class="c1"># W_3(x_1 - x_m1), W_5(x_2 - x_m2)</span>
+<span class="c1"># This returns an array of length = p.</span>
+<span class="c1"># Each element is the fraction of the charge on each of the p mesh points starting from the far left.</span>
+<span class="n">wx1</span> <span class="o">=</span> <span class="n">assgnmnt_func</span><span class="p">(</span><span class="n">cao1</span><span class="p">,</span> <span class="n">delta_x1</span><span class="p">)</span>
+<span class="n">wx2</span> <span class="o">=</span> <span class="n">assgnmnt_func</span><span class="p">(</span><span class="n">cao2</span><span class="p">,</span> <span class="n">delta_x2</span><span class="p">)</span>
+
+<span class="c1"># Create a long array to plot on the entire x range</span>
+<span class="n">full_wx1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span> <span class="nb">len</span><span class="p">(</span><span class="n">x_mesh</span><span class="p">)</span> <span class="p">)</span>
+<span class="n">full_wx2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span> <span class="nb">len</span><span class="p">(</span><span class="n">x_mesh</span><span class="p">)</span> <span class="p">)</span>
+
+<span class="c1"># Note that you need to shift to the left due to zero indexing</span>
+<span class="n">ixn</span> <span class="o">=</span> <span class="n">x_m1</span> <span class="o">-</span> <span class="nb">int</span><span class="p">(</span><span class="n">cao1</span><span class="o">/</span><span class="mf">2.0</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">cao1</span><span class="p">):</span>
+    <span class="c1"># Check for BC </span>
+    <span class="k">if</span> <span class="n">ixn</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">ixn</span> <span class="o">+</span> <span class="n">N_mesh_points</span>
+
+    <span class="k">elif</span> <span class="n">ixn</span> <span class="o">&gt;</span> <span class="p">(</span><span class="n">N_mesh_points</span> <span class="o">-</span><span class="mi">1</span> <span class="p">):</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">ixn</span> <span class="o">-</span> <span class="n">N_mesh_points</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">ixn</span>
+    
+    <span class="n">full_wx1</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="o">=</span> <span class="n">wx1</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span>
+    <span class="n">ixn</span> <span class="o">+=</span> <span class="mi">1</span>
+    
+<span class="c1"># Note that you need to shift to the left due to zero indexing</span>
+<span class="n">ixn</span> <span class="o">=</span> <span class="n">x_m2</span> <span class="o">-</span> <span class="nb">int</span><span class="p">(</span><span class="n">cao2</span><span class="o">/</span><span class="mf">2.0</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>   
+<span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">cao2</span><span class="p">):</span>
+    <span class="c1"># Check for BC </span>
+    <span class="k">if</span> <span class="n">ixn</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">ixn</span> <span class="o">+</span> <span class="n">N_mesh_points</span>
+    <span class="k">elif</span> <span class="n">ixn</span> <span class="o">&gt;</span> <span class="p">(</span><span class="n">N_mesh_points</span> <span class="o">-</span><span class="mi">1</span> <span class="p">):</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">ixn</span> <span class="o">-</span> <span class="n">N_mesh_points</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">ixn</span>
+
+    <span class="n">full_wx2</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="o">=</span> <span class="n">wx2</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span>
+    <span class="n">ixn</span> <span class="o">+=</span> <span class="mi">1</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Make the plot</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">x_mesh</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">x_mesh</span><span class="p">),</span> <span class="n">s</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span> <span class="n">label</span> <span class="o">=</span> <span class="s2">&quot;Mesh points&quot;</span><span class="p">)</span>
+<span class="n">p1</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">x_1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">s</span> <span class="o">=</span> <span class="mi">200</span><span class="p">,</span> <span class="n">marker</span> <span class="o">=</span> <span class="s1">&#39;x&#39;</span><span class="p">,</span> <span class="n">label</span> <span class="o">=</span> <span class="s2">&quot;Particle 1&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x_mesh</span><span class="p">,</span> <span class="n">full_wx1</span><span class="p">,</span> <span class="s1">&#39;--o&#39;</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="n">p1</span><span class="o">.</span><span class="n">get_facecolor</span><span class="p">(),</span> <span class="n">label</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$W_3(x_1 - x_</span><span class="si">{m1}</span><span class="s2">)$&quot;</span><span class="p">)</span>
+
+<span class="n">p2</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">x_2</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">s</span> <span class="o">=</span> <span class="mi">200</span><span class="p">,</span> <span class="n">marker</span> <span class="o">=</span> <span class="s1">&#39;x&#39;</span><span class="p">,</span> <span class="n">label</span> <span class="o">=</span> <span class="s2">&quot;Particle 2&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x_mesh</span><span class="p">,</span> <span class="n">full_wx2</span><span class="p">,</span> <span class="s1">&#39;--o&#39;</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="n">p2</span><span class="o">.</span><span class="n">get_facecolor</span><span class="p">(),</span> <span class="n">label</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$W_4(x_2 - x_</span><span class="si">{m2}</span><span class="s2">)$&quot;</span><span class="p">)</span>
+
+<span class="c1"># plt.plot(x_mesh, full_wx1 + full_wx2, ls =&#39;--&#39;, label = r&quot;$W_3(x) + W_4(x)$&quot;)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">_</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;$W_p(x)$&quot;</span><span class="p">)</span>
+<span class="n">_</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;$x/h$&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="../_images/faa458d9c7e8000504bc6aa993cfede6a3fe63bc6c2d22da845ebe2eed59fe28.png" src="../_images/faa458d9c7e8000504bc6aa993cfede6a3fe63bc6c2d22da845ebe2eed59fe28.png" />
+</div>
+</div>
+<p>As you can see the first (orange) particle is distributed on the three mesh points (9, 0, 1) while the second (green) particle onto the four mesh points (7, 8, 9, 0).</p>
+<p>The algorithm described above can be extended to 3D and it is what is contained in the function <span class="xref myst">calc_charge_dens</span>. In the following we will present an example with randomly distributed charges on a 2D plane for visualization.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Calculate the charge assignment function</span>
+
+<span class="c1"># Define the charge assignment order, p</span>
+<span class="n">cao1</span> <span class="o">=</span> <span class="mi">3</span>
+<span class="n">cao2</span> <span class="o">=</span> <span class="mi">3</span>
+<span class="n">x</span> <span class="o">=</span> <span class="mf">45.51</span>
+<span class="n">y</span> <span class="o">=</span> <span class="mf">45.51</span>
+
+<span class="n">L</span> <span class="o">=</span> <span class="mi">64</span>
+<span class="n">mesh</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span> <span class="o">*</span> <span class="mi">16</span>
+<span class="n">xgrid</span><span class="p">,</span> <span class="n">ygrid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mgrid</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">L</span><span class="p">:</span><span class="mi">16</span><span class="n">j</span><span class="p">,</span> <span class="mi">0</span><span class="p">:</span><span class="n">L</span><span class="p">:</span><span class="mi">16</span><span class="n">j</span><span class="p">]</span>
+<span class="n">hs</span> <span class="o">=</span> <span class="n">L</span><span class="o">/</span><span class="n">mesh</span>
+
+<span class="c1"># Define x_m to be the coordinate of the particle&#39;s nearest mesh point (if cao is odd)</span>
+<span class="n">x_m</span> <span class="o">=</span> <span class="n">rint</span><span class="p">(</span><span class="n">x</span><span class="o">/</span><span class="n">hs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span><span class="p">(</span> <span class="n">cao1</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<span class="n">y_m</span> <span class="o">=</span> <span class="n">rint</span><span class="p">(</span><span class="n">y</span><span class="o">/</span><span class="n">hs</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span><span class="p">(</span> <span class="n">cao2</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+
+<span class="c1"># The above branchless programming is because int gives the integer value only and not the closest integer</span>
+
+<span class="c1"># Distance to the nearest mesh point for p odd</span>
+<span class="n">delta_x</span> <span class="o">=</span> <span class="n">x</span><span class="o">/</span><span class="n">hs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="p">(</span><span class="n">x_m</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span><span class="p">(</span> <span class="n">cao1</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">))</span>
+<span class="c1"># Distance to the midpoint between the two nearest mesh points</span>
+<span class="n">delta_y</span> <span class="o">=</span> <span class="n">y</span><span class="o">/</span><span class="n">hs</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="p">(</span><span class="n">y_m</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span><span class="p">(</span> <span class="n">cao2</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">))</span>
+
+<span class="c1"># This returns an array of length = p.</span>
+<span class="c1"># Each element is the fraction of the charge on each of the p mesh points starting from the far left.</span>
+<span class="n">wx</span> <span class="o">=</span> <span class="n">assgnmnt_func</span><span class="p">(</span><span class="n">cao1</span><span class="p">,</span> <span class="n">delta_x</span><span class="p">)</span>
+<span class="n">wy</span> <span class="o">=</span> <span class="n">assgnmnt_func</span><span class="p">(</span><span class="n">cao2</span><span class="p">,</span> <span class="n">delta_y</span><span class="p">)</span>
+
+<span class="c1"># Create a long array to plot on the entire x range</span>
+<span class="n">full_wx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span> <span class="n">mesh</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> 
+<span class="n">full_wy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span> <span class="n">mesh</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> 
+<span class="n">rho_2D</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span> <span class="p">(</span><span class="n">mesh</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">mesh</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="p">)</span>
+                  
+<span class="c1"># Note that you need to shift to the left due to zero indexing</span>
+<span class="n">ixn</span> <span class="o">=</span> <span class="n">x_m</span> <span class="o">-</span> <span class="nb">int</span><span class="p">(</span><span class="n">cao1</span><span class="o">/</span><span class="mf">2.0</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">*</span> <span class="p">(</span><span class="n">cao1</span> <span class="o">%</span><span class="k">2</span> == 0) )
+<span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">cao1</span><span class="p">):</span>
+    
+    <span class="c1"># Check for BC </span>
+    <span class="n">index_x</span> <span class="o">=</span> <span class="n">ixn</span> <span class="o">+</span> <span class="n">N_mesh_points</span> <span class="o">*</span> <span class="p">(</span><span class="n">ixn</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-</span> <span class="n">N_mesh_points</span><span class="o">*</span><span class="p">(</span> <span class="n">ixn</span> <span class="o">&gt;</span> <span class="p">(</span><span class="n">N_mesh_points</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="p">)</span>
+
+    <span class="c1"># Note that you need to shift to the left due to zero indexing</span>
+    <span class="n">iyn</span> <span class="o">=</span> <span class="n">y_m</span> <span class="o">-</span> <span class="nb">int</span><span class="p">(</span><span class="n">cao2</span><span class="o">/</span><span class="mf">2.0</span> <span class="o">-</span>  <span class="mi">1</span> <span class="o">*</span> <span class="p">(</span><span class="n">cao1</span> <span class="o">%</span><span class="k">2</span> == 0) )   
+
+    <span class="k">for</span> <span class="n">iy</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">cao2</span><span class="p">):</span>
+        <span class="c1"># Check for BC </span>
+        <span class="n">index_y</span> <span class="o">=</span> <span class="n">iyn</span> <span class="o">+</span> <span class="n">N_mesh_points</span> <span class="o">*</span> <span class="p">(</span><span class="n">iyn</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-</span> <span class="n">N_mesh_points</span><span class="o">*</span><span class="p">(</span> <span class="n">iyn</span> <span class="o">&gt;</span> <span class="p">(</span><span class="n">N_mesh_points</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="p">)</span>
+
+        <span class="n">rho_2D</span><span class="p">[</span><span class="n">index_x</span><span class="p">,</span> <span class="n">index_y</span><span class="p">]</span> <span class="o">+=</span> <span class="n">wx</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span> <span class="o">*</span> <span class="n">wy</span><span class="p">[</span><span class="n">iy</span><span class="p">]</span>
+        <span class="n">iyn</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="n">ixn</span> <span class="o">+=</span> <span class="mi">1</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>11 11 [4. 4.]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># I am getting a deprecation warning from matplotlib about the grid in pcolor.</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+<span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span><span class="s2">&quot;ignore&quot;</span><span class="p">,</span><span class="n">category</span><span class="o">=</span><span class="n">matplotlib</span><span class="o">.</span><span class="n">cbook</span><span class="o">.</span><span class="n">mplDeprecation</span><span class="p">)</span>
+
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">p1</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">pcolormesh</span><span class="p">(</span><span class="n">xgrid</span><span class="p">,</span> <span class="n">ygrid</span><span class="p">,</span> <span class="n">rho_2D</span><span class="p">,</span> <span class="n">cmap</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">cm</span><span class="o">.</span><span class="n">plasma</span><span class="p">,</span> <span class="n">alpha</span> <span class="o">=</span> <span class="mf">0.75</span><span class="p">)</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">p1</span><span class="p">,</span> <span class="n">label</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$\rho_M(x,y)$&quot;</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">s</span> <span class="o">=</span> <span class="mi">200</span><span class="p">,</span> <span class="n">marker</span> <span class="o">=</span> <span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="s1">&#39;k&#39;</span><span class="p">,</span> <span class="n">label</span> <span class="o">=</span> <span class="s2">&quot;Particles&quot;</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span> <span class="p">(</span><span class="n">x_m</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span><span class="o">*</span><span class="n">hs</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="p">,</span> <span class="p">(</span><span class="n">y_m</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="n">hs</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">s</span> <span class="o">=</span> <span class="mi">200</span><span class="p">,</span> <span class="n">marker</span> <span class="o">=</span> <span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="s1">&#39;r&#39;</span><span class="p">,</span> <span class="n">label</span> <span class="o">=</span> <span class="s2">&quot;Particles&quot;</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">mesh</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">axhline</span><span class="p">(</span><span class="n">i</span> <span class="o">*</span> <span class="n">hs</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+<span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">mesh</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">axvline</span><span class="p">(</span><span class="n">j</span><span class="o">*</span> <span class="n">hs</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+
+    
+<span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">_</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span> <span class="n">xlabel</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$x$&quot;</span><span class="p">,</span> <span class="n">ylabel</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$y$&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="../_images/a6dbd6395cef91661b8f07c272f3131f93a29dfcff66bd95128f177c6c0b5687.png" src="../_images/a6dbd6395cef91661b8f07c272f3131f93a29dfcff66bd95128f177c6c0b5687.png" />
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">plt</span><span class="o">.</span><span class="n">rcParams</span><span class="p">[</span><span class="s2">&quot;axes.facecolor&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="mi">12</span><span class="p">),</span><span class="n">subplot_kw</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;projection&quot;</span><span class="p">:</span> <span class="s2">&quot;3d&quot;</span><span class="p">})</span>
+
+<span class="n">ax</span><span class="o">.</span><span class="n">plot_surface</span><span class="p">(</span><span class="n">xgrid</span><span class="p">,</span> <span class="n">ygrid</span><span class="p">,</span> <span class="n">rho_2D</span><span class="p">,</span> <span class="n">cmap</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">cm</span><span class="o">.</span><span class="n">plasma</span><span class="p">)</span>
+<span class="c1"># Uncomment the following if you want to see images of the rho_m duplicated.</span>
+<span class="c1"># ax.plot_surface(xgrid - L, ygrid, rho_m[0].T, cmap = plt.cm.plasma)</span>
+<span class="c1"># ax.plot_surface(xgrid - L, ygrid - L, rho_m[0].T, cmap = plt.cm.plasma)</span>
+<span class="c1"># ax.plot_surface(xgrid , ygrid - L, rho_m[0].T, cmap = plt.cm.plasma)</span>
+<span class="c1"># ax.plot_surface(xgrid , ygrid + L, rho_m[0].T, cmap = plt.cm.plasma)</span>
+<span class="c1"># ax.plot_surface(xgrid + L , ygrid + L, rho_m[0].T, cmap = plt.cm.plasma)</span>
+<span class="c1"># ax.plot_surface(xgrid + L , ygrid, rho_m[0].T, cmap = plt.cm.plasma)</span>
+<span class="c1"># ax.plot_surface(xgrid + L , ygrid - L, rho_m[0].T, cmap = plt.cm.plasma)</span>
+<span class="c1"># ax.plot_surface(xgrid - L , ygrid + L, rho_m[0].T, cmap = plt.cm.plasma)</span>
+<span class="n">_</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span> <span class="n">xlabel</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$x$&quot;</span><span class="p">,</span> <span class="n">ylabel</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$y$&quot;</span><span class="p">,</span> <span class="n">zlabel</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$\rho_M(x,y)$&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="../_images/fb73822e55816619e4e631e1f64b98148f75530d572abfac4f6942361991b69f.png" src="../_images/fb73822e55816619e4e631e1f64b98148f75530d572abfac4f6942361991b69f.png" />
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Number of particles</span>
+<span class="n">N</span> <span class="o">=</span> <span class="mi">15</span>
+<span class="c1"># Box length</span>
+<span class="n">L</span> <span class="o">=</span> <span class="p">(</span><span class="mi">4</span><span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">N</span><span class="o">/</span><span class="mi">3</span><span class="p">)</span><span class="o">**</span><span class="p">(</span><span class="mf">1.</span><span class="o">/</span><span class="mf">3.</span><span class="p">)</span>
+<span class="n">box_lengths</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span> <span class="o">*</span> <span class="n">L</span>
+<span class="n">box_lengths</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+<span class="c1"># Charge assignment order</span>
+<span class="n">cao</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="c1"># Array of mesh points. Note in the case of 2D you still need to pass 1 for the z-mesh</span>
+<span class="n">M</span> <span class="o">=</span> <span class="mi">32</span>
+<span class="n">mesh_sz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">M</span><span class="p">,</span> <span class="n">M</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="n">xgrid</span><span class="p">,</span> <span class="n">ygrid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mgrid</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">L</span><span class="p">:</span><span class="mi">32</span><span class="n">j</span><span class="p">,</span> <span class="mi">0</span><span class="p">:</span><span class="n">L</span><span class="p">:</span><span class="mi">32</span><span class="n">j</span><span class="p">]</span>
+
+<span class="c1"># Spacings</span>
+<span class="n">h_array</span> <span class="o">=</span> <span class="n">box_lengths</span><span class="o">/</span><span class="n">mesh_sz</span>
+<span class="n">h_array</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+<span class="c1"># print(h_array)</span>
+
+<span class="c1"># Particles positions</span>
+<span class="n">pos</span> <span class="o">=</span> <span class="n">L</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">random</span><span class="p">(</span> <span class="n">size</span> <span class="o">=</span> <span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+<span class="n">pos</span><span class="p">[:,</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span> <span class="c1"># set the z-coord to 0</span>
+
+<span class="n">charges</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span> <span class="n">N</span><span class="p">,</span> <span class="n">dtype</span> <span class="o">=</span> <span class="nb">float</span><span class="p">)</span>
+<span class="c1"># Calculate the charge density</span>
+<span class="n">mid</span><span class="p">,</span> <span class="n">pshift</span> <span class="o">=</span> <span class="n">mesh_point_shift</span><span class="p">(</span><span class="n">cao</span><span class="p">)</span>
+<span class="n">mesh_pos</span><span class="p">,</span> <span class="n">mesh_points</span> <span class="o">=</span> <span class="n">calc_mesh_coord</span><span class="p">(</span><span class="n">pos</span><span class="p">,</span> <span class="n">h_array</span><span class="p">,</span> <span class="n">mesh_sz</span><span class="p">,</span> <span class="n">cao</span><span class="p">)</span>
+<span class="n">rho_m</span> <span class="o">=</span> <span class="n">calc_charge_dens</span><span class="p">(</span><span class="n">mesh_pos</span><span class="p">,</span> <span class="n">mesh_points</span><span class="p">,</span> <span class="n">charges</span><span class="p">,</span> <span class="n">cao</span><span class="p">,</span> <span class="n">mesh_sz</span><span class="p">,</span> <span class="n">mid</span><span class="p">,</span> <span class="n">pshift</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">pshift</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output traceback highlight-ipythontb notranslate"><div class="highlight"><pre><span></span><span class="gt">---------------------------------------------------------------------------</span>
+<span class="ne">TypeError</span><span class="g g-Whitespace">                                 </span>Traceback (most recent call last)
+<span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">ipykernel_12128</span><span class="o">/</span><span class="mf">3005270323.</span><span class="n">py</span> <span class="ow">in</span> <span class="o">&lt;</span><span class="n">module</span><span class="o">&gt;</span>
+<span class="g g-Whitespace">     </span><span class="mi">25</span> <span class="c1"># Calculate the charge density</span>
+<span class="g g-Whitespace">     </span><span class="mi">26</span> <span class="n">mid</span><span class="p">,</span> <span class="n">pshift</span> <span class="o">=</span> <span class="n">mesh_point_shift</span><span class="p">(</span><span class="n">cao</span><span class="p">)</span>
+<span class="ne">---&gt; </span><span class="mi">27</span> <span class="n">mesh_pos</span><span class="p">,</span> <span class="n">mesh_points</span> <span class="o">=</span> <span class="n">calc_mesh_coord</span><span class="p">(</span><span class="n">pos</span><span class="p">,</span> <span class="n">h_array</span><span class="p">,</span> <span class="n">mesh_sz</span><span class="p">,</span> <span class="n">cao</span><span class="p">)</span>
+<span class="g g-Whitespace">     </span><span class="mi">28</span> <span class="n">rho_m</span> <span class="o">=</span> <span class="n">calc_charge_dens</span><span class="p">(</span><span class="n">mesh_pos</span><span class="p">,</span> <span class="n">mesh_points</span><span class="p">,</span> <span class="n">charges</span><span class="p">,</span> <span class="n">cao</span><span class="p">,</span> <span class="n">mesh_sz</span><span class="p">,</span> <span class="n">mid</span><span class="p">,</span> <span class="n">pshift</span><span class="p">)</span>
+<span class="g g-Whitespace">     </span><span class="mi">29</span> <span class="nb">print</span><span class="p">(</span><span class="n">pshift</span><span class="p">)</span>
+
+<span class="ne">TypeError</span>: too many arguments: expected 3, got 4
+</pre></div>
+</div>
+</div>
+</div>
+<p>The first thing to note is the shape of the charge density; it is ( z_mesh, y_mesh, x_mesh). This is a legacy feature that has not been removed.</p>
+<p>Let’s plot the charge density</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># I am getting a deprecation warning from matplotlib about the grid in pcolor.</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+<span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span><span class="s2">&quot;ignore&quot;</span><span class="p">,</span><span class="n">category</span><span class="o">=</span><span class="n">matplotlib</span><span class="o">.</span><span class="n">cbook</span><span class="o">.</span><span class="n">mplDeprecation</span><span class="p">)</span>
+
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">p1</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">pcolormesh</span><span class="p">(</span><span class="n">xgrid</span><span class="p">,</span> <span class="n">ygrid</span><span class="p">,</span> <span class="n">rho_m</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">cmap</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">cm</span><span class="o">.</span><span class="n">plasma</span><span class="p">,</span> <span class="n">alpha</span> <span class="o">=</span> <span class="mf">0.75</span><span class="p">)</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">p1</span><span class="p">,</span> <span class="n">label</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$\rho_M(x,y)$&quot;</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">pos</span><span class="p">[:,</span><span class="mi">0</span><span class="p">],</span> <span class="n">pos</span><span class="p">[:,</span><span class="mi">1</span><span class="p">],</span> <span class="n">s</span> <span class="o">=</span> <span class="mi">200</span><span class="p">,</span> <span class="n">marker</span> <span class="o">=</span> <span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="s1">&#39;k&#39;</span><span class="p">,</span> <span class="n">label</span> <span class="o">=</span> <span class="s2">&quot;Particles&quot;</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">mesh_sz</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">axhline</span><span class="p">(</span><span class="n">i</span><span class="o">*</span> <span class="n">h_array</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+<span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">mesh_sz</span><span class="p">[</span><span class="mi">1</span><span class="p">]):</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">axvline</span><span class="p">(</span><span class="n">j</span><span class="o">*</span> <span class="n">h_array</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+
+    
+<span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">_</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span> <span class="n">xlabel</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$x$&quot;</span><span class="p">,</span> <span class="n">ylabel</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$y$&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">plt</span><span class="o">.</span><span class="n">rcParams</span><span class="p">[</span><span class="s2">&quot;axes.facecolor&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="mi">12</span><span class="p">),</span><span class="n">subplot_kw</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;projection&quot;</span><span class="p">:</span> <span class="s2">&quot;3d&quot;</span><span class="p">})</span>
+
+<span class="n">ax</span><span class="o">.</span><span class="n">plot_surface</span><span class="p">(</span><span class="n">xgrid</span><span class="p">,</span> <span class="n">ygrid</span><span class="p">,</span> <span class="n">rho_m</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">cmap</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">cm</span><span class="o">.</span><span class="n">plasma</span><span class="p">)</span>
+<span class="c1"># Uncomment the following if you want to see images of the rho_m duplicated.</span>
+<span class="c1"># ax.plot_surface(xgrid - L, ygrid, rho_m[0].T, cmap = plt.cm.plasma)</span>
+<span class="c1"># ax.plot_surface(xgrid - L, ygrid - L, rho_m[0].T, cmap = plt.cm.plasma)</span>
+<span class="c1"># ax.plot_surface(xgrid , ygrid - L, rho_m[0].T, cmap = plt.cm.plasma)</span>
+<span class="c1"># ax.plot_surface(xgrid , ygrid + L, rho_m[0].T, cmap = plt.cm.plasma)</span>
+<span class="c1"># ax.plot_surface(xgrid + L , ygrid + L, rho_m[0].T, cmap = plt.cm.plasma)</span>
+<span class="c1"># ax.plot_surface(xgrid + L , ygrid, rho_m[0].T, cmap = plt.cm.plasma)</span>
+<span class="c1"># ax.plot_surface(xgrid + L , ygrid - L, rho_m[0].T, cmap = plt.cm.plasma)</span>
+<span class="c1"># ax.plot_surface(xgrid - L , ygrid + L, rho_m[0].T, cmap = plt.cm.plasma)</span>
+<span class="n">_</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span> <span class="n">xlabel</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$x$&quot;</span><span class="p">,</span> <span class="n">ylabel</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$y$&quot;</span><span class="p">,</span> <span class="n">zlabel</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$\rho_M(x,y)$&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
 </section>
 </section>
 
 
+                </article>
+              
+
+              
+              
+                <footer class="bd-footer-article">
+                  
+<div class="footer-article-items footer-article__inner">
+  
+    <div class="footer-article-item"><!-- Previous / next buttons -->
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="theory.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Theoretical Background</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="force_error.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Force Error</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div></div>
+  
+</div>
+
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+  <div class="sidebar-secondary-item">
+  <div class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> Content
+  </div>
+  <nav class="bd-toc-nav page-toc">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ewald-sum">Ewald Sum</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#total-charge-density">Total charge density</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#short-range-term">Short-range term</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#long-range-term">Long-range term</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#assigning-charges-onto-the-mesh">Assigning charges onto the mesh</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By MurilloGroup
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  <p class="copyright">
+    
+      © Copyright 2019-2022, MurilloGroup.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    <p class="last-updated">
+  Last updated on Aug 13, 2023.
+  <br/>
+</p>
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
     </div>
-      
   </div>
-</div> 
-<footer class="footer">
-  <div class="container">
-    <p class="pull-right">
-      <a href="#">Back to top</a>
-      
-    </p>
-    <p>
-        &copy; Copyright 2019-2021, MurilloGroup.<br/>
-      Last updated on Jan 12, 2022.<br/>
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.3.2.<br/>
-    </p>
-  </div>
-</footer>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=e353d410970836974a52"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=e353d410970836974a52"></script>
+ 
+  <footer class="bd-footer">
+  </footer>
 
   <script type="text/javascript">
     jQuery(function () {
         SphinxRtdTheme.Navigation.enable(true);
       })
   </script>
-  
+
   <style>
     /* Sidebar header (and topbar for mobile) */
     /* .wy-side-nav-search,  */
@@ -454,17 +1308,16 @@ this is not a problem. Finally the long-range potential energy is</p>
     }
     .wy-menu-vertical p.caption {
 	  color: #fff;
-	}
-	.wy-menu-vertical a {
-	  color: #eee;
-	}
-	.wy-menu-vertical a:hover {
-    background-color: #18453b;
-  }
- /* .wy-nav-content {
-    max-width: 900px !important;
-  } */
-}
+    }
+    .wy-menu-vertical a {
+      color: #eee;
+    }
+    .wy-menu-vertical a:hover {
+      background-color: #18453b;
+    }
+    /* .wy-nav-content {
+      max-width: 900px !important;
+    } */
   </style>
 
   </body>
