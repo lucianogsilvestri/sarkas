@@ -19,17 +19,22 @@ sarkas.tools.observables.StaticStructureFactor
       StaticStructureFactor.calc_nkt_slices_data
       StaticStructureFactor.calc_slices_data
       StaticStructureFactor.calc_vkt_slices_data
+      StaticStructureFactor.calculate_corr_times
       StaticStructureFactor.compute
       StaticStructureFactor.compute_kt_data
+      StaticStructureFactor.copy_params
       StaticStructureFactor.create_dirs_filenames
       StaticStructureFactor.from_dict
+      StaticStructureFactor.from_pickle
       StaticStructureFactor.grab_sim_data
+      StaticStructureFactor.integrate_normalized_acf_squared
       StaticStructureFactor.parse
+      StaticStructureFactor.parse_acf
       StaticStructureFactor.parse_k_data
       StaticStructureFactor.parse_kt_data
       StaticStructureFactor.plot
       StaticStructureFactor.pretty_print_msg
-      StaticStructureFactor.read_pickle
+      StaticStructureFactor.save_acf_hdf
       StaticStructureFactor.save_hdf
       StaticStructureFactor.save_kt_hdf
       StaticStructureFactor.save_pickle

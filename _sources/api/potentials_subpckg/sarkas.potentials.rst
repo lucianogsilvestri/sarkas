@@ -38,6 +38,7 @@
    sarkas.potentials.lennardjones
    sarkas.potentials.moliere
    sarkas.potentials.qsp
+   sarkas.potentials.tabulated
    sarkas.potentials.tests
    sarkas.potentials.yukawa
 

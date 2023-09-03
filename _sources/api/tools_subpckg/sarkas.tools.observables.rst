@@ -15,21 +15,24 @@ sarkas.tools.observables
       :toctree:
    
       arg_update_doc
-      avg_slice_doc
+      avg_acf_slices_doc
+      avg_slices_doc
       calc_Skw
+      calc_acf_slices_doc
       calc_diff_flux_acf
       calc_moments
       calc_nkt
-      calc_pressure_tensor
-      calc_slice_doc
+      calc_slices_doc
       calc_vacf
       calc_vkt
       calculate_herm_coeff
       col_mapper
+      compute_acf_doc
       compute_doc
       grad_expansion
       kspace_setup
       load_from_restart
+      make_gaussian_plot
       plot_labels
       setup_doc
    
@@ -47,7 +50,7 @@ sarkas.tools.observables
       DiffusionFlux
       DynamicStructureFactor
       ElectricCurrent
-      EnergyCurrent
+      HeatFlux
       Observable
       PressureTensor
       RadialDistributionFunction

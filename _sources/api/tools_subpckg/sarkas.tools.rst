@@ -28,6 +28,7 @@
    :template: custom-module-template.rst
    :recursive:
 
+   sarkas.tools.fit_functions
    sarkas.tools.observables
    sarkas.tools.transport
 

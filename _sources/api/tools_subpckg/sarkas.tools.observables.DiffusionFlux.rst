@@ -19,17 +19,22 @@ sarkas.tools.observables.DiffusionFlux
       DiffusionFlux.calc_nkt_slices_data
       DiffusionFlux.calc_slices_data
       DiffusionFlux.calc_vkt_slices_data
+      DiffusionFlux.calculate_corr_times
       DiffusionFlux.compute
       DiffusionFlux.compute_kt_data
+      DiffusionFlux.copy_params
       DiffusionFlux.create_dirs_filenames
       DiffusionFlux.from_dict
+      DiffusionFlux.from_pickle
       DiffusionFlux.grab_sim_data
+      DiffusionFlux.integrate_normalized_acf_squared
       DiffusionFlux.parse
+      DiffusionFlux.parse_acf
       DiffusionFlux.parse_k_data
       DiffusionFlux.parse_kt_data
       DiffusionFlux.plot
       DiffusionFlux.pretty_print_msg
-      DiffusionFlux.read_pickle
+      DiffusionFlux.save_acf_hdf
       DiffusionFlux.save_hdf
       DiffusionFlux.save_kt_hdf
       DiffusionFlux.save_pickle

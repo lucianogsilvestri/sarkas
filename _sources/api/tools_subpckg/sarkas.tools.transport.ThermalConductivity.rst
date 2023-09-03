@@ -18,16 +18,17 @@ sarkas.tools.transport.ThermalConductivity
       ThermalConductivity.compute
       ThermalConductivity.copy_params
       ThermalConductivity.create_df_filenames
-      ThermalConductivity.create_dir
       ThermalConductivity.diffusion
       ThermalConductivity.electrical_conductivity
       ThermalConductivity.get_observable_data
       ThermalConductivity.initialize_dataframes
       ThermalConductivity.interdiffusion
+      ThermalConductivity.make_directories
       ThermalConductivity.parse
       ThermalConductivity.plot
       ThermalConductivity.plot_tc
       ThermalConductivity.pretty_print
+      ThermalConductivity.pretty_print_msg
       ThermalConductivity.save_hdf
       ThermalConductivity.setup
       ThermalConductivity.time_stamp

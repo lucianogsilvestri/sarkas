@@ -18,16 +18,17 @@ sarkas.tools.transport.Diffusion
       Diffusion.compute
       Diffusion.copy_params
       Diffusion.create_df_filenames
-      Diffusion.create_dir
       Diffusion.diffusion
       Diffusion.electrical_conductivity
       Diffusion.get_observable_data
       Diffusion.initialize_dataframes
       Diffusion.interdiffusion
+      Diffusion.make_directories
       Diffusion.parse
       Diffusion.plot
       Diffusion.plot_tc
       Diffusion.pretty_print
+      Diffusion.pretty_print_msg
       Diffusion.save_hdf
       Diffusion.setup
       Diffusion.time_stamp

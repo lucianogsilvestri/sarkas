@@ -19,17 +19,22 @@ sarkas.tools.observables.ElectricCurrent
       ElectricCurrent.calc_nkt_slices_data
       ElectricCurrent.calc_slices_data
       ElectricCurrent.calc_vkt_slices_data
+      ElectricCurrent.calculate_corr_times
       ElectricCurrent.compute
       ElectricCurrent.compute_kt_data
+      ElectricCurrent.copy_params
       ElectricCurrent.create_dirs_filenames
       ElectricCurrent.from_dict
+      ElectricCurrent.from_pickle
       ElectricCurrent.grab_sim_data
+      ElectricCurrent.integrate_normalized_acf_squared
       ElectricCurrent.parse
+      ElectricCurrent.parse_acf
       ElectricCurrent.parse_k_data
       ElectricCurrent.parse_kt_data
       ElectricCurrent.plot
       ElectricCurrent.pretty_print_msg
-      ElectricCurrent.read_pickle
+      ElectricCurrent.save_acf_hdf
       ElectricCurrent.save_hdf
       ElectricCurrent.save_kt_hdf
       ElectricCurrent.save_pickle

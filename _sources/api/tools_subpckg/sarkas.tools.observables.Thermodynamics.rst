@@ -14,23 +14,34 @@ sarkas.tools.observables.Thermodynamics
 
    
       Thermodynamics.__init__
+      Thermodynamics.average_acf_slices_data
+      Thermodynamics.average_slices_data
+      Thermodynamics.calc_acf_slice_data
       Thermodynamics.calc_k_data
       Thermodynamics.calc_nkt_slices_data
+      Thermodynamics.calc_slices_data
       Thermodynamics.calc_vkt_slices_data
-      Thermodynamics.calculate_beta
-      Thermodynamics.calculate_heat_capacity
+      Thermodynamics.calculate_beta_simulation
+      Thermodynamics.calculate_beta_slices
+      Thermodynamics.calculate_corr_times
+      Thermodynamics.calculate_heat_capacity_simulation
+      Thermodynamics.calculate_heat_capacity_slices
+      Thermodynamics.compute
       Thermodynamics.compute_from_rdf
       Thermodynamics.compute_kt_data
+      Thermodynamics.copy_params
       Thermodynamics.create_dirs_filenames
       Thermodynamics.from_dict
-      Thermodynamics.gamma_plot
+      Thermodynamics.from_pickle
       Thermodynamics.grab_sim_data
+      Thermodynamics.integrate_normalized_acf_squared
       Thermodynamics.parse
+      Thermodynamics.parse_acf
       Thermodynamics.parse_k_data
       Thermodynamics.parse_kt_data
       Thermodynamics.plot
       Thermodynamics.pretty_print_msg
-      Thermodynamics.read_pickle
+      Thermodynamics.save_acf_hdf
       Thermodynamics.save_hdf
       Thermodynamics.save_kt_hdf
       Thermodynamics.save_pickle

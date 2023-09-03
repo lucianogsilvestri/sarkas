@@ -19,6 +19,7 @@ sarkas.core.Parameters
       Parameters.calc_magnetic_parameters
       Parameters.calc_parameters
       Parameters.check_units
+      Parameters.copy_io_attrs
       Parameters.create_species_arrays
       Parameters.create_unit_dict
       Parameters.from_dict

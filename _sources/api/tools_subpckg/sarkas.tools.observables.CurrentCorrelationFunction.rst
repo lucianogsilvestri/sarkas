@@ -20,17 +20,22 @@ sarkas.tools.observables.CurrentCorrelationFunction
       CurrentCorrelationFunction.calc_nkt_slices_data
       CurrentCorrelationFunction.calc_transverse_data
       CurrentCorrelationFunction.calc_vkt_slices_data
+      CurrentCorrelationFunction.calculate_corr_times
       CurrentCorrelationFunction.compute
       CurrentCorrelationFunction.compute_kt_data
+      CurrentCorrelationFunction.copy_params
       CurrentCorrelationFunction.create_dirs_filenames
       CurrentCorrelationFunction.from_dict
+      CurrentCorrelationFunction.from_pickle
       CurrentCorrelationFunction.grab_sim_data
+      CurrentCorrelationFunction.integrate_normalized_acf_squared
       CurrentCorrelationFunction.parse
+      CurrentCorrelationFunction.parse_acf
       CurrentCorrelationFunction.parse_k_data
       CurrentCorrelationFunction.parse_kt_data
       CurrentCorrelationFunction.plot
       CurrentCorrelationFunction.pretty_print_msg
-      CurrentCorrelationFunction.read_pickle
+      CurrentCorrelationFunction.save_acf_hdf
       CurrentCorrelationFunction.save_hdf
       CurrentCorrelationFunction.save_kt_hdf
       CurrentCorrelationFunction.save_pickle
