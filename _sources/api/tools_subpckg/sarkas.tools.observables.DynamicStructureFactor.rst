@@ -27,6 +27,7 @@ sarkas.tools.observables.DynamicStructureFactor
       DynamicStructureFactor.from_dict
       DynamicStructureFactor.from_pickle
       DynamicStructureFactor.grab_sim_data
+      DynamicStructureFactor.initialize_hdf
       DynamicStructureFactor.integrate_normalized_acf_squared
       DynamicStructureFactor.parse
       DynamicStructureFactor.parse_acf

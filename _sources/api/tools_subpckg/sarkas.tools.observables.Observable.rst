@@ -24,6 +24,7 @@ sarkas.tools.observables.Observable
       Observable.from_dict
       Observable.from_pickle
       Observable.grab_sim_data
+      Observable.initialize_hdf
       Observable.integrate_normalized_acf_squared
       Observable.parse
       Observable.parse_acf

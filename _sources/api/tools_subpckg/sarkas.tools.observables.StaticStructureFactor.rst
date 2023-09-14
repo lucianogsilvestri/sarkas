@@ -27,6 +27,7 @@ sarkas.tools.observables.StaticStructureFactor
       StaticStructureFactor.from_dict
       StaticStructureFactor.from_pickle
       StaticStructureFactor.grab_sim_data
+      StaticStructureFactor.initialize_hdf
       StaticStructureFactor.integrate_normalized_acf_squared
       StaticStructureFactor.parse
       StaticStructureFactor.parse_acf

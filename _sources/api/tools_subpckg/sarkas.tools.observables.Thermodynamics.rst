@@ -34,6 +34,7 @@ sarkas.tools.observables.Thermodynamics
       Thermodynamics.from_dict
       Thermodynamics.from_pickle
       Thermodynamics.grab_sim_data
+      Thermodynamics.initialize_hdf
       Thermodynamics.integrate_normalized_acf_squared
       Thermodynamics.parse
       Thermodynamics.parse_acf

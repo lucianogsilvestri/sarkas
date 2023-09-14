@@ -30,6 +30,7 @@ sarkas.tools.observables.HeatFlux
       HeatFlux.from_dict
       HeatFlux.from_pickle
       HeatFlux.grab_sim_data
+      HeatFlux.initialize_hdf
       HeatFlux.integrate_normalized_acf_squared
       HeatFlux.parse
       HeatFlux.parse_acf

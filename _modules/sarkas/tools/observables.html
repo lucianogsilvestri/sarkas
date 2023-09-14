@@ -349,7 +349,6 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.calc_moments.html">sarkas.tools.observables.calc_moments</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.calc_nkt.html">sarkas.tools.observables.calc_nkt</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.calc_slices_doc.html">sarkas.tools.observables.calc_slices_doc</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.calc_vacf.html">sarkas.tools.observables.calc_vacf</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.calc_vkt.html">sarkas.tools.observables.calc_vkt</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.calculate_herm_coeff.html">sarkas.tools.observables.calculate_herm_coeff</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../api/tools_subpckg/sarkas.tools.observables.col_mapper.html">sarkas.tools.observables.col_mapper</a></li>
@@ -599,6 +598,7 @@ document.write(`
     <span class="n">log</span><span class="p">,</span>
     <span class="n">ndarray</span><span class="p">,</span>
     <span class="n">ones</span><span class="p">,</span>
+    <span class="n">ones_like</span><span class="p">,</span>
     <span class="n">pi</span><span class="p">,</span>
     <span class="n">real</span><span class="p">,</span>
     <span class="n">repeat</span><span class="p">,</span>
@@ -612,6 +612,7 @@ document.write(`
     <span class="n">zeros</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span> <span class="nn">numpy.polynomial</span> <span class="kn">import</span> <span class="n">hermite_e</span>
+<span class="kn">from</span> <span class="nn">numpy.random</span> <span class="kn">import</span> <span class="n">default_rng</span>
 <span class="kn">from</span> <span class="nn">os</span> <span class="kn">import</span> <span class="n">listdir</span><span class="p">,</span> <span class="n">mkdir</span>
 <span class="kn">from</span> <span class="nn">os</span> <span class="kn">import</span> <span class="n">remove</span> <span class="k">as</span> <span class="n">os_remove</span>
 <span class="kn">from</span> <span class="nn">os.path</span> <span class="kn">import</span> <span class="n">exists</span> <span class="k">as</span> <span class="n">os_path_exists</span>
@@ -2083,9 +2084,7 @@ document.write(`
 
         <span class="bp">self</span><span class="o">.</span><span class="n">save_pickle</span><span class="p">()</span>
 
-        <span class="c1"># This re-initialization of the dataframe is needed to avoid len mismatch conflicts when re-calculating</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">dataframe</span> <span class="o">=</span> <span class="n">DataFrame</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_slices</span> <span class="o">=</span> <span class="n">DataFrame</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialize_hdf</span><span class="p">()</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;ccf&quot;</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_longitudinal</span> <span class="o">=</span> <span class="n">DataFrame</span><span class="p">()</span>
@@ -2099,13 +2098,19 @@ document.write(`
                 <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">no_dumps</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">no_slices</span>
                 <span class="k">else</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">no_dumps</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">no_slices</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
             <span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf</span> <span class="o">=</span> <span class="n">DataFrame</span><span class="p">()</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf_slices</span> <span class="o">=</span> <span class="n">DataFrame</span><span class="p">()</span>
 
         <span class="c1"># Write log file</span>
         <span class="n">datetime_stamp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_file</span><span class="p">)</span>
         <span class="n">msg</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pretty_print_msg</span><span class="p">()</span>
-        <span class="n">print_to_logger</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">)</span></div></div>
+        <span class="n">print_to_logger</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Observable.initialize_hdf"><a class="viewcode-back" href="../../../api/tools_subpckg/Observable_mthds/sarkas.tools.observables.Observable.initialize_hdf.html#sarkas.tools.observables.Observable.initialize_hdf">[docs]</a>    <span class="k">def</span> <span class="nf">initialize_hdf</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">dataframe</span> <span class="o">=</span> <span class="n">DataFrame</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_slices</span> <span class="o">=</span> <span class="n">DataFrame</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_observable</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf</span> <span class="o">=</span> <span class="n">DataFrame</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf_slices</span> <span class="o">=</span> <span class="n">DataFrame</span><span class="p">()</span></div></div>
 
 
 <div class="viewcode-block" id="CurrentCorrelationFunction"><a class="viewcode-back" href="../../../api/tools_subpckg/sarkas.tools.observables.CurrentCorrelationFunction.html#sarkas.tools.observables.CurrentCorrelationFunction">[docs]</a><span class="k">class</span> <span class="nc">CurrentCorrelationFunction</span><span class="p">(</span><span class="n">Observable</span><span class="p">):</span>
@@ -2971,10 +2976,10 @@ document.write(`
             <span class="bp">self</span><span class="o">.</span><span class="n">compute_acf</span><span class="p">()</span></div>
 
 <div class="viewcode-block" id="HeatFlux.compute_acf"><a class="viewcode-back" href="../../../api/tools_subpckg/HeatFlux_mthds/sarkas.tools.observables.HeatFlux.compute_acf.html#sarkas.tools.observables.HeatFlux.compute_acf">[docs]</a>    <span class="nd">@compute_acf_doc</span>
-    <span class="k">def</span> <span class="nf">compute_acf</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">compute_acf</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">equal_number_time_samples</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
 
         <span class="n">t0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">timer</span><span class="o">.</span><span class="n">current</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">calc_acf_slices_data</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">calc_acf_slices_data</span><span class="p">(</span><span class="n">equal_number_time_samples</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">average_acf_slices_data</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">save_acf_hdf</span><span class="p">()</span>
         <span class="n">tend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">timer</span><span class="o">.</span><span class="n">current</span><span class="p">()</span>
@@ -3026,7 +3031,7 @@ document.write(`
             <span class="c1"># end of slice loop</span>
 
 <div class="viewcode-block" id="HeatFlux.calc_acf_slices_data"><a class="viewcode-back" href="../../../api/tools_subpckg/HeatFlux_mthds/sarkas.tools.observables.HeatFlux.calc_acf_slices_data.html#sarkas.tools.observables.HeatFlux.calc_acf_slices_data">[docs]</a>    <span class="nd">@calc_acf_slices_doc</span>
-    <span class="k">def</span> <span class="nf">calc_acf_slices_data</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">calc_acf_slices_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">equal_number_time_samples</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
 
         <span class="c1"># In order to have the same number of timesteps products for each time lag of the ACF do the following.</span>
         <span class="c1"># Take two slice data</span>
@@ -3064,18 +3069,25 @@ document.write(`
                         <span class="n">k</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">num_species</span> <span class="o">*</span> <span class="n">isp</span> <span class="o">-</span> <span class="p">(</span><span class="n">isp</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">isp</span> <span class="o">/</span> <span class="mi">2</span> <span class="o">+</span> <span class="p">(</span><span class="n">isp2</span> <span class="o">-</span> <span class="n">isp</span><span class="p">))</span>
 
                         <span class="c1"># Auto-correlation function with the same number of time steps for each lag.</span>
-                        <span class="k">for</span> <span class="n">it</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span>
-                            <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">),</span>
-                            <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">sp1</span><span class="si">}</span><span class="s2">-</span><span class="si">{</span><span class="n">sp2</span><span class="si">}</span><span class="s2"> ACF </span><span class="si">{</span><span class="n">ax</span><span class="si">}</span><span class="s2"> time lag&quot;</span><span class="p">,</span>
-                            <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">,</span>
-                            <span class="n">position</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
-                            <span class="n">leave</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-                        <span class="p">):</span>
-                            <span class="n">ec_sp1</span> <span class="o">=</span> <span class="n">heat_flux_species_tensor</span><span class="p">[</span><span class="n">iax</span><span class="p">,</span> <span class="n">isp</span><span class="p">,</span> <span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span> <span class="o">+</span> <span class="n">it</span><span class="p">]</span>
-                            <span class="n">ec_sp2</span> <span class="o">=</span> <span class="n">heat_flux_species_tensor</span><span class="p">[</span><span class="n">iax</span><span class="p">,</span> <span class="n">isp2</span><span class="p">,</span> <span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span> <span class="o">+</span> <span class="n">it</span><span class="p">]</span>
+                        <span class="k">if</span> <span class="n">equal_number_time_samples</span><span class="p">:</span>
+                            <span class="k">for</span> <span class="n">it</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span>
+                                <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">),</span>
+                                <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">sp1</span><span class="si">}</span><span class="s2">-</span><span class="si">{</span><span class="n">sp2</span><span class="si">}</span><span class="s2"> ACF </span><span class="si">{</span><span class="n">ax</span><span class="si">}</span><span class="s2"> time lag&quot;</span><span class="p">,</span>
+                                <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">,</span>
+                                <span class="n">position</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                                <span class="n">leave</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                            <span class="p">):</span>
+                                <span class="n">ec_sp1</span> <span class="o">=</span> <span class="n">heat_flux_species_tensor</span><span class="p">[</span><span class="n">iax</span><span class="p">,</span> <span class="n">isp</span><span class="p">,</span> <span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span> <span class="o">+</span> <span class="n">it</span><span class="p">]</span>
+                                <span class="n">ec_sp2</span> <span class="o">=</span> <span class="n">heat_flux_species_tensor</span><span class="p">[</span><span class="n">iax</span><span class="p">,</span> <span class="n">isp2</span><span class="p">,</span> <span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span> <span class="o">+</span> <span class="n">it</span><span class="p">]</span>
+                                <span class="n">delta_ec_sp1</span> <span class="o">=</span> <span class="n">ec_sp1</span> <span class="o">-</span> <span class="n">ec_sp1</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+                                <span class="n">delta_ec_sp2</span> <span class="o">=</span> <span class="n">ec_sp2</span> <span class="o">-</span> <span class="n">ec_sp2</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+                                <span class="n">ec_ACF</span><span class="p">[</span><span class="n">it</span><span class="p">]</span> <span class="o">=</span> <span class="n">correlationfunction</span><span class="p">(</span><span class="n">delta_ec_sp1</span><span class="p">,</span> <span class="n">delta_ec_sp2</span><span class="p">)[</span><span class="n">it</span><span class="p">]</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="n">ec_sp1</span> <span class="o">=</span> <span class="n">heat_flux_species_tensor</span><span class="p">[</span><span class="n">iax</span><span class="p">,</span> <span class="n">isp</span><span class="p">,</span> <span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">]</span>
+                            <span class="n">ec_sp2</span> <span class="o">=</span> <span class="n">heat_flux_species_tensor</span><span class="p">[</span><span class="n">iax</span><span class="p">,</span> <span class="n">isp2</span><span class="p">,</span> <span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">]</span>
                             <span class="n">delta_ec_sp1</span> <span class="o">=</span> <span class="n">ec_sp1</span> <span class="o">-</span> <span class="n">ec_sp1</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
                             <span class="n">delta_ec_sp2</span> <span class="o">=</span> <span class="n">ec_sp2</span> <span class="o">-</span> <span class="n">ec_sp2</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
-                            <span class="n">ec_ACF</span><span class="p">[</span><span class="n">it</span><span class="p">]</span> <span class="o">=</span> <span class="n">correlationfunction</span><span class="p">(</span><span class="n">delta_ec_sp1</span><span class="p">,</span> <span class="n">delta_ec_sp2</span><span class="p">)[</span><span class="n">it</span><span class="p">]</span>
+                            <span class="n">ec_ACF</span> <span class="o">=</span> <span class="n">correlationfunction</span><span class="p">(</span><span class="n">delta_ec_sp1</span><span class="p">,</span> <span class="n">delta_ec_sp2</span><span class="p">)</span>
                         <span class="c1"># Store in the dataframe</span>
                         <span class="n">col_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">__long_name__</span><span class="si">}</span><span class="s2"> ACF_</span><span class="si">{</span><span class="n">sp1</span><span class="si">}</span><span class="s2">-</span><span class="si">{</span><span class="n">sp2</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">ax</span><span class="si">}</span><span class="s2">_slice </span><span class="si">{</span><span class="n">isl</span><span class="si">}</span><span class="s2">&quot;</span>
                         <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf_slices</span> <span class="o">=</span> <span class="n">add_col_to_df</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf_slices</span><span class="p">,</span> <span class="n">ec_ACF</span><span class="p">,</span> <span class="n">col_name</span><span class="p">)</span>
@@ -4776,6 +4788,8 @@ document.write(`
         <span class="nb">super</span><span class="p">(</span><span class="n">VelocityAutoCorrelationFunction</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="vm">__name__</span> <span class="o">=</span> <span class="s2">&quot;vacf&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">__long_name__</span> <span class="o">=</span> <span class="s2">&quot;Velocity AutoCorrelation Function&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">no_ptcls_per_species</span> <span class="o">=</span> <span class="p">[</span><span class="mi">10</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">particles_id</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">acf_observable</span> <span class="o">=</span> <span class="kc">True</span></div>
 
 <div class="viewcode-block" id="VelocityAutoCorrelationFunction.setup"><a class="viewcode-back" href="../../../api/tools_subpckg/VelocityAutoCorrelationFunction_mthds/sarkas.tools.observables.VelocityAutoCorrelationFunction.setup.html#sarkas.tools.observables.VelocityAutoCorrelationFunction.setup">[docs]</a>    <span class="nd">@setup_doc</span>
@@ -4788,25 +4802,39 @@ document.write(`
     <span class="k">def</span> <span class="nf">update_args</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
         <span class="c1"># Update the attribute with the passed arguments</span>
         <span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">kwargs</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">update_finish</span><span class="p">()</span></div>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update_finish</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="s2">&quot;no_ptcls_per_species&quot;</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">select_random_indices</span><span class="p">(</span><span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;no_ptcls_per_species&quot;</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">select_random_indices</span><span class="p">()</span></div>
 
 <div class="viewcode-block" id="VelocityAutoCorrelationFunction.compute"><a class="viewcode-back" href="../../../api/tools_subpckg/VelocityAutoCorrelationFunction_mthds/sarkas.tools.observables.VelocityAutoCorrelationFunction.compute.html#sarkas.tools.observables.VelocityAutoCorrelationFunction.compute">[docs]</a>    <span class="nd">@compute_doc</span>
-    <span class="k">def</span> <span class="nf">compute</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">compute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">calculate_acf_data</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">no_ptcls_per_species</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+        <span class="k">raise</span> <span class="ne">DeprecationWarning</span><span class="p">(</span><span class="s2">&quot;VACF does not have a `compute` method anymore. Use `compute_acf()`.&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="VelocityAutoCorrelationFunction.compute_acf"><a class="viewcode-back" href="../../../api/tools_subpckg/VelocityAutoCorrelationFunction_mthds/sarkas.tools.observables.VelocityAutoCorrelationFunction.compute_acf.html#sarkas.tools.observables.VelocityAutoCorrelationFunction.compute_acf">[docs]</a>    <span class="nd">@compute_acf_doc</span>
+    <span class="k">def</span> <span class="nf">compute_acf</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">no_ptcls_per_species</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+        <span class="k">if</span> <span class="n">no_ptcls_per_species</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">select_random_indices</span><span class="p">(</span><span class="n">no_ptcls_per_species</span><span class="p">)</span>
 
         <span class="n">t0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">timer</span><span class="o">.</span><span class="n">current</span><span class="p">()</span>
-        <span class="c1"># for run_idx, run_id in enumerate(self.runs):</span>
-        <span class="c1">#     self.dump_dir = self.dump_dirs_list[run_idx]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">calc_slices_data</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">average_slices_data</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">save_hdf</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">calc_acf_slices_data</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">average_acf_slices_data</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_acf_hdf</span><span class="p">()</span>
         <span class="n">tend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">timer</span><span class="o">.</span><span class="n">current</span><span class="p">()</span>
-        <span class="n">time_stamp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_file</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">__long_name__</span> <span class="o">+</span> <span class="s2">&quot; Calculation&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">timer</span><span class="o">.</span><span class="n">time_division</span><span class="p">(</span><span class="n">tend</span> <span class="o">-</span> <span class="n">t0</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">)</span></div>
+        <span class="n">time_stamp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_file</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">__long_name__</span><span class="si">}</span><span class="s2"> Calculation&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">timer</span><span class="o">.</span><span class="n">time_division</span><span class="p">(</span><span class="n">tend</span> <span class="o">-</span> <span class="n">t0</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="VelocityAutoCorrelationFunction.calc_slices_data"><a class="viewcode-back" href="../../../api/tools_subpckg/VelocityAutoCorrelationFunction_mthds/sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_slices_data.html#sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_slices_data">[docs]</a>    <span class="nd">@calc_slices_doc</span>
-    <span class="k">def</span> <span class="nf">calc_slices_data</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="VelocityAutoCorrelationFunction.calc_acf_slices_data"><a class="viewcode-back" href="../../../api/tools_subpckg/VelocityAutoCorrelationFunction_mthds/sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_acf_slices_data.html#sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_acf_slices_data">[docs]</a>    <span class="nd">@calc_acf_slices_doc</span>
+    <span class="k">def</span> <span class="nf">calc_acf_slices_data</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
         <span class="n">start_slice</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="n">end_slice</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">slice_steps</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">dump_step</span>
-        <span class="n">time</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">slice_steps</span><span class="p">)</span>
+        <span class="n">end_slice</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">dump_step</span><span class="p">)</span>
+
+        <span class="n">time</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">slice_steps</span><span class="p">)</span>
+        <span class="n">vel</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span><span class="p">,</span> <span class="nb">sum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">no_ptcls_per_species</span><span class="p">),</span> <span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">))</span>
 
         <span class="k">for</span> <span class="n">isl</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span>
             <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">no_slices</span><span class="p">),</span>
@@ -4814,54 +4842,140 @@ document.write(`
             <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">,</span>
             <span class="n">position</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
         <span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">grab_sim_data</span><span class="p">(</span><span class="n">start_slice</span><span class="p">,</span> <span class="n">end_slice</span><span class="p">,</span> <span class="n">vel</span><span class="p">,</span> <span class="n">time</span><span class="p">)</span>
 
-            <span class="c1"># Parse the particles from the dump files</span>
-            <span class="n">vel</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_num_ptcls</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">slice_steps</span><span class="p">))</span>
-            <span class="c1">#</span>
-            <span class="k">for</span> <span class="n">it</span><span class="p">,</span> <span class="n">dump</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span>
-                <span class="n">tqdm</span><span class="p">(</span>
-                    <span class="nb">range</span><span class="p">(</span><span class="n">start_slice</span><span class="p">,</span> <span class="n">end_slice</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dump_step</span><span class="p">),</span>
-                    <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;Reading data&quot;</span><span class="p">,</span>
-                    <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">,</span>
-                    <span class="n">position</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
-                    <span class="n">leave</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-                <span class="p">)</span>
-            <span class="p">):</span>
-                <span class="n">datap</span> <span class="o">=</span> <span class="n">load_from_restart</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dump_dir</span><span class="p">,</span> <span class="n">dump</span><span class="p">)</span>
-                <span class="n">time</span><span class="p">[</span><span class="n">it</span><span class="p">]</span> <span class="o">=</span> <span class="n">datap</span><span class="p">[</span><span class="s2">&quot;time&quot;</span><span class="p">]</span>
-                <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span><span class="p">):</span>
-                    <span class="n">vel</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="p">:,</span> <span class="n">it</span><span class="p">]</span> <span class="o">=</span> <span class="n">datap</span><span class="p">[</span><span class="s2">&quot;vel&quot;</span><span class="p">][:,</span> <span class="n">d</span><span class="p">]</span>
-            <span class="c1">#</span>
             <span class="k">if</span> <span class="n">isl</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">dataframe</span><span class="p">[</span><span class="s2">&quot;Time&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_slices</span><span class="p">[</span><span class="s2">&quot;Time&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf</span><span class="p">[</span><span class="s2">&quot;Time&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf_slices</span><span class="p">[</span><span class="s2">&quot;Time&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf</span><span class="p">[</span><span class="s2">&quot;Time&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf_slices</span><span class="p">[</span><span class="s2">&quot;Time&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">]</span>
 
-            <span class="c1"># Return an array of shape( num_species, dim + 1, slice_steps)</span>
-            <span class="n">vacf</span> <span class="o">=</span> <span class="n">calc_vacf</span><span class="p">(</span><span class="n">vel</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_num</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">)</span>
+            <span class="c1"># Return an array of shape = ( num_species, dim + 1, slice_steps)</span>
+            <span class="n">vacf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calculate_vacf</span><span class="p">(</span><span class="n">vel</span><span class="p">)</span>
 
-            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">sp1</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">species_names</span><span class="p">):</span>
-                <span class="n">sp_vacf_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">sp1</span><span class="si">}</span><span class="s2"> &quot;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__name__</span><span class="o">.</span><span class="n">swapcase</span><span class="p">()</span>
-                <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span><span class="p">):</span>
-                    <span class="n">col_name</span> <span class="o">=</span> <span class="n">sp_vacf_str</span> <span class="o">+</span> <span class="sa">f</span><span class="s2">&quot;_</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">dim_labels</span><span class="p">[</span><span class="n">d</span><span class="p">]</span><span class="si">}</span><span class="s2">_slice </span><span class="si">{</span><span class="n">isl</span><span class="si">}</span><span class="s2">&quot;</span>
-                    <span class="n">col_data</span> <span class="o">=</span> <span class="n">vacf</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="p">:]</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf_slices</span> <span class="o">=</span> <span class="n">add_col_to_df</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf_slices</span><span class="p">,</span> <span class="n">col_data</span><span class="p">,</span> <span class="n">col_name</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">save_acf_slices_data_to_hdf</span><span class="p">(</span><span class="n">vacf</span><span class="p">,</span> <span class="n">isl</span><span class="p">)</span>
 
-                <span class="n">col_name</span> <span class="o">=</span> <span class="n">sp_vacf_str</span> <span class="o">+</span> <span class="sa">f</span><span class="s2">&quot;_Total_slice </span><span class="si">{</span><span class="n">isl</span><span class="si">}</span><span class="s2">&quot;</span>
-                <span class="n">col_data</span> <span class="o">=</span> <span class="n">vacf</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span>
+            <span class="n">start_slice</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">dump_step</span>
+            <span class="n">end_slice</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">dump_step</span></div>
+
+<div class="viewcode-block" id="VelocityAutoCorrelationFunction.save_acf_slices_data_to_hdf"><a class="viewcode-back" href="../../../api/tools_subpckg/VelocityAutoCorrelationFunction_mthds/sarkas.tools.observables.VelocityAutoCorrelationFunction.save_acf_slices_data_to_hdf.html#sarkas.tools.observables.VelocityAutoCorrelationFunction.save_acf_slices_data_to_hdf">[docs]</a>    <span class="k">def</span> <span class="nf">save_acf_slices_data_to_hdf</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vacf</span><span class="p">,</span> <span class="n">isl</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Store ACF data of slice `isl` into a hierarchical dataframe.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        vacf: numpy.ndarray</span>
+<span class="sd">            Data to store,</span>
+
+<span class="sd">        isl: int</span>
+<span class="sd">            Number of the slice being evaluated.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">sp1</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">species_names</span><span class="p">):</span>
+            <span class="n">sp_vacf_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">sp1</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__name__</span><span class="o">.</span><span class="n">swapcase</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span><span class="p">):</span>
+                <span class="n">col_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">sp_vacf_str</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">dim_labels</span><span class="p">[</span><span class="n">d</span><span class="p">]</span><span class="si">}</span><span class="s2">_slice </span><span class="si">{</span><span class="n">isl</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="n">col_data</span> <span class="o">=</span> <span class="n">vacf</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="p">:]</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf_slices</span> <span class="o">=</span> <span class="n">add_col_to_df</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf_slices</span><span class="p">,</span> <span class="n">col_data</span><span class="p">,</span> <span class="n">col_name</span><span class="p">)</span>
 
-            <span class="n">start_slice</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">slice_steps</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">dump_step</span>
-            <span class="n">end_slice</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">slice_steps</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">dump_step</span></div>
+            <span class="n">col_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">sp_vacf_str</span><span class="si">}</span><span class="s2">_Total_slice </span><span class="si">{</span><span class="n">isl</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="n">col_data</span> <span class="o">=</span> <span class="n">vacf</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf_slices</span> <span class="o">=</span> <span class="n">add_col_to_df</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf_slices</span><span class="p">,</span> <span class="n">col_data</span><span class="p">,</span> <span class="n">col_name</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="VelocityAutoCorrelationFunction.average_slices_data"><a class="viewcode-back" href="../../../api/tools_subpckg/VelocityAutoCorrelationFunction_mthds/sarkas.tools.observables.VelocityAutoCorrelationFunction.average_slices_data.html#sarkas.tools.observables.VelocityAutoCorrelationFunction.average_slices_data">[docs]</a>    <span class="nd">@avg_slices_doc</span>
-    <span class="k">def</span> <span class="nf">average_slices_data</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="VelocityAutoCorrelationFunction.grab_sim_data"><a class="viewcode-back" href="../../../api/tools_subpckg/VelocityAutoCorrelationFunction_mthds/sarkas.tools.observables.VelocityAutoCorrelationFunction.grab_sim_data.html#sarkas.tools.observables.VelocityAutoCorrelationFunction.grab_sim_data">[docs]</a>    <span class="k">def</span> <span class="nf">grab_sim_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start_dump_no</span><span class="p">,</span> <span class="n">end_dump_no</span><span class="p">,</span> <span class="n">vel</span><span class="p">,</span> <span class="n">time</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Grab the data from simulation dumps.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        start_dump_no: int</span>
+<span class="sd">            Initial number of the checkpoint dump.</span>
+
+<span class="sd">        end_dump_no: int</span>
+<span class="sd">            Final number of the checkpoint dump.</span>
+
+<span class="sd">        vel: numpy.ndarray</span>
+<span class="sd">            Array in which to store the collected velocities.</span>
+<span class="sd">            Shape = (:attr:`dimensions`, `len(`:attr:`no_ptcls_per_species``)`, `2`:attr:`acf_slice_steps`)</span>
+
+<span class="sd">        time: numpy.ndarray</span>
+<span class="sd">            Array in which to store the time collected from the dump.</span>
+<span class="sd">            Shape = (`2`:attr:`acf_slice_steps`)</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">for</span> <span class="n">it</span><span class="p">,</span> <span class="n">dump</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span>
+            <span class="n">tqdm</span><span class="p">(</span>
+                <span class="nb">range</span><span class="p">(</span><span class="n">start_dump_no</span><span class="p">,</span> <span class="n">end_dump_no</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dump_step</span><span class="p">),</span>
+                <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;Reading data&quot;</span><span class="p">,</span>
+                <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">,</span>
+                <span class="n">position</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">leave</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">):</span>
+            <span class="n">datap</span> <span class="o">=</span> <span class="n">load_from_restart</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dump_dir</span><span class="p">,</span> <span class="n">dump</span><span class="p">)</span>
+            <span class="n">time</span><span class="p">[</span><span class="n">it</span><span class="p">]</span> <span class="o">=</span> <span class="n">datap</span><span class="p">[</span><span class="s2">&quot;time&quot;</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span><span class="p">):</span>
+                <span class="n">vel</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="p">:,</span> <span class="n">it</span><span class="p">]</span> <span class="o">=</span> <span class="n">datap</span><span class="p">[</span><span class="s2">&quot;vel&quot;</span><span class="p">][</span><span class="bp">self</span><span class="o">.</span><span class="n">particles_id</span><span class="p">,</span> <span class="n">d</span><span class="p">]</span></div>
+
+<div class="viewcode-block" id="VelocityAutoCorrelationFunction.select_random_indices"><a class="viewcode-back" href="../../../api/tools_subpckg/VelocityAutoCorrelationFunction_mthds/sarkas.tools.observables.VelocityAutoCorrelationFunction.select_random_indices.html#sarkas.tools.observables.VelocityAutoCorrelationFunction.select_random_indices">[docs]</a>    <span class="k">def</span> <span class="nf">select_random_indices</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">no_ptcls_per_species</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Randomly select a given number of indices that indicate the particles to be used to average the VACF.</span>
+<span class="sd">        The random number of indices is stored in :attr:`particles_id`.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        no_ptcls_per_species: list, int, optional</span>
+<span class="sd">            List containing the number of particles to randomly select for each species.</span>
+<span class="sd">            If `None` it uses :attr:`no_ptcls_per_species` attribute which is equal to `[10]` by default.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        _: ValueError</span>
+<span class="sd">            If the chosen `no_ptcls_per_species` is less than the total number of particles in :attr:`species_num`.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        If the length of :attr:`no_ptcls_per_species` is less than the length of :attr:`species_num`, it selects the minimum of :attr:`no_ptcls_per_species` to be used for all species.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># Check whether the user passed an integer</span>
+        <span class="k">if</span> <span class="n">no_ptcls_per_species</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">no_ptcls_per_species</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">no_ptcls_per_species</span> <span class="o">=</span> <span class="p">[</span><span class="n">no_ptcls_per_species</span><span class="p">]</span>
+
+        <span class="c1"># Total number of indices to select for each range</span>
+        <span class="n">rng</span> <span class="o">=</span> <span class="n">default_rng</span><span class="p">()</span>
+
+        <span class="c1"># Check if the length of no_ptcls_per_species is equal to the length of species_num</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">no_ptcls_per_species</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">species_num</span><span class="p">):</span>
+            <span class="c1"># If not, adjust no_ptcls_per_species to have the same length and values</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">no_ptcls_per_species</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">no_ptcls_per_species</span><span class="p">)</span> <span class="o">*</span> <span class="n">ones_like</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">species_num</span><span class="p">)</span>
+
+        <span class="c1"># Initialize an empty list to store the combined random indices</span>
+        <span class="n">combined_random_indices</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="n">species_start</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">species_end</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">ip</span><span class="p">,</span> <span class="n">num_ptcls</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">no_ptcls_per_species</span><span class="p">):</span>
+            <span class="n">species_end</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_num</span><span class="p">[</span><span class="n">ip</span><span class="p">]</span>
+            <span class="c1"># Check whether there are enough particles to choose from</span>
+            <span class="k">if</span> <span class="n">num_ptcls</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_num</span><span class="p">[</span><span class="n">ip</span><span class="p">]:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;Species </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">species_names</span><span class="p">[</span><span class="n">ip</span><span class="p">]</span><span class="si">}</span><span class="s2">: the chosen random number of particles, </span><span class="si">{</span><span class="n">num_ptcls</span><span class="si">}</span><span class="s2">, is less than its total species number of particles, </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">species_num</span><span class="p">[</span><span class="n">ip</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="p">)</span>
+
+            <span class="c1"># Generate unique random indices for the current range</span>
+            <span class="n">random_indices</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">species_start</span><span class="p">,</span> <span class="n">species_end</span><span class="p">),</span> <span class="n">size</span><span class="o">=</span><span class="n">num_ptcls</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+            <span class="c1"># Append the current random indices to the combined list</span>
+            <span class="n">combined_random_indices</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">random_indices</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">particles_id</span> <span class="o">=</span> <span class="n">combined_random_indices</span></div>
+
+<div class="viewcode-block" id="VelocityAutoCorrelationFunction.average_acf_slices_data"><a class="viewcode-back" href="../../../api/tools_subpckg/VelocityAutoCorrelationFunction_mthds/sarkas.tools.observables.VelocityAutoCorrelationFunction.average_acf_slices_data.html#sarkas.tools.observables.VelocityAutoCorrelationFunction.average_acf_slices_data">[docs]</a>    <span class="nd">@avg_acf_slices_doc</span>
+    <span class="k">def</span> <span class="nf">average_acf_slices_data</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Average the data from all the slices and add it to the dataframe.&quot;&quot;&quot;</span>
 
         <span class="c1"># Average the stuff</span>
         <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">sp1</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">species_names</span><span class="p">):</span>
-            <span class="n">sp_vacf_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">sp1</span><span class="si">}</span><span class="s2"> &quot;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__name__</span><span class="o">.</span><span class="n">swapcase</span><span class="p">()</span>
+            <span class="n">sp_vacf_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">sp1</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__name__</span><span class="o">.</span><span class="n">swapcase</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span>
             <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span><span class="p">):</span>
                 <span class="n">dl</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dim_labels</span><span class="p">[</span><span class="n">d</span><span class="p">]</span>
                 <span class="n">dcol_str</span> <span class="o">=</span> <span class="p">[</span><span class="n">sp_vacf_str</span> <span class="o">+</span> <span class="sa">f</span><span class="s2">&quot;_</span><span class="si">{</span><span class="n">dl</span><span class="si">}</span><span class="s2">_slice </span><span class="si">{</span><span class="n">isl</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">isl</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">no_slices</span><span class="p">)]</span>
@@ -4875,7 +4989,60 @@ document.write(`
 
             <span class="n">col_name</span> <span class="o">=</span> <span class="n">sp_vacf_str</span> <span class="o">+</span> <span class="s2">&quot;_Total_Std&quot;</span>
             <span class="n">col_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf_slices</span><span class="p">[</span><span class="n">tot_col_str</span><span class="p">]</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">values</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf</span> <span class="o">=</span> <span class="n">add_col_to_df</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf</span><span class="p">,</span> <span class="n">col_data</span><span class="p">,</span> <span class="n">col_name</span><span class="p">)</span></div></div>
+            <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf</span> <span class="o">=</span> <span class="n">add_col_to_df</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf</span><span class="p">,</span> <span class="n">col_data</span><span class="p">,</span> <span class="n">col_name</span><span class="p">)</span></div>
+
+    <span class="c1"># @jit Numba doesn&#39;t like Scipy</span>
+<div class="viewcode-block" id="VelocityAutoCorrelationFunction.calculate_vacf"><a class="viewcode-back" href="../../../api/tools_subpckg/VelocityAutoCorrelationFunction_mthds/sarkas.tools.observables.VelocityAutoCorrelationFunction.calculate_vacf.html#sarkas.tools.observables.VelocityAutoCorrelationFunction.calculate_vacf">[docs]</a>    <span class="k">def</span> <span class="nf">calculate_vacf</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vel</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the velocity autocorrelation function of each species and in each direction.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        vel : numpy.ndarray</span>
+<span class="sd">            Particles&#39; velocities stored in a 3D array with shape = (D x Np x Nt).</span>
+<span class="sd">            D = cartesian dimensions, Np = Number of particles, Nt = number of dumps.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        vacf: numpy.ndarray</span>
+<span class="sd">            Velocity autocorrelation functions. Shape= (No_species, D + 1, Nt)</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">no_dim</span> <span class="o">=</span> <span class="n">vel</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="n">vacf</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">num_species</span><span class="p">,</span> <span class="n">no_dim</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">))</span>
+        <span class="n">species_vacf</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">)</span>
+        <span class="n">ptcl_vacf</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">)</span>
+
+        <span class="c1"># Calculate the vacf of each species in each dimension</span>
+        <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">no_dim</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Dimension&quot;</span><span class="p">,</span> <span class="n">position</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">,</span> <span class="n">leave</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+            <span class="n">species_start</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">species_end</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">for</span> <span class="n">sp</span><span class="p">,</span> <span class="n">np</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span>
+                <span class="n">tqdm</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">no_ptcls_per_species</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Species&quot;</span><span class="p">,</span> <span class="n">position</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">,</span> <span class="n">leave</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="p">):</span>
+                <span class="n">species_end</span> <span class="o">+=</span> <span class="n">np</span>
+                <span class="c1"># Temporary species vacf</span>
+
+                <span class="c1"># Calculate the vacf for each particle of species sp</span>
+                <span class="k">for</span> <span class="n">ptcl</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">species_start</span><span class="p">,</span> <span class="n">species_end</span><span class="p">):</span>
+
+                    <span class="k">for</span> <span class="n">it</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">):</span>
+                        <span class="n">v</span> <span class="o">=</span> <span class="n">vel</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="n">ptcl</span><span class="p">,</span> <span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span> <span class="o">+</span> <span class="n">it</span><span class="p">]</span>
+                        <span class="c1"># Calculate the correlation function and add it to the array</span>
+                        <span class="n">ptcl_vacf</span><span class="p">[</span><span class="n">it</span><span class="p">]</span> <span class="o">=</span> <span class="n">correlationfunction</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">v</span><span class="p">)[</span><span class="n">it</span><span class="p">]</span>
+
+                    <span class="c1"># Add this particle vacf to the species vacf and normalize by the time origins</span>
+                    <span class="n">species_vacf</span> <span class="o">+=</span> <span class="n">ptcl_vacf</span>
+
+                <span class="c1"># Save the species vacf for dimension i</span>
+                <span class="n">vacf</span><span class="p">[</span><span class="n">sp</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">species_vacf</span> <span class="o">/</span> <span class="n">np</span>
+                <span class="c1"># Save the total vacf</span>
+                <span class="n">vacf</span><span class="p">[</span><span class="n">sp</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span> <span class="o">+=</span> <span class="n">species_vacf</span> <span class="o">/</span> <span class="n">np</span>
+                <span class="c1"># Move to the next species first particle position</span>
+                <span class="n">species_start</span> <span class="o">+=</span> <span class="n">np</span>
+
+        <span class="k">return</span> <span class="n">vacf</span></div></div>
 
 
 <span class="c1"># TODO: Review and fix this class</span>
@@ -5900,57 +6067,6 @@ document.write(`
     <span class="k">return</span> <span class="n">J_flux</span><span class="p">,</span> <span class="n">jr_acf</span></div>
 
 
-<span class="c1"># @jit Numba doesn&#39;t like Scipy</span>
-<div class="viewcode-block" id="calc_vacf"><a class="viewcode-back" href="../../../api/tools_subpckg/sarkas.tools.observables.calc_vacf.html#sarkas.tools.observables.calc_vacf">[docs]</a><span class="k">def</span> <span class="nf">calc_vacf</span><span class="p">(</span><span class="n">vel</span><span class="p">,</span> <span class="n">sp_num</span><span class="p">,</span> <span class="n">verbose</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Calculate the velocity autocorrelation function of each species and in each direction.</span>
-
-<span class="sd">    Parameters</span>
-<span class="sd">    ----------</span>
-<span class="sd">    vel : numpy.ndarray</span>
-<span class="sd">        Particles&#39; velocities stored in a 3D array with shape = (D x Np x Nt).</span>
-<span class="sd">        D = cartesian dimensions, Np = Number of particles, Nt = number of dumps.</span>
-
-<span class="sd">    sp_num: numpy.ndarray</span>
-<span class="sd">        Number of particles of each species.</span>
-
-<span class="sd">    Returns</span>
-<span class="sd">    -------</span>
-<span class="sd">    vacf: numpy.ndarray</span>
-<span class="sd">        Velocity autocorrelation functions. Shape= (No_species, D + 1, Nt)</span>
-
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">no_dim</span> <span class="o">=</span> <span class="n">vel</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-    <span class="n">no_dumps</span> <span class="o">=</span> <span class="n">vel</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
-
-    <span class="n">vacf</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">sp_num</span><span class="p">),</span> <span class="n">no_dim</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">no_dumps</span><span class="p">))</span>
-
-    <span class="c1"># Calculate the vacf of each species in each dimension</span>
-    <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">no_dim</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Dimension&quot;</span><span class="p">,</span> <span class="n">position</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="n">verbose</span><span class="p">,</span> <span class="n">leave</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-        <span class="n">sp_start</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="n">sp_end</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="k">for</span> <span class="n">sp</span><span class="p">,</span> <span class="n">n_sp</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">tqdm</span><span class="p">(</span><span class="n">sp_num</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Species&quot;</span><span class="p">,</span> <span class="n">position</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="n">verbose</span><span class="p">,</span> <span class="n">leave</span><span class="o">=</span><span class="kc">False</span><span class="p">)):</span>
-            <span class="n">sp_end</span> <span class="o">+=</span> <span class="n">n_sp</span>
-            <span class="c1"># Temporary species vacf</span>
-            <span class="n">sp_vacf</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">(</span><span class="n">no_dumps</span><span class="p">)</span>
-            <span class="c1"># Calculate the vacf for each particle of species sp</span>
-            <span class="k">for</span> <span class="n">ptcl</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">sp_start</span><span class="p">,</span> <span class="n">sp_end</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;Particle&quot;</span><span class="p">,</span> <span class="n">position</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="n">verbose</span><span class="p">,</span> <span class="n">leave</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-                <span class="c1"># Calculate the correlation function and add it to the array</span>
-                <span class="n">ptcl_vacf</span> <span class="o">=</span> <span class="n">correlationfunction</span><span class="p">(</span><span class="n">vel</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="n">ptcl</span><span class="p">,</span> <span class="p">:],</span> <span class="n">vel</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="n">ptcl</span><span class="p">,</span> <span class="p">:])</span>
-
-                <span class="c1"># Add this particle vacf to the species vacf and normalize by the time origins</span>
-                <span class="n">sp_vacf</span> <span class="o">+=</span> <span class="n">ptcl_vacf</span>
-
-            <span class="c1"># Save the species vacf for dimension i</span>
-            <span class="n">vacf</span><span class="p">[</span><span class="n">sp</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">sp_vacf</span> <span class="o">/</span> <span class="n">n_sp</span>
-            <span class="c1"># Save the total vacf</span>
-            <span class="n">vacf</span><span class="p">[</span><span class="n">sp</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span> <span class="o">+=</span> <span class="n">sp_vacf</span> <span class="o">/</span> <span class="n">n_sp</span>
-            <span class="c1"># Move to the next species first particle position</span>
-            <span class="n">sp_start</span> <span class="o">+=</span> <span class="n">n_sp</span>
-
-    <span class="k">return</span> <span class="n">vacf</span></div>
-
-
 <span class="nd">@njit</span>
 <span class="k">def</span> <span class="nf">calc_vk</span><span class="p">(</span><span class="n">pos_data</span><span class="p">,</span> <span class="n">vel_data</span><span class="p">,</span> <span class="n">k_list</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -6550,7 +6666,7 @@ By MurilloGroup
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Sep 03, 2023.
+  Last updated on Sep 14, 2023.
   <br/>
 </p>
   </div>

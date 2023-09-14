@@ -27,6 +27,7 @@ sarkas.tools.observables.ElectricCurrent
       ElectricCurrent.from_dict
       ElectricCurrent.from_pickle
       ElectricCurrent.grab_sim_data
+      ElectricCurrent.initialize_hdf
       ElectricCurrent.integrate_normalized_acf_squared
       ElectricCurrent.parse
       ElectricCurrent.parse_acf

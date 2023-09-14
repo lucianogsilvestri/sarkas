@@ -28,6 +28,7 @@ sarkas.tools.observables.VelocityDistribution
       VelocityDistribution.from_dict
       VelocityDistribution.from_pickle
       VelocityDistribution.grab_sim_data
+      VelocityDistribution.initialize_hdf
       VelocityDistribution.integrate_normalized_acf_squared
       VelocityDistribution.normality_tests
       VelocityDistribution.parse

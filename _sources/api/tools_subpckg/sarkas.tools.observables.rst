@@ -23,7 +23,6 @@ sarkas.tools.observables
       calc_moments
       calc_nkt
       calc_slices_doc
-      calc_vacf
       calc_vkt
       calculate_herm_coeff
       col_mapper

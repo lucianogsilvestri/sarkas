@@ -8,20 +8,20 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
-<meta property="og:title" content="sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_slices_data" />
+<meta property="og:title" content="sarkas.tools.observables.Thermodynamics.initialize_hdf" />
 <meta property="og:type" content="website" />
-<meta property="og:url" content="https://murillo-group.github.io/sarkas/api/tools_subpckg/VelocityAutoCorrelationFunction_mthds/sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_slices_data.html" />
+<meta property="og:url" content="https://murillo-group.github.io/sarkas/api/tools_subpckg/Thermodynamics_mthds/sarkas.tools.observables.Thermodynamics.initialize_hdf.html" />
 <meta property="og:site_name" content="SARKAS: Python MD code for plasma physics" />
 <meta property="og:image:width" content="1146" />
 <meta property="og:image:height" content="600" />
-<meta property="og:image" content="https://murillo-group.github.io/sarkas/_images/social_previews/summary_api_tools_subpckg_VelocityAutoCorrelationFunction_mthds_sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_slices_data_7979ee40.png" />
+<meta property="og:image" content="https://murillo-group.github.io/sarkas/_images/social_previews/summary_api_tools_subpckg_Thermodynamics_mthds_sarkas.tools.observables.Thermodynamics.initialize_hdf_1d6eda39.png" />
 <meta property="og:image:alt" content="" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta property="twitter:card" content="summary">
 <meta property="twitter:title" content="SARKAS: Python MD code for plasma physics">
 <meta property="twitter:description" content="A fast pure-Python molecular dynamics suite for non-ideal plasmas.">
 
-    <title>sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_slices_data &#8212; Sarkas 1.1.0 documentation</title>
+    <title>sarkas.tools.observables.Thermodynamics.initialize_hdf &#8212; Sarkas 1.1.0 documentation</title>
   
   
   
@@ -66,13 +66,13 @@
     <script src="../../../_static/copybutton.js"></script>
     <script src="../../../_static/scripts/sphinx-book-theme.js?digest=5a5c038af52cf7bc1a1ec88eea08e6366ee68824"></script>
     <script src="../../../_static/design-tabs.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'api/tools_subpckg/VelocityAutoCorrelationFunction_mthds/sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_slices_data';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'api/tools_subpckg/Thermodynamics_mthds/sarkas.tools.observables.Thermodynamics.initialize_hdf';</script>
     <script type="text/javascript" src="../../../_static/language_data.js"></script>
   
     <link rel="index" title="Index" href="../../../genindex.html" />
     <link rel="search" title="Search" href="../../../search.html" />
-    <link rel="next" title="sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_vkt_slices_data" href="sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_vkt_slices_data.html" />
-    <link rel="prev" title="sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_nkt_slices_data" href="sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_nkt_slices_data.html" />
+    <link rel="next" title="sarkas.tools.observables.Thermodynamics.integrate_normalized_acf_squared" href="sarkas.tools.observables.Thermodynamics.integrate_normalized_acf_squared.html" />
+    <link rel="prev" title="sarkas.tools.observables.Thermodynamics.grab_sim_data" href="sarkas.tools.observables.Thermodynamics.grab_sim_data.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   </head>
@@ -364,7 +364,6 @@
 <li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.calc_moments.html">sarkas.tools.observables.calc_moments</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.calc_nkt.html">sarkas.tools.observables.calc_nkt</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.calc_slices_doc.html">sarkas.tools.observables.calc_slices_doc</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.calc_vacf.html">sarkas.tools.observables.calc_vacf</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.calc_vkt.html">sarkas.tools.observables.calc_vkt</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.calculate_herm_coeff.html">sarkas.tools.observables.calculate_herm_coeff</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.col_mapper.html">sarkas.tools.observables.col_mapper</a></li>
@@ -385,8 +384,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.PressureTensor.html">sarkas.tools.observables.PressureTensor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.RadialDistributionFunction.html">sarkas.tools.observables.RadialDistributionFunction</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.StaticStructureFactor.html">sarkas.tools.observables.StaticStructureFactor</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.Thermodynamics.html">sarkas.tools.observables.Thermodynamics</a></li>
-<li class="toctree-l4 current active"><a class="reference internal" href="../sarkas.tools.observables.VelocityAutoCorrelationFunction.html">sarkas.tools.observables.VelocityAutoCorrelationFunction</a></li>
+<li class="toctree-l4 current active"><a class="reference internal" href="../sarkas.tools.observables.Thermodynamics.html">sarkas.tools.observables.Thermodynamics</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.VelocityAutoCorrelationFunction.html">sarkas.tools.observables.VelocityAutoCorrelationFunction</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.VelocityDistribution.html">sarkas.tools.observables.VelocityDistribution</a></li>
 </ul>
 </li>
@@ -533,7 +532,7 @@
       
       
       
-      <li><a href="../../../_sources/api/tools_subpckg/VelocityAutoCorrelationFunction_mthds/sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_slices_data.rst" target="_blank"
+      <li><a href="../../../_sources/api/tools_subpckg/Thermodynamics_mthds/sarkas.tools.observables.Thermodynamics.initialize_hdf.rst" target="_blank"
    class="btn btn-sm btn-download-source-button dropdown-item"
    title="Download source file"
    data-bs-placement="left" data-bs-toggle="tooltip"
@@ -615,7 +614,7 @@ document.write(`
               
 
 <div id="jb-print-docs-body" class="onlyprint">
-    <h1>sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_slices_data</h1>
+    <h1>sarkas.tools.observables.Thermodynamics.initialize_hdf</h1>
     <!-- Table of contents -->
     <div id="print-main-content">
         <div id="jb-print-toc">
@@ -625,7 +624,7 @@ document.write(`
             </div>
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_slices_data"><code class="docutils literal notranslate"><span class="pre">VelocityAutoCorrelationFunction.calc_slices_data()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#sarkas.tools.observables.Thermodynamics.initialize_hdf"><code class="docutils literal notranslate"><span class="pre">Thermodynamics.initialize_hdf()</span></code></a></li>
 </ul>
             </nav>
         </div>
@@ -637,15 +636,12 @@ document.write(`
 <div id="searchbox"></div>
                 <article class="bd-article" role="main">
                   
-  <section id="sarkas-tools-observables-velocityautocorrelationfunction-calc-slices-data">
-<h1>sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_slices_data<a class="headerlink" href="#sarkas-tools-observables-velocityautocorrelationfunction-calc-slices-data" title="Permalink to this heading">#</a></h1>
+  <section id="sarkas-tools-observables-thermodynamics-initialize-hdf">
+<h1>sarkas.tools.observables.Thermodynamics.initialize_hdf<a class="headerlink" href="#sarkas-tools-observables-thermodynamics-initialize-hdf" title="Permalink to this heading">#</a></h1>
 <dl class="py method">
-<dt class="sig sig-object py" id="sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_slices_data">
-<span class="sig-prename descclassname"><span class="pre">VelocityAutoCorrelationFunction.</span></span><span class="sig-name descname"><span class="pre">calc_slices_data</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/sarkas/tools/observables.html#VelocityAutoCorrelationFunction.calc_slices_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_slices_data" title="Permalink to this definition">#</a></dt>
-<dd><p>Calculate the observable for each slice. See class doc for exact quantities.</p>
-<p>The data of each slice is saved in hierarchical dataframes,
-<code class="xref py py-attr docutils literal notranslate"><span class="pre">dataframe_slices</span></code>.</p>
-</dd></dl>
+<dt class="sig sig-object py" id="sarkas.tools.observables.Thermodynamics.initialize_hdf">
+<span class="sig-prename descclassname"><span class="pre">Thermodynamics.</span></span><span class="sig-name descname"><span class="pre">initialize_hdf</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#sarkas.tools.observables.Thermodynamics.initialize_hdf" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
 
 </section>
 
@@ -662,20 +658,20 @@ document.write(`
     <div class="footer-article-item"><!-- Previous / next buttons -->
 <div class="prev-next-area">
     <a class="left-prev"
-       href="sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_nkt_slices_data.html"
+       href="sarkas.tools.observables.Thermodynamics.grab_sim_data.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_nkt_slices_data</p>
+        <p class="prev-next-title">sarkas.tools.observables.Thermodynamics.grab_sim_data</p>
       </div>
     </a>
     <a class="right-next"
-       href="sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_vkt_slices_data.html"
+       href="sarkas.tools.observables.Thermodynamics.integrate_normalized_acf_squared.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_vkt_slices_data</p>
+        <p class="prev-next-title">sarkas.tools.observables.Thermodynamics.integrate_normalized_acf_squared</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -697,7 +693,7 @@ document.write(`
   </div>
   <nav class="bd-toc-nav page-toc">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#sarkas.tools.observables.VelocityAutoCorrelationFunction.calc_slices_data"><code class="docutils literal notranslate"><span class="pre">VelocityAutoCorrelationFunction.calc_slices_data()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#sarkas.tools.observables.Thermodynamics.initialize_hdf"><code class="docutils literal notranslate"><span class="pre">Thermodynamics.initialize_hdf()</span></code></a></li>
 </ul>
   </nav></div>
 
@@ -730,7 +726,7 @@ By MurilloGroup
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Sep 03, 2023.
+  Last updated on Sep 14, 2023.
   <br/>
 </p>
   </div>

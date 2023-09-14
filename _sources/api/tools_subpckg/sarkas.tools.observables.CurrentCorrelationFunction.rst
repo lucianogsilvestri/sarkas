@@ -28,6 +28,7 @@ sarkas.tools.observables.CurrentCorrelationFunction
       CurrentCorrelationFunction.from_dict
       CurrentCorrelationFunction.from_pickle
       CurrentCorrelationFunction.grab_sim_data
+      CurrentCorrelationFunction.initialize_hdf
       CurrentCorrelationFunction.integrate_normalized_acf_squared
       CurrentCorrelationFunction.parse
       CurrentCorrelationFunction.parse_acf

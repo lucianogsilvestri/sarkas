@@ -366,7 +366,6 @@
 <li class="toctree-l4"><a class="reference internal" href="sarkas.tools.observables.calc_moments.html">sarkas.tools.observables.calc_moments</a></li>
 <li class="toctree-l4"><a class="reference internal" href="sarkas.tools.observables.calc_nkt.html">sarkas.tools.observables.calc_nkt</a></li>
 <li class="toctree-l4"><a class="reference internal" href="sarkas.tools.observables.calc_slices_doc.html">sarkas.tools.observables.calc_slices_doc</a></li>
-<li class="toctree-l4"><a class="reference internal" href="sarkas.tools.observables.calc_vacf.html">sarkas.tools.observables.calc_vacf</a></li>
 <li class="toctree-l4"><a class="reference internal" href="sarkas.tools.observables.calc_vkt.html">sarkas.tools.observables.calc_vkt</a></li>
 <li class="toctree-l4"><a class="reference internal" href="sarkas.tools.observables.calculate_herm_coeff.html">sarkas.tools.observables.calculate_herm_coeff</a></li>
 <li class="toctree-l4"><a class="reference internal" href="sarkas.tools.observables.col_mapper.html">sarkas.tools.observables.col_mapper</a></li>
@@ -661,7 +660,7 @@ document.write(`
 <tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.average_slices_data.html#sarkas.tools.observables.HeatFlux.average_slices_data" title="sarkas.tools.observables.HeatFlux.average_slices_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.average_slices_data</span></code></a>()</p></td>
 <td><p>Calculate the average and standard deviation of the observable from the slices dataframe.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.calc_acf_slices_data.html#sarkas.tools.observables.HeatFlux.calc_acf_slices_data" title="sarkas.tools.observables.HeatFlux.calc_acf_slices_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.calc_acf_slices_data</span></code></a>()</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.calc_acf_slices_data.html#sarkas.tools.observables.HeatFlux.calc_acf_slices_data" title="sarkas.tools.observables.HeatFlux.calc_acf_slices_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.calc_acf_slices_data</span></code></a>([...])</p></td>
 <td><p>Calculate the observable acf for each slice.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.calc_k_data.html#sarkas.tools.observables.HeatFlux.calc_k_data" title="sarkas.tools.observables.HeatFlux.calc_k_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.calc_k_data</span></code></a>()</p></td>
@@ -682,7 +681,7 @@ document.write(`
 <tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.compute.html#sarkas.tools.observables.HeatFlux.compute" title="sarkas.tools.observables.HeatFlux.compute"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.compute</span></code></a>([calculate_acf])</p></td>
 <td><p>Routine for computing the observable.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.compute_acf.html#sarkas.tools.observables.HeatFlux.compute_acf" title="sarkas.tools.observables.HeatFlux.compute_acf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.compute_acf</span></code></a>()</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.compute_acf.html#sarkas.tools.observables.HeatFlux.compute_acf" title="sarkas.tools.observables.HeatFlux.compute_acf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.compute_acf</span></code></a>([equal_number_time_samples])</p></td>
 <td><p>Routine for computing the observable's autocorrelation function.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.compute_kt_data.html#sarkas.tools.observables.HeatFlux.compute_kt_data" title="sarkas.tools.observables.HeatFlux.compute_kt_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.compute_kt_data</span></code></a>([nkt_flag, vkt_flag])</p></td>
@@ -703,52 +702,55 @@ document.write(`
 <tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.grab_sim_data.html#sarkas.tools.observables.HeatFlux.grab_sim_data" title="sarkas.tools.observables.HeatFlux.grab_sim_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.grab_sim_data</span></code></a>([pva])</p></td>
 <td><p>Read in particles data into one large array.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.integrate_normalized_acf_squared.html#sarkas.tools.observables.HeatFlux.integrate_normalized_acf_squared" title="sarkas.tools.observables.HeatFlux.integrate_normalized_acf_squared"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.integrate_normalized_acf_squared</span></code></a>(...)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.initialize_hdf.html#sarkas.tools.observables.HeatFlux.initialize_hdf" title="sarkas.tools.observables.HeatFlux.initialize_hdf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.initialize_hdf</span></code></a>()</p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.integrate_normalized_acf_squared.html#sarkas.tools.observables.HeatFlux.integrate_normalized_acf_squared" title="sarkas.tools.observables.HeatFlux.integrate_normalized_acf_squared"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.integrate_normalized_acf_squared</span></code></a>(...)</p></td>
 <td><p>Calculate the normalized correlation time as given by</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.parse.html#sarkas.tools.observables.HeatFlux.parse" title="sarkas.tools.observables.HeatFlux.parse"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.parse</span></code></a>([acf_data])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.parse.html#sarkas.tools.observables.HeatFlux.parse" title="sarkas.tools.observables.HeatFlux.parse"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.parse</span></code></a>([acf_data])</p></td>
 <td><p>Grab the pandas dataframe from the saved csv file.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.parse_acf.html#sarkas.tools.observables.HeatFlux.parse_acf" title="sarkas.tools.observables.HeatFlux.parse_acf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.parse_acf</span></code></a>()</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.parse_acf.html#sarkas.tools.observables.HeatFlux.parse_acf" title="sarkas.tools.observables.HeatFlux.parse_acf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.parse_acf</span></code></a>()</p></td>
 <td><p></p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.parse_k_data.html#sarkas.tools.observables.HeatFlux.parse_k_data" title="sarkas.tools.observables.HeatFlux.parse_k_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.parse_k_data</span></code></a>()</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.parse_k_data.html#sarkas.tools.observables.HeatFlux.parse_k_data" title="sarkas.tools.observables.HeatFlux.parse_k_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.parse_k_data</span></code></a>()</p></td>
 <td><p>Read in the precomputed Fourier space data.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.parse_kt_data.html#sarkas.tools.observables.HeatFlux.parse_kt_data" title="sarkas.tools.observables.HeatFlux.parse_kt_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.parse_kt_data</span></code></a>([nkt_flag, vkt_flag])</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.parse_kt_data.html#sarkas.tools.observables.HeatFlux.parse_kt_data" title="sarkas.tools.observables.HeatFlux.parse_kt_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.parse_kt_data</span></code></a>([nkt_flag, vkt_flag])</p></td>
 <td><p>Read in the precomputed time dependent Fourier space data.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.plot.html#sarkas.tools.observables.HeatFlux.plot" title="sarkas.tools.observables.HeatFlux.plot"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.plot</span></code></a>([scaling, acf, figname, show])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.plot.html#sarkas.tools.observables.HeatFlux.plot" title="sarkas.tools.observables.HeatFlux.plot"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.plot</span></code></a>([scaling, acf, figname, show])</p></td>
 <td><p>Plot the observable by calling the pandas.DataFrame.plot() function and save the figure.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.pretty_print_msg.html#sarkas.tools.observables.HeatFlux.pretty_print_msg" title="sarkas.tools.observables.HeatFlux.pretty_print_msg"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.pretty_print_msg</span></code></a>()</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.pretty_print_msg.html#sarkas.tools.observables.HeatFlux.pretty_print_msg" title="sarkas.tools.observables.HeatFlux.pretty_print_msg"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.pretty_print_msg</span></code></a>()</p></td>
 <td><p>Create the message with the basic information of every observable</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.save_acf_hdf.html#sarkas.tools.observables.HeatFlux.save_acf_hdf" title="sarkas.tools.observables.HeatFlux.save_acf_hdf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.save_acf_hdf</span></code></a>()</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.save_acf_hdf.html#sarkas.tools.observables.HeatFlux.save_acf_hdf" title="sarkas.tools.observables.HeatFlux.save_acf_hdf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.save_acf_hdf</span></code></a>()</p></td>
 <td><p></p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.save_hdf.html#sarkas.tools.observables.HeatFlux.save_hdf" title="sarkas.tools.observables.HeatFlux.save_hdf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.save_hdf</span></code></a>()</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.save_hdf.html#sarkas.tools.observables.HeatFlux.save_hdf" title="sarkas.tools.observables.HeatFlux.save_hdf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.save_hdf</span></code></a>()</p></td>
 <td><p></p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.save_kt_hdf.html#sarkas.tools.observables.HeatFlux.save_kt_hdf" title="sarkas.tools.observables.HeatFlux.save_kt_hdf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.save_kt_hdf</span></code></a>([nkt_flag, vkt_flag])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.save_kt_hdf.html#sarkas.tools.observables.HeatFlux.save_kt_hdf" title="sarkas.tools.observables.HeatFlux.save_kt_hdf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.save_kt_hdf</span></code></a>([nkt_flag, vkt_flag])</p></td>
 <td><p>Save the <span class="math notranslate nohighlight">\(n(\mathbf{k},t)\)</span> and/or <span class="math notranslate nohighlight">\(\mathbf{v}(\mathbf{k},t)\)</span> data of each slice to disk.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.save_pickle.html#sarkas.tools.observables.HeatFlux.save_pickle" title="sarkas.tools.observables.HeatFlux.save_pickle"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.save_pickle</span></code></a>()</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.save_pickle.html#sarkas.tools.observables.HeatFlux.save_pickle" title="sarkas.tools.observables.HeatFlux.save_pickle"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.save_pickle</span></code></a>()</p></td>
 <td><p>Save the observable's info into a pickle file.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.setup.html#sarkas.tools.observables.HeatFlux.setup" title="sarkas.tools.observables.HeatFlux.setup"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.setup</span></code></a>(params[, phase, no_slices])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.setup.html#sarkas.tools.observables.HeatFlux.setup" title="sarkas.tools.observables.HeatFlux.setup"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.setup</span></code></a>(params[, phase, no_slices])</p></td>
 <td><p>Assign attributes from simulation's parameters.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.setup_init.html#sarkas.tools.observables.HeatFlux.setup_init" title="sarkas.tools.observables.HeatFlux.setup_init"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.setup_init</span></code></a>(params[, phase, ...])</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.setup_init.html#sarkas.tools.observables.HeatFlux.setup_init" title="sarkas.tools.observables.HeatFlux.setup_init"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.setup_init</span></code></a>(params[, phase, ...])</p></td>
 <td><p>Assign Observables attributes and copy the simulation's parameters.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.setup_multirun_dirs.html#sarkas.tools.observables.HeatFlux.setup_multirun_dirs" title="sarkas.tools.observables.HeatFlux.setup_multirun_dirs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.setup_multirun_dirs</span></code></a>()</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.setup_multirun_dirs.html#sarkas.tools.observables.HeatFlux.setup_multirun_dirs" title="sarkas.tools.observables.HeatFlux.setup_multirun_dirs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.setup_multirun_dirs</span></code></a>()</p></td>
 <td><p>Set the attributes postprocessing_dir and dump_dirs_list.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.update_args.html#sarkas.tools.observables.HeatFlux.update_args" title="sarkas.tools.observables.HeatFlux.update_args"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.update_args</span></code></a>(**kwargs)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.update_args.html#sarkas.tools.observables.HeatFlux.update_args" title="sarkas.tools.observables.HeatFlux.update_args"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.update_args</span></code></a>(**kwargs)</p></td>
 <td><p>Update observable specific attributes and call <a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.update_finish.html#sarkas.tools.observables.HeatFlux.update_finish" title="sarkas.tools.observables.HeatFlux.update_finish"><code class="xref py py-meth docutils literal notranslate"><span class="pre">update_finish()</span></code></a> to save info.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.update_finish.html#sarkas.tools.observables.HeatFlux.update_finish" title="sarkas.tools.observables.HeatFlux.update_finish"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.update_finish</span></code></a>()</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="HeatFlux_mthds/sarkas.tools.observables.HeatFlux.update_finish.html#sarkas.tools.observables.HeatFlux.update_finish" title="sarkas.tools.observables.HeatFlux.update_finish"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HeatFlux.update_finish</span></code></a>()</p></td>
 <td><p>Update the <code class="xref py py-attr docutils literal notranslate"><span class="pre">slice_steps</span></code>, CCF's and DSF's attributes, and save pickle file with observable's info.</p></td>
 </tr>
 </tbody>
@@ -838,7 +840,7 @@ By MurilloGroup
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Sep 03, 2023.
+  Last updated on Sep 14, 2023.
   <br/>
 </p>
   </div>

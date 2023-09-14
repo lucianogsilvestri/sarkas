@@ -71,7 +71,7 @@
   
     <link rel="index" title="Index" href="../../../genindex.html" />
     <link rel="search" title="Search" href="../../../search.html" />
-    <link rel="next" title="sarkas.tools.observables.VelocityAutoCorrelationFunction.integrate_normalized_acf_squared" href="sarkas.tools.observables.VelocityAutoCorrelationFunction.integrate_normalized_acf_squared.html" />
+    <link rel="next" title="sarkas.tools.observables.VelocityAutoCorrelationFunction.initialize_hdf" href="sarkas.tools.observables.VelocityAutoCorrelationFunction.initialize_hdf.html" />
     <link rel="prev" title="sarkas.tools.observables.VelocityAutoCorrelationFunction.from_pickle" href="sarkas.tools.observables.VelocityAutoCorrelationFunction.from_pickle.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -364,7 +364,6 @@
 <li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.calc_moments.html">sarkas.tools.observables.calc_moments</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.calc_nkt.html">sarkas.tools.observables.calc_nkt</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.calc_slices_doc.html">sarkas.tools.observables.calc_slices_doc</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.calc_vacf.html">sarkas.tools.observables.calc_vacf</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.calc_vkt.html">sarkas.tools.observables.calc_vkt</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.calculate_herm_coeff.html">sarkas.tools.observables.calculate_herm_coeff</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../sarkas.tools.observables.col_mapper.html">sarkas.tools.observables.col_mapper</a></li>
@@ -641,23 +640,18 @@ document.write(`
 <h1>sarkas.tools.observables.VelocityAutoCorrelationFunction.grab_sim_data<a class="headerlink" href="#sarkas-tools-observables-velocityautocorrelationfunction-grab-sim-data" title="Permalink to this heading">#</a></h1>
 <dl class="py method">
 <dt class="sig sig-object py" id="sarkas.tools.observables.VelocityAutoCorrelationFunction.grab_sim_data">
-<span class="sig-prename descclassname"><span class="pre">VelocityAutoCorrelationFunction.</span></span><span class="sig-name descname"><span class="pre">grab_sim_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pva</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'vel'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sarkas.tools.observables.VelocityAutoCorrelationFunction.grab_sim_data" title="Permalink to this definition">#</a></dt>
-<dd><p>Read in particles data into one large array.</p>
+<span class="sig-prename descclassname"><span class="pre">VelocityAutoCorrelationFunction.</span></span><span class="sig-name descname"><span class="pre">grab_sim_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">start_dump_no</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">end_dump_no</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/sarkas/tools/observables.html#VelocityAutoCorrelationFunction.grab_sim_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sarkas.tools.observables.VelocityAutoCorrelationFunction.grab_sim_data" title="Permalink to this definition">#</a></dt>
+<dd><p>Grab the data from simulation dumps.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><p><strong>pva</strong> (<em>str</em>) – Key of the data to be collected. Options [“pos”, “vel”, “acc”], Default = “vel”</p>
-</dd>
-<dt class="field-even">Returns</dt>
-<dd class="field-even"><p><ul class="simple">
-<li><p><strong>time</strong> (<em>numpy.ndarray</em>) – One dimensional array with time data.</p></li>
-<li><p><strong>data_all</strong> (<em>numpy.ndarray</em>) – Array with shape (<code class="xref py py-attr docutils literal notranslate"><span class="pre">sarkas.tools.observables.Observable.no_dumps</span></code>,</p></li>
-<li><p><code class="xref py py-attr docutils literal notranslate"><span class="pre">sarkas.tools.observables.Observable.self.dim</span></code>, <code class="xref py py-attr docutils literal notranslate"><span class="pre">sarkas.tools.observables.Observable.runs</span></code> *</p></li>
-<li><p><code class="xref py py-attr docutils literal notranslate"><span class="pre">sarkas.tools.observables.Observable.inv_dim</span></code> * <code class="xref py py-attr docutils literal notranslate"><span class="pre">sarkas.tools.observables.Observable.total_num_ptcls</span></code>).</p></li>
-<li><p><cite>.dim</cite> = 1 if <code class="xref py py-attr docutils literal notranslate"><span class="pre">sarkas.tools.observables.Observable.dimensional_average</span> <span class="pre">=</span> <span class="pre">True</span></code> otherwise equals the number</p></li>
-<li><p><strong>of dimensions, (e.g. 3D</strong> (3) <cite>.runs</cite> is the number of runs to be averaged over. Default = 1. <cite>.inv_dim</cite> is)</p></li>
-<li><p>the else option of <cite>dim</cite>. If <cite>dim = 1</cite> then <cite>.inv_dim = .dimensions</cite> and viceversa.</p></li>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>start_dump_no</strong> (<em>int</em>) – Initial number of the checkpoint dump.</p></li>
+<li><p><strong>end_dump_no</strong> (<em>int</em>) – Final number of the checkpoint dump.</p></li>
+<li><p><strong>vel</strong> (<em>numpy.ndarray</em>) – Array in which to store the collected velocities.
+Shape = (<code class="xref py py-attr docutils literal notranslate"><span class="pre">dimensions</span></code>, <cite>len(</cite><code class="xref py py-attr docutils literal notranslate"><span class="pre">no_ptcls_per_species`</span></code>)`, <cite>2</cite><code class="xref py py-attr docutils literal notranslate"><span class="pre">acf_slice_steps</span></code>)</p></li>
+<li><p><strong>time</strong> (<em>numpy.ndarray</em>) – Array in which to store the time collected from the dump.
+Shape = (<cite>2</cite><code class="xref py py-attr docutils literal notranslate"><span class="pre">acf_slice_steps</span></code>)</p></li>
 </ul>
-</p>
 </dd>
 </dl>
 </dd></dl>
@@ -686,11 +680,11 @@ document.write(`
       </div>
     </a>
     <a class="right-next"
-       href="sarkas.tools.observables.VelocityAutoCorrelationFunction.integrate_normalized_acf_squared.html"
+       href="sarkas.tools.observables.VelocityAutoCorrelationFunction.initialize_hdf.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">sarkas.tools.observables.VelocityAutoCorrelationFunction.integrate_normalized_acf_squared</p>
+        <p class="prev-next-title">sarkas.tools.observables.VelocityAutoCorrelationFunction.initialize_hdf</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -745,7 +739,7 @@ By MurilloGroup
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Sep 03, 2023.
+  Last updated on Sep 14, 2023.
   <br/>
 </p>
   </div>

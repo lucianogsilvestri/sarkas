@@ -28,6 +28,7 @@ sarkas.tools.observables.RadialDistributionFunction
       RadialDistributionFunction.from_dict
       RadialDistributionFunction.from_pickle
       RadialDistributionFunction.grab_sim_data
+      RadialDistributionFunction.initialize_hdf
       RadialDistributionFunction.integrate_normalized_acf_squared
       RadialDistributionFunction.parse
       RadialDistributionFunction.parse_acf

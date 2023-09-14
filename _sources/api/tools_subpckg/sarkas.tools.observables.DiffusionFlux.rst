@@ -27,6 +27,7 @@ sarkas.tools.observables.DiffusionFlux
       DiffusionFlux.from_dict
       DiffusionFlux.from_pickle
       DiffusionFlux.grab_sim_data
+      DiffusionFlux.initialize_hdf
       DiffusionFlux.integrate_normalized_acf_squared
       DiffusionFlux.parse
       DiffusionFlux.parse_acf

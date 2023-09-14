@@ -31,6 +31,7 @@ sarkas.tools.observables.PressureTensor
       PressureTensor.from_dict
       PressureTensor.from_pickle
       PressureTensor.grab_sim_data
+      PressureTensor.initialize_hdf
       PressureTensor.integrate_normalized_acf_squared
       PressureTensor.parse
       PressureTensor.parse_acf
