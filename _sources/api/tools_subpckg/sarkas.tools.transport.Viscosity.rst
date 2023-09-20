@@ -10,7 +10,7 @@ sarkas.tools.transport.Viscosity
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: Viscosity_mthds
+      :toctree: Viscosity_methods
 
    
       Viscosity.__init__

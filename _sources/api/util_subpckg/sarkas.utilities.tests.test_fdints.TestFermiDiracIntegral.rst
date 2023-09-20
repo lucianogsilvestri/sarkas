@@ -10,7 +10,7 @@ sarkas.utilities.tests.test\_fdints.TestFermiDiracIntegral
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: TestFermiDiracIntegral_mthds
+      :toctree: TestFermiDiracIntegral_methods
 
    
       TestFermiDiracIntegral.__init__

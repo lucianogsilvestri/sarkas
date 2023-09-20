@@ -10,7 +10,7 @@ sarkas.tools.transport.ThermalConductivity
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: ThermalConductivity_mthds
+      :toctree: ThermalConductivity_methods
 
    
       ThermalConductivity.__init__

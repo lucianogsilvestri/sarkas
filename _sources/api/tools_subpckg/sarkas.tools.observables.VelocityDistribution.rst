@@ -10,7 +10,7 @@ sarkas.tools.observables.VelocityDistribution
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: VelocityDistribution_mthds
+      :toctree: VelocityDistribution_methods
 
    
       VelocityDistribution.__init__

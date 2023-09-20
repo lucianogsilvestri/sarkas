@@ -10,7 +10,7 @@ sarkas.tools.observables.CurrentCorrelationFunction
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: CurrentCorrelationFunction_mthds
+      :toctree: CurrentCorrelationFunction_methods
 
    
       CurrentCorrelationFunction.__init__

@@ -10,7 +10,7 @@ sarkas.tools.observables.ElectricCurrent
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: ElectricCurrent_mthds
+      :toctree: ElectricCurrent_methods
 
    
       ElectricCurrent.__init__

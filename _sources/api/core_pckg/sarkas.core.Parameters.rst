@@ -10,7 +10,7 @@ sarkas.core.Parameters
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: Parameters_mthds
+      :toctree: Parameters_methods
 
    
       Parameters.__init__

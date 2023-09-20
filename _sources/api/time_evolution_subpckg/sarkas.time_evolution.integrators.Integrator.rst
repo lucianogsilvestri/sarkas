@@ -10,7 +10,7 @@ sarkas.time\_evolution.integrators.Integrator
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: Integrator_mthds
+      :toctree: Integrator_methods
 
    
       Integrator.__init__

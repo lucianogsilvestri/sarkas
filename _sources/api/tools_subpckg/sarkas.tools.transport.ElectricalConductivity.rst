@@ -10,7 +10,7 @@ sarkas.tools.transport.ElectricalConductivity
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: ElectricalConductivity_mthds
+      :toctree: ElectricalConductivity_methods
 
    
       ElectricalConductivity.__init__

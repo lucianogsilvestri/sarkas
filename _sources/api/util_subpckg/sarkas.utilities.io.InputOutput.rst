@@ -10,7 +10,7 @@ sarkas.utilities.io.InputOutput
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: InputOutput_mthds
+      :toctree: InputOutput_methods
 
    
       InputOutput.__init__

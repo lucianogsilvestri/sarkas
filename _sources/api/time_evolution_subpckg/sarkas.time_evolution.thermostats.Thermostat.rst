@@ -10,7 +10,7 @@ sarkas.time\_evolution.thermostats.Thermostat
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: Thermostat_mthds
+      :toctree: Thermostat_methods
 
    
       Thermostat.__init__

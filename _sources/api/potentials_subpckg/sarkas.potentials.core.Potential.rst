@@ -10,7 +10,7 @@ sarkas.potentials.core.Potential
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: Potential_mthds
+      :toctree: Potential_methods
 
    
       Potential.__init__

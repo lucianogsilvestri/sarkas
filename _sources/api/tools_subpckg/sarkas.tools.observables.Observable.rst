@@ -10,7 +10,7 @@ sarkas.tools.observables.Observable
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: Observable_mthds
+      :toctree: Observable_methods
 
    
       Observable.__init__

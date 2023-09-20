@@ -10,7 +10,7 @@ sarkas.tools.transport.TransportCoefficients
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: TransportCoefficients_mthds
+      :toctree: TransportCoefficients_methods
 
    
       TransportCoefficients.__init__

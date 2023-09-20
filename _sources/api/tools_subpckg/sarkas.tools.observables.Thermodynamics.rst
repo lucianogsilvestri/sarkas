@@ -10,7 +10,7 @@ sarkas.tools.observables.Thermodynamics
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: Thermodynamics_mthds
+      :toctree: Thermodynamics_methods
 
    
       Thermodynamics.__init__

@@ -10,7 +10,7 @@ sarkas.utilities.timing.SarkasTimer
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: SarkasTimer_mthds
+      :toctree: SarkasTimer_methods
 
    
       SarkasTimer.__init__

@@ -10,7 +10,7 @@ sarkas.tools.observables.DiffusionFlux
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: DiffusionFlux_mthds
+      :toctree: DiffusionFlux_methods
 
    
       DiffusionFlux.__init__

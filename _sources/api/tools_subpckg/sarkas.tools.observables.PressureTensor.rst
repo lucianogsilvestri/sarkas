@@ -10,7 +10,7 @@ sarkas.tools.observables.PressureTensor
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: PressureTensor_mthds
+      :toctree: PressureTensor_methods
 
    
       PressureTensor.__init__

@@ -10,7 +10,7 @@ sarkas.tools.transport.InterDiffusion
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: InterDiffusion_mthds
+      :toctree: InterDiffusion_methods
 
    
       InterDiffusion.__init__

@@ -10,7 +10,7 @@ sarkas.tools.observables.RadialDistributionFunction
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: RadialDistributionFunction_mthds
+      :toctree: RadialDistributionFunction_methods
 
    
       RadialDistributionFunction.__init__

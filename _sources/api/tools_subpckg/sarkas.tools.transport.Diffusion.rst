@@ -10,7 +10,7 @@ sarkas.tools.transport.Diffusion
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: Diffusion_mthds
+      :toctree: Diffusion_methods
 
    
       Diffusion.__init__

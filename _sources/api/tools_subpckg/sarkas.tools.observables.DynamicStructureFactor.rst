@@ -10,7 +10,7 @@ sarkas.tools.observables.DynamicStructureFactor
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: DynamicStructureFactor_mthds
+      :toctree: DynamicStructureFactor_methods
 
    
       DynamicStructureFactor.__init__

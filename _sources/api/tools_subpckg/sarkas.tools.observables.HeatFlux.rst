@@ -10,7 +10,7 @@ sarkas.tools.observables.HeatFlux
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: HeatFlux_mthds
+      :toctree: HeatFlux_methods
 
    
       HeatFlux.__init__

@@ -10,7 +10,7 @@ sarkas.utilities.tests.test\_fdints.TestFDMH
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: TestFDMH_mthds
+      :toctree: TestFDMH_methods
 
    
       TestFDMH.__init__

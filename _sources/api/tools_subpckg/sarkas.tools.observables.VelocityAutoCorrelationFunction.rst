@@ -10,7 +10,7 @@ sarkas.tools.observables.VelocityAutoCorrelationFunction
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: VelocityAutoCorrelationFunction_mthds
+      :toctree: VelocityAutoCorrelationFunction_methods
 
    
       VelocityAutoCorrelationFunction.__init__

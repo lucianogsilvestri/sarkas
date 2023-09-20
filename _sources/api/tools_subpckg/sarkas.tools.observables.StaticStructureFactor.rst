@@ -10,7 +10,7 @@ sarkas.tools.observables.StaticStructureFactor
    .. rubric:: Methods
 
    .. autosummary::
-      :toctree: StaticStructureFactor_mthds
+      :toctree: StaticStructureFactor_methods
 
    
       StaticStructureFactor.__init__
