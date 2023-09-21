@@ -4744,7 +4744,7 @@ document.write(`
             <span class="c1"># The Temperature fluctuations in an NVE ensemble are</span>
             <span class="c1"># &lt; delta T^2&gt; = T_desired^2 * ( 2 /(Np * Dims) ) *( 1 -  Np * Dims/2 * k_B/Cv)</span>
             <span class="c1"># where Cv is the heat capacity at constant volume.</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">calculate_heat_capacity</span><span class="p">(</span><span class="n">ensemble</span><span class="o">=</span><span class="s2">&quot;NVE&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">calculate_heat_capacity_simulation</span><span class="p">(</span><span class="n">ensemble</span><span class="o">=</span><span class="s2">&quot;NVE&quot;</span><span class="p">)</span>
             <span class="n">dN</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_num_ptcls</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">dimensions</span>
             <span class="n">factor</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">dN</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">kB</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">specific_heat_volume</span>
             <span class="n">T_std</span> <span class="o">=</span> <span class="n">T_desired</span> <span class="o">*</span> <span class="n">sqrt</span><span class="p">(</span><span class="mf">2.0</span> <span class="o">/</span> <span class="n">dN</span> <span class="o">*</span> <span class="n">factor</span><span class="p">)</span>
@@ -6862,7 +6862,7 @@ By MurilloGroup
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Sep 20, 2023.
+  Last updated on Sep 21, 2023.
   <br/>
 </p>
   </div>
