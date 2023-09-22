@@ -742,15 +742,15 @@ document.write(`
 <section id="pressure-tensor">
 <h2>Pressure Tensor<a class="headerlink" href="#pressure-tensor" title="Permalink to this heading">#</a></h2>
 <p>The viscosity is obtained from the autocorrelation function of the Pressure Tensor <span class="math notranslate nohighlight">\(\overleftrightarrow{\mathcal P}\)</span> whose elements are</p>
-<div class="amsmath math notranslate nohighlight" id="equation-8771941b-814a-4c95-b9cc-c07e6ce0b31e">
-<span class="eqno">(1)<a class="headerlink" href="#equation-8771941b-814a-4c95-b9cc-c07e6ce0b31e" title="Permalink to this equation">#</a></span>\[\begin{equation}
+<div class="amsmath math notranslate nohighlight" id="equation-a368b826-9063-4bf3-b513-0066e3300915">
+<span class="eqno">(1)<a class="headerlink" href="#equation-a368b826-9063-4bf3-b513-0066e3300915" title="Permalink to this equation">#</a></span>\[\begin{equation}
 \mathcal P_{\alpha\gamma}(t) = \frac{1}{V} \sum_{i}^{N} \left [ m_i v^{\alpha}_{i} v^{\gamma}_{i} -  \sum_{j &gt; i} \frac{r_{ij}^{\alpha} r_{ij}^{\gamma} }{r_{ij}} \frac{d}{dr}\phi(r) \right ],
 \end{equation}\]</div>
 <p>where <span class="math notranslate nohighlight">\(r_{ij}^{\alpha}\)</span> is the <span class="math notranslate nohighlight">\(\alpha\)</span> component of the distance between particles <span class="math notranslate nohighlight">\(i\)</span> and <span class="math notranslate nohighlight">\(j\)</span>. The first term is the kinetic term and the second term is the virial term, but it is often referred to as the potential contribution. The virial is calculated during the simulation phase and saved together with particles corrdinates.</p>
 <p>In order to check that our code are correct, let’s verify some laws.</p>
 <p>The pressure of the system is calculated from <span class="math notranslate nohighlight">\(\mathcal P(t)= \frac1{3} {\rm Tr} \overleftrightarrow{\mathcal P}(t)\)</span> and also from</p>
-<div class="amsmath math notranslate nohighlight" id="equation-69d9e077-c34e-4569-9971-2b5d932c6857">
-<span class="eqno">(2)<a class="headerlink" href="#equation-69d9e077-c34e-4569-9971-2b5d932c6857" title="Permalink to this equation">#</a></span>\[\begin{equation}
+<div class="amsmath math notranslate nohighlight" id="equation-6712ae81-db1c-483b-9483-436403f0b8e3">
+<span class="eqno">(2)<a class="headerlink" href="#equation-6712ae81-db1c-483b-9483-436403f0b8e3" title="Permalink to this equation">#</a></span>\[\begin{equation}
 P = \frac{n}{\beta} - \frac{2\pi}{3} n^2 \int_0^{\infty} dr \, r^3 \frac{d\phi(r)}{dr} g(r)
 \end{equation}\]</div>
 <p>where <span class="math notranslate nohighlight">\(g(r)\)</span> is the pair distribution function that we have already calculated.</p>
@@ -940,19 +940,19 @@ I_1 = 2\pi n \int dr \, g(r) r^3 \frac{d\phi}{dr}, \quad I_2 = 2\pi n \int dr\, 
 <section id="viscosity">
 <h2>Viscosity<a class="headerlink" href="#viscosity" title="Permalink to this heading">#</a></h2>
 <p>The shear viscosity is calculated from the Green-Kubo relation</p>
-<div class="amsmath math notranslate nohighlight" id="equation-ef9c966b-619c-4f1a-a765-383dc9af95b6">
-<span class="eqno">(3)<a class="headerlink" href="#equation-ef9c966b-619c-4f1a-a765-383dc9af95b6" title="Permalink to this equation">#</a></span>\[\begin{equation}
+<div class="amsmath math notranslate nohighlight" id="equation-e107daff-d914-428d-bfbe-8e11262bef31">
+<span class="eqno">(3)<a class="headerlink" href="#equation-e107daff-d914-428d-bfbe-8e11262bef31" title="Permalink to this equation">#</a></span>\[\begin{equation}
 \eta = \frac{\beta V}{3} \sum_{\alpha} \sum_{\gamma \neq \alpha} \int_0^{\infty} dt \, \left \langle \mathcal P_{\alpha\gamma}(t) \mathcal P_{\alpha\gamma}(0) \right \rangle,
 \end{equation}\]</div>
 <p>where <span class="math notranslate nohighlight">\(\beta = 1/k_B T\)</span>, <span class="math notranslate nohighlight">\(\alpha,\gamma = {x, y, z}\)</span>.</p>
 <p>The bulk viscosity is given by a similar relation</p>
-<div class="amsmath math notranslate nohighlight" id="equation-b7cf9807-9d66-4e60-8ddc-646ee83397f6">
-<span class="eqno">(4)<a class="headerlink" href="#equation-b7cf9807-9d66-4e60-8ddc-646ee83397f6" title="Permalink to this equation">#</a></span>\[\begin{equation}
+<div class="amsmath math notranslate nohighlight" id="equation-9f3e1fdf-e59d-488b-afd8-742e5c66ce10">
+<span class="eqno">(4)<a class="headerlink" href="#equation-9f3e1fdf-e59d-488b-afd8-742e5c66ce10" title="Permalink to this equation">#</a></span>\[\begin{equation}
 \eta_V = \beta V \int_0^{\infty}dt \,  \left \langle \delta \mathcal P(t) \delta \mathcal P(0) \right \rangle,
 \end{equation}\]</div>
 <p>where</p>
-<div class="amsmath math notranslate nohighlight" id="equation-dc8b4358-6193-4710-846f-8a30be2ab051">
-<span class="eqno">(5)<a class="headerlink" href="#equation-dc8b4358-6193-4710-846f-8a30be2ab051" title="Permalink to this equation">#</a></span>\[\begin{equation}
+<div class="amsmath math notranslate nohighlight" id="equation-87e3bea5-ea52-412a-bf7f-509e75498c7d">
+<span class="eqno">(5)<a class="headerlink" href="#equation-87e3bea5-ea52-412a-bf7f-509e75498c7d" title="Permalink to this equation">#</a></span>\[\begin{equation}
 \delta \mathcal P(t) = \mathcal P(t) - \left \langle \mathcal P  \right \rangle
 \end{equation}\]</div>
 <p>is the deviation of the scalar pressure.</p>
@@ -1165,7 +1165,7 @@ By MurilloGroup
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Sep 21, 2023.
+  Last updated on Sep 22, 2023.
   <br/>
 </p>
   </div>

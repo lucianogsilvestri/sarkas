@@ -659,8 +659,9 @@ document.write(`
         <span class="s2">&quot;Pressure&quot;</span><span class="p">:</span> <span class="s2">&quot;Pa&quot;</span><span class="p">,</span>
         <span class="s2">&quot;Electrical Conductivity&quot;</span><span class="p">:</span> <span class="s2">&quot;S/m&quot;</span><span class="p">,</span>
         <span class="s2">&quot;Diffusion&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;m$^2$/s&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;Bulk Viscosity&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;kg/m s&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;Shear Viscosity&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;kg/m s&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Bulk Viscosity&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;kg/m-s&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Shear Viscosity&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;kg/m-s&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Thermal Conductivity&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;J/m-s-K&quot;</span><span class="p">,</span>
         <span class="s2">&quot;none&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
     <span class="p">},</span>
     <span class="c1"># CGS Units</span>
@@ -679,8 +680,9 @@ document.write(`
         <span class="s2">&quot;Pressure&quot;</span><span class="p">:</span> <span class="s2">&quot;Ba&quot;</span><span class="p">,</span>
         <span class="s2">&quot;Electrical Conductivity&quot;</span><span class="p">:</span> <span class="s2">&quot;mho/m&quot;</span><span class="p">,</span>
         <span class="s2">&quot;Diffusion&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;m$^2$/s&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;Bulk Viscosity&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;g/ cm s&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;Shear Viscosity&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;g/ cm s&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Bulk Viscosity&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;g/cm-s&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Shear Viscosity&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;g/cm-s&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Thermal Conductivity&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;erg/cm-s-K&quot;</span><span class="p">,</span>
         <span class="s2">&quot;none&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
     <span class="p">},</span>
 <span class="p">]</span>
@@ -1643,6 +1645,7 @@ document.write(`
 
             <span class="n">msg</span> <span class="o">+=</span> <span class="p">(</span>
                 <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">ACF Data:</span><span class="se">\n</span><span class="s2">&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;If you choose to set equal_number_time_samples=True in compute_acf() then the following applies. Otherwise, the above applies.&quot;</span>
                 <span class="sa">f</span><span class="s2">&quot;No. of acf slices = </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">no_slices</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
                 <span class="sa">f</span><span class="s2">&quot;No. dumps per slice = </span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">)</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
                 <span class="sa">f</span><span class="s2">&quot;Largest time lag of the autocorrelation function: tau = </span><span class="si">{</span><span class="n">tau</span><span class="si">:</span><span class="s2">.4e</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">units_dict</span><span class="p">[</span><span class="s1">&#39;time&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> ~ </span><span class="si">{</span><span class="n">tau_wp</span><span class="si">}</span><span class="s2"> plasma periods</span><span class="se">\n\n</span><span class="s2">&quot;</span>
@@ -1749,7 +1752,7 @@ document.write(`
         <span class="bp">self</span><span class="o">.</span><span class="n">dataframe</span><span class="o">.</span><span class="n">to_hdf</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename_hdf</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;w&quot;</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span></div>
 
 <div class="viewcode-block" id="Observable.save_acf_hdf"><a class="viewcode-back" href="../../../api/tools_subpckg/Observable_methods/sarkas.tools.observables.Observable.save_acf_hdf.html#sarkas.tools.observables.Observable.save_acf_hdf">[docs]</a>    <span class="k">def</span> <span class="nf">save_acf_hdf</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-
+   
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf</span><span class="o">.</span><span class="n">columns</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">MultiIndex</span><span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="n">MultiIndex</span><span class="o">.</span><span class="n">from_tuples</span><span class="p">([</span><span class="nb">tuple</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">))</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf</span><span class="o">.</span><span class="n">columns</span><span class="p">])</span>
 
@@ -2959,7 +2962,7 @@ document.write(`
         <span class="bp">self</span><span class="o">.</span><span class="n">update_finish</span><span class="p">()</span></div>
 
 <div class="viewcode-block" id="HeatFlux.compute"><a class="viewcode-back" href="../../../api/tools_subpckg/HeatFlux_methods/sarkas.tools.observables.HeatFlux.compute.html#sarkas.tools.observables.HeatFlux.compute">[docs]</a>    <span class="nd">@compute_doc</span>
-    <span class="k">def</span> <span class="nf">compute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">calculate_acf</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">compute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">calculate_acf</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
 
         <span class="n">t0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">timer</span><span class="o">.</span><span class="n">current</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">calc_slices_data</span><span class="p">()</span>
@@ -3339,7 +3342,7 @@ document.write(`
         <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf_slices</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="n">acf_slice_df_column_names</span><span class="p">)</span></div>
 
 <div class="viewcode-block" id="PressureTensor.compute"><a class="viewcode-back" href="../../../api/tools_subpckg/PressureTensor_methods/sarkas.tools.observables.PressureTensor.compute.html#sarkas.tools.observables.PressureTensor.compute">[docs]</a>    <span class="nd">@compute_doc</span>
-    <span class="k">def</span> <span class="nf">compute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">calculate_acf</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">kin_pot_division</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">compute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">calculate_acf</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">kin_pot_division</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">kinetic_potential_division</span> <span class="o">=</span> <span class="n">kin_pot_division</span>
         <span class="n">t0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">timer</span><span class="o">.</span><span class="n">current</span><span class="p">()</span>
@@ -3530,7 +3533,7 @@ document.write(`
             <span class="c1"># Unfortunately I haven&#39;t found a better way to grab the data than to re-read it from file.</span>
             <span class="k">for</span> <span class="n">isl</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span>
                 <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">no_slices</span><span class="p">),</span>
-                <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Calculating </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">__long_name__</span><span class="si">}</span><span class="s2"> for slice &quot;</span><span class="p">,</span>
+                <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Calculating </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">__long_name__</span><span class="si">}</span><span class="s2"> ACF for slice &quot;</span><span class="p">,</span>
                 <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">,</span>
                 <span class="n">position</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
             <span class="p">):</span>
@@ -4403,7 +4406,7 @@ document.write(`
         <span class="n">data_size</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">slice_steps</span><span class="p">)</span>
 
         <span class="c1">### Slices loop</span>
-        <span class="k">for</span> <span class="n">col_name</span><span class="p">,</span> <span class="n">col_data</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulation_dataframe</span><span class="o">.</span><span class="n">iloc</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">iteritems</span><span class="p">():</span>
+        <span class="k">for</span> <span class="n">col_name</span><span class="p">,</span> <span class="n">col_data</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulation_dataframe</span><span class="o">.</span><span class="n">iloc</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
             <span class="n">data_start</span> <span class="o">=</span> <span class="mi">0</span>
             <span class="n">data_end</span> <span class="o">=</span> <span class="n">data_size</span>
             <span class="k">for</span> <span class="n">isl</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">no_slices</span><span class="p">):</span>
@@ -4413,8 +4416,6 @@ document.write(`
                     <span class="n">time_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Quantity_Time&quot;</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">dataframe</span><span class="p">[</span><span class="n">time_str</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_slices</span><span class="p">[</span><span class="n">time_str</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf</span><span class="p">[</span><span class="n">time_str</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf_slices</span><span class="p">[</span><span class="n">time_str</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
                 <span class="n">df_col_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">col_name</span><span class="si">}</span><span class="s2">_slice </span><span class="si">{</span><span class="n">isl</span><span class="si">}</span><span class="s2">&quot;</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_slices</span> <span class="o">=</span> <span class="n">add_col_to_df</span><span class="p">(</span>
@@ -4426,7 +4427,7 @@ document.write(`
             <span class="c1"># end of slice loop</span>
 
 <div class="viewcode-block" id="Thermodynamics.calc_acf_slice_data"><a class="viewcode-back" href="../../../api/tools_subpckg/Thermodynamics_methods/sarkas.tools.observables.Thermodynamics.calc_acf_slice_data.html#sarkas.tools.observables.Thermodynamics.calc_acf_slice_data">[docs]</a>    <span class="nd">@calc_acf_slices_doc</span>
-    <span class="k">def</span> <span class="nf">calc_acf_slice_data</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">calc_acf_slice_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">equal_number_time_samples</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
 
         <span class="c1"># In order to have the same number of timesteps products for each time lag of the ACF do the following.</span>
         <span class="c1"># Temporarily store two consecutive slice data</span>
@@ -4435,7 +4436,7 @@ document.write(`
         <span class="c1"># data_size</span>
         <span class="n">data_size</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">)</span>
 
-        <span class="k">for</span> <span class="n">col_name</span><span class="p">,</span> <span class="n">col_data</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulation_dataframe</span><span class="o">.</span><span class="n">iloc</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">iteritems</span><span class="p">():</span>
+        <span class="k">for</span> <span class="n">col_name</span><span class="p">,</span> <span class="n">col_data</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulation_dataframe</span><span class="o">.</span><span class="n">iloc</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
 
             <span class="n">data_start</span> <span class="o">=</span> <span class="mi">0</span>
             <span class="n">data_end</span> <span class="o">=</span> <span class="n">data_size</span>
@@ -4448,18 +4449,28 @@ document.write(`
                 <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">,</span>
                 <span class="n">position</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
             <span class="p">):</span>
+                <span class="k">if</span> <span class="n">isl</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">time</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulation_dataframe</span><span class="p">[</span><span class="s2">&quot;Time&quot;</span><span class="p">][:</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">]</span>
+                    <span class="n">time_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Quantity_Time&quot;</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf</span><span class="p">[</span><span class="n">time_str</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_acf_slices</span><span class="p">[</span><span class="n">time_str</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
                 <span class="n">data_col</span> <span class="o">=</span> <span class="n">col_data</span><span class="p">[</span><span class="n">data_start</span><span class="p">:</span><span class="n">data_end</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
 
-                <span class="c1"># Auto-correlation function with the same number of time steps for each lag.</span>
-                <span class="k">for</span> <span class="n">it</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span>
-                    <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">),</span>
-                    <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">col_name</span><span class="si">}</span><span class="s2"> ACF time lag&quot;</span><span class="p">,</span>
-                    <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">,</span>
-                    <span class="n">position</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
-                    <span class="n">leave</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-                <span class="p">):</span>
+                <span class="k">if</span> <span class="n">equal_number_time_samples</span><span class="p">:</span>
+                    <span class="c1"># Auto-correlation function with the same number of time steps for each lag.</span>
+                    <span class="k">for</span> <span class="n">it</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span>
+                        <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">),</span>
+                        <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">col_name</span><span class="si">}</span><span class="s2"> ACF time lag&quot;</span><span class="p">,</span>
+                        <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">,</span>
+                        <span class="n">position</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                        <span class="n">leave</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                    <span class="p">):</span>
+                        <span class="n">delta_data</span> <span class="o">=</span> <span class="n">data_col</span><span class="p">[:</span><span class="n">it</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">]</span> <span class="o">-</span> <span class="n">data_col</span><span class="p">[:</span><span class="n">it</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+                        <span class="n">data_acf</span><span class="p">[</span><span class="n">it</span><span class="p">]</span> <span class="o">=</span> <span class="n">correlationfunction</span><span class="p">(</span><span class="n">delta_data</span><span class="p">,</span> <span class="n">delta_data</span><span class="p">)[</span><span class="n">it</span><span class="p">]</span>
+                <span class="k">else</span><span class="p">:</span>
                     <span class="n">delta_data</span> <span class="o">=</span> <span class="n">data_col</span> <span class="o">-</span> <span class="n">data_col</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
-                    <span class="n">data_acf</span><span class="p">[</span><span class="n">it</span><span class="p">]</span> <span class="o">=</span> <span class="n">correlationfunction</span><span class="p">(</span><span class="n">delta_data</span><span class="p">,</span> <span class="n">delta_data</span><span class="p">)[</span><span class="n">it</span><span class="p">]</span>
+                    <span class="n">data_acf</span> <span class="o">=</span> <span class="n">correlationfunction</span><span class="p">(</span><span class="n">delta_data</span><span class="p">,</span> <span class="n">delta_data</span><span class="p">)</span>
 
                 <span class="c1"># Store in the dataframe</span>
                 <span class="n">col_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">col_name</span><span class="si">}</span><span class="s2"> ACF_slice </span><span class="si">{</span><span class="n">isl</span><span class="si">}</span><span class="s2">&quot;</span>
@@ -6862,7 +6873,7 @@ By MurilloGroup
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Sep 21, 2023.
+  Last updated on Sep 22, 2023.
   <br/>
 </p>
   </div>

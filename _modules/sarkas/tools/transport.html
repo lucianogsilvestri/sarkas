@@ -902,8 +902,8 @@ document.write(`
         <span class="c1"># ax1.legend(loc=&#39;best&#39;)</span>
         <span class="c1"># ax2.legend(loc=&#39;best&#39;)</span>
         <span class="c1"># Finish the index axes</span>
-        <span class="n">ax3</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlim</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span> <span class="o">*</span> <span class="mf">1.5</span><span class="p">),</span> <span class="n">xscale</span><span class="o">=</span><span class="s2">&quot;log&quot;</span><span class="p">)</span>
-        <span class="n">ax4</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlim</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf_slice_steps</span> <span class="o">*</span> <span class="mf">1.5</span><span class="p">),</span> <span class="n">xscale</span><span class="o">=</span><span class="s2">&quot;log&quot;</span><span class="p">)</span>
+        <span class="n">ax3</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlim</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">time</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1.5</span><span class="p">),</span> <span class="n">xscale</span><span class="o">=</span><span class="s2">&quot;log&quot;</span><span class="p">)</span>
+        <span class="n">ax4</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlim</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">time</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1.5</span><span class="p">),</span> <span class="n">xscale</span><span class="o">=</span><span class="s2">&quot;log&quot;</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">axi</span> <span class="ow">in</span> <span class="p">[</span><span class="n">ax3</span><span class="p">,</span> <span class="n">ax4</span><span class="p">]:</span>
             <span class="n">axi</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
             <span class="n">axi</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlabel</span><span class="o">=</span><span class="s2">&quot;Index&quot;</span><span class="p">)</span>
@@ -1464,8 +1464,9 @@ document.write(`
 
         <span class="n">start_steps</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="n">end_steps</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">time_steps</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time_array</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">isl</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">no_slices</span><span class="p">),</span> <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="n">observable</span><span class="o">.</span><span class="n">verbose</span><span class="p">):</span>
-            <span class="n">end_steps</span> <span class="o">+=</span> <span class="n">observable</span><span class="o">.</span><span class="n">acf_slice_steps</span>
+            <span class="n">end_steps</span> <span class="o">+=</span> <span class="n">time_steps</span>
 
             <span class="n">const</span> <span class="o">=</span> <span class="n">observable</span><span class="o">.</span><span class="n">box_volume</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">beta_slice</span><span class="p">[</span><span class="n">isl</span><span class="p">]</span>
             <span class="c1"># Calculate Bulk Viscosity</span>
@@ -1486,7 +1487,7 @@ document.write(`
                         <span class="n">col_data</span> <span class="o">=</span> <span class="n">const</span> <span class="o">*</span> <span class="n">fast_integral_loop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time_array</span><span class="p">,</span> <span class="n">integrand</span><span class="p">)</span>
                         <span class="bp">self</span><span class="o">.</span><span class="n">dataframe_slices</span> <span class="o">=</span> <span class="n">add_col_to_df</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dataframe_slices</span><span class="p">,</span> <span class="n">col_data</span><span class="p">,</span> <span class="n">col_name</span><span class="p">)</span>
 
-            <span class="n">start_steps</span> <span class="o">+=</span> <span class="n">observable</span><span class="o">.</span><span class="n">acf_slice_steps</span>
+            <span class="n">start_steps</span> <span class="o">+=</span> <span class="n">time_steps</span>
 
         <span class="c1"># Now average the slices</span>
         <span class="n">col_str</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;Bulk Viscosity_slice </span><span class="si">{</span><span class="n">isl</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">isl</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">observable</span><span class="o">.</span><span class="n">no_slices</span><span class="p">)]</span>
@@ -1998,7 +1999,7 @@ By MurilloGroup
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Sep 21, 2023.
+  Last updated on Sep 22, 2023.
   <br/>
 </p>
   </div>
