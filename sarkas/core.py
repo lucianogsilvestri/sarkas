@@ -612,7 +612,7 @@ class Parameters:
         self.species_plasma_frequencies = zeros(self.num_species)
         self.species_couplings = zeros(self.num_species)
 
-        if self.potential_type == "lj":
+        if self.potential_type in ["lj", "lennardjones"]:
             self.species_lj_sigmas = zeros(self.num_species)
 
         # Initialization of attributes
@@ -639,7 +639,7 @@ class Parameters:
             wp_tot_sq += sp.plasma_frequency**2
             lambda_D += sp.debye_length**2
 
-            if self.potential_type == "lj":
+            if self.potential_type in ["lj", "lennardjones"]:
                 self.species_lj_sigmas[i] = sp.sigma
 
         self.total_mass_density = self.species_masses.transpose() @ self.species_num_dens

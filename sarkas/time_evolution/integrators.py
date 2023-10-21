@@ -238,8 +238,8 @@ class Integrator:
             self.production_type = self.type
 
         self.boundary_condition_setup()
-
-        self.pot_acc_setup(potential)
+        self.potential_type = potential.type
+        # self.pot_acc_setup(potential)
 
     def pot_acc_setup(self, potential):
         """
@@ -409,7 +409,7 @@ class Integrator:
         self.v_B = zeros((self.total_num_ptcls, 3))
         self.v_F = zeros((self.total_num_ptcls, 3))
 
-    def langevin(self, ptcls):
+    def langevin(self, ptcls, algorithm, potential):
         """
         Update particles class using the velocity verlet algorithm and Langevin damping.
 
@@ -439,7 +439,8 @@ class Integrator:
         self.enforce_bc(ptcls)
 
         acc_old = ptcls.acc.copy()
-        self.update_accelerations(ptcls)
+        # self.update_accelerations(ptcls)
+        algorithm.update(ptcls, potential)
 
         sp_start = 0
         sp_end = 0
@@ -456,7 +457,7 @@ class Integrator:
             )
             sp_start += num
 
-    def verlet(self, ptcls):
+    def verlet(self, ptcls, algorithm, potential):
         """
         Update particles' class based on velocity verlet algorithm.
         More information can be found here: https://en.wikipedia.org/wiki/Verlet_integration
@@ -475,7 +476,8 @@ class Integrator:
         # Enforce boundary condition
         self.enforce_bc(ptcls)
         # Compute total potential energy and acceleration for second half step velocity update
-        self.update_accelerations(ptcls)
+        # self.update_accelerations(ptcls)
+        algorithm.update(ptcls, potential)
         # Second half step velocity update
         ptcls.vel += 0.5 * ptcls.acc * self.dt
 
@@ -1276,3 +1278,245 @@ def enforce_rbc(pos, vel, box_vector, dt):
                 vel[p, d] *= -1.0
                 # Restore previous position assuming verlet algorithm
                 pos[p, d] += vel[p, d] * dt
+
+
+# class VelocityVerlet(Integrator):
+
+#     def __init__(self):
+#         super().__init__()
+
+#     def update(self, ptcls, algorithm, potential):
+#         """
+#         Update particles' class based on velocity verlet algorithm.
+#         More information can be found here: https://en.wikipedia.org/wiki/Verlet_integration
+#         or on the Sarkas website.
+
+#         Parameters
+#         ----------
+#         ptcls: :class:`sarkas.particles.Particles`
+#             Particles data.
+
+        
+#         """
+#         # First half step velocity update
+#         ptcls.vel += 0.5 * ptcls.acc * self.dt
+#         # Full step position update
+#         ptcls.pos += ptcls.vel * self.dt
+#         # Enforce boundary condition
+#         self.enforce_bc(ptcls)
+#         # Compute total potential energy and acceleration for second half step velocity update
+#         # self.update_accelerations(ptcls)
+#         algorithm.update(ptcls, potential)
+#         # Second half step velocity update
+#         ptcls.vel += 0.5 * ptcls.acc * self.dt
+
+# class Langevin(Integrator):
+    
+
+#     def setup(self, params):
+
+#         super().setup(params)
+
+#         self.kB = params.kB
+#         self.thermostat_temperatures = params.thermostat_temperatures
+#         self.species_masses = params.species_masses
+
+#         self.sigma = sqrt(2.0 * self.langevin_gamma * self.kB * self.thermostat_temperatures / self.species_masses)
+#         self.c1 = 1.0 - 0.5 * self.langevin_gamma * self.dt
+#         self.c2 = 1.0 / (1.0 + 0.5 * self.langevin_gamma * self.dt)
+
+#     def update(self, ptcls, algorithm, potential):
+#         """
+#         Update particles class using the velocity verlet algorithm and Langevin damping.
+
+#         Parameters
+#         ----------
+#         ptcls: :class:`sarkas.particles.Particles`
+#             Particles data.
+
+
+#         """
+
+#         beta = ptcls.gaussian(0.0, 1.0, (self.total_num_ptcls, self.dimensions))
+#         sp_start = 0  # start index for species loop
+#         sp_end = 0
+
+#         for ic, num in enumerate(self.species_num):
+#             sp_end += num
+
+#             ptcls.pos[sp_start:sp_end, : self.dimensions] += (
+#                 self.c1 * self.dt * ptcls.vel[sp_start:sp_end, : self.dimensions]
+#                 + 0.5 * self.dt**2 * ptcls.acc[sp_start:sp_end, : self.dimensions]
+#                 + 0.5 * self.sigma[ic] * self.dt**1.5 * beta[sp_start:sp_end, : self.dimensions]
+#             )
+#             sp_start += num
+
+#         # Enforce boundary condition
+#         self.enforce_bc(ptcls)
+
+#         acc_old = ptcls.acc.copy()
+#         # self.update_accelerations(ptcls)
+#         algorithm.update(ptcls, potential)
+
+#         sp_start = 0
+#         sp_end = 0
+#         for ic, num in enumerate(self.species_num):
+#             sp_end += num
+
+#             ptcls.vel[sp_start:sp_end, : self.dimensions] = (
+#                 self.c1 * self.c2 * ptcls.vel[sp_start:sp_end, : self.dimensions]
+#                 + 0.5
+#                 * self.c2
+#                 * self.dt
+#                 * (ptcls.acc[sp_start:sp_end, : self.dimensions] + acc_old[sp_start:sp_end, : self.dimensions])
+#                 + self.c2 * self.sigma[ic] * sqrt(self.dt) * beta[sp_start:sp_end, : self.dimensions]
+#             )
+#             sp_start += num
+
+# class MagneticVerlet(Integrator):
+
+#     def setup(self, params):
+
+#         super().setup(params)
+
+#         self.magnetized = True
+#         self.magnetic_field = params.magnetic_field.copy()
+#         self.species_cyclotron_frequencies = params.species_cyclotron_frequencies.copy()
+
+#         # Create the unit vector of the magnetic field
+#         self.magnetic_field_uvector = self.magnetic_field / norm(self.magnetic_field)
+#         self.omega_c = zeros((self.total_num_ptcls, 3))
+
+#         sp_start = 0
+#         sp_end = 0
+#         for ic, sp_np in enumerate(self.species_num):
+#             sp_end += sp_np
+#             self.omega_c[sp_start:sp_end, :] = self.species_cyclotron_frequencies[ic]
+#             sp_start += sp_np
+
+#         # array to temporary store velocities
+#         # Luciano: I have the vague doubt that allocating memory for these arrays is faster than calculating them
+#         # each time step
+#         self.v_B = zeros((self.total_num_ptcls, 3))
+#         self.v_F = zeros((self.total_num_ptcls, 3))
+
+#         # Calculate functions for magnetic integrator
+#         # This could be used when the generalization to Forest-Ruth and MacLachlan algorithms will be implemented
+#         # In a magnetic Velocity-Verlet the coefficient is 1/2, see eq.~(78) in :cite:`Chin2008`
+#         self.magnetic_helpers(coefficient=0.5)
+
+#         if self.magnetic_field_uvector @ array([0.0, 0.0, 1.0]) == 1.0:  # dot product
+#             int_type = "magnetic_verlet_zdir"
+
+#     def update(self, ptcls, algorithm, potential):
+#         """
+#         Update particles' class based on velocity verlet method in the case of an arbitrary direction of the
+#         constant magnetic field. For more info see eq. (78) of Ref. :cite:`Chin2008`
+
+#         Parameters
+#         ----------
+#         ptcls: :class:`sarkas.particles.Particles`
+#             Particles data.
+
+#         Returns
+#         -------
+#         potential_energy : float
+#              Total potential energy.
+
+#         Notes
+#         -----
+#         :cite:`Chin2008` equations are written for a negative charge. This allows him to write
+#         :math:`\\dot{\\mathbf v} = \\omega_c \\hat{B} \\times \\mathbf v`. In the case of positive charges we will have
+#         :math:`\\dot{\\mathbf v} = - \\omega_c \\hat{B} \\times \\mathbf v`.
+#         Hence the reason of the different signs in the formulas below compared to Chin's.
+
+#         Warnings
+#         --------
+#         This integrator is valid for a magnetic field in an arbitrary direction. However, while the integrator works for
+#         an arbitrary direction, methods in :mod:`sarkas.tools.observables` work only for a magnetic field in the
+#         :math:`z` - direction. Hence, if you choose to use this integrator remember to change your physical observables.
+
+#         """
+#         # Calculate the cross products
+#         b_cross_v = cross(self.magnetic_field_uvector, ptcls.vel)
+#         b_cross_b_cross_v = cross(self.magnetic_field_uvector, b_cross_v)
+#         b_cross_a = cross(self.magnetic_field_uvector, ptcls.acc)
+#         b_cross_b_cross_a = cross(self.magnetic_field_uvector, b_cross_a)
+
+#         # First half step of velocity update
+#         ptcls.vel += -self.sdt * b_cross_v + self.ccodt * b_cross_b_cross_v
+
+#         ptcls.vel += (
+#             0.5 * ptcls.acc * self.dt
+#             - self.ccodt / self.omega_c * b_cross_a
+#             + 0.5 * self.dt * self.ssodt * b_cross_b_cross_a
+#         )
+
+#         # Position update
+#         ptcls.pos += ptcls.vel * self.dt
+
+#         # Enforce boundary condition
+#         self.enforce_bc(ptcls)
+
+#         # Compute total potential energy and acceleration for second half step velocity update
+#         # self.update_accelerations(ptcls)
+#         algorithm.update(ptcls, potential)
+
+#         # Re-calculate the cross products
+#         b_cross_v = cross(self.magnetic_field_uvector, ptcls.vel)
+#         b_cross_b_cross_v = cross(self.magnetic_field_uvector, b_cross_v)
+#         b_cross_a = cross(self.magnetic_field_uvector, ptcls.acc)
+#         b_cross_b_cross_a = cross(self.magnetic_field_uvector, b_cross_a)
+
+#         # Second half step velocity update
+#         ptcls.vel += -self.sdt * b_cross_v + self.ccodt * b_cross_b_cross_v
+
+#         ptcls.vel += (
+#             0.5 * ptcls.acc * self.dt
+#             - self.ccodt / self.omega_c * b_cross_a
+#             + 0.5 * self.dt * self.ssodt * b_cross_b_cross_a
+#         )
+
+
+# class PeriodicBoundaryConditions():
+
+#     def setup(self, params):
+
+#         self.box_lengths = params.box_lengths
+
+#     def update(self, ptcls):
+
+#         self.enforce_pbc(ptcls.pos, ptcls.pbc_cntr, ptcls.box_lengths)
+
+#     @staticmethod
+#     @jit(void(float64[:, :], float64[:, :], float64[:]), nopython=True)
+#     def enforce_pbc(pos, cntr, box_vector):
+#         """
+#         Numba'd function to enforce periodic boundary conditions.
+
+#         Parameters
+#         ----------
+#         pos : numpy.ndarray
+#             Particles' positions.
+
+#         cntr : numpy.ndarray
+#             Counter for the number of times each particle get folded back into the main simulation box
+
+#         box_vector : numpy.ndarray
+#             Box Dimensions.
+
+#         """
+
+#         # Loop over all particles
+#         for p in arange(pos.shape[0]):
+#             for d in arange(pos.shape[1]):
+
+#                 # If particle is outside of box in positive direction, wrap to negative side
+#                 # if pos[d,p] > box_vector[d]:
+#                 pos[p, d] -= box_vector[d] * (pos[p, d] > box_vector[d])
+#                 cntr[p, d] += 1 * (pos[p, d] > box_vector[d])
+#                 # If particle is outside of box in negative direction, wrap to positive side
+#                 # if pos[d,p] < 0.0:
+#                 pos[p, d] += box_vector[d] * (pos[p, d] < 0.0)
+#                 cntr[p, d] -= 1 * (pos[p, d] < 0.0)
+

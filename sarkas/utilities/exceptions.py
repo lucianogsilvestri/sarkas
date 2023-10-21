@@ -27,13 +27,20 @@ class TimerError(Exception):
 
 # ^^^^^^^^^^^^ Base Exceptions should be defined above this comment ^^^^^^^^^^^^
 
-
 class AlgorithmError(SarkasError):
     """The base error for errors related to the chosen algorithm."""
 
 
 class ParticlesError(SarkasError):
     """The base error for errors related to the Particles class."""
+
+
+class PotentialError(SarkasError):
+    """The base error for errors related to the Potential class."""
+
+
+class InputFileError(SarkasError):
+    """The base error for errors related to reading the input yaml file and/or other inputs."""
 
 
 # ------------------------------------------------------------------------------

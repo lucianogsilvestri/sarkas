@@ -317,7 +317,7 @@ class InputOutput:
 
         for i in trange(dump_start, dump_end, dump_skip, disable=not self.verbose):
             dump = dumps_dict[i]
-            data = self.read_npz(dump_dir, dump)
+            data = self.read_particles_npz(dump_dir, dump)
             data["pos_x"] *= pscale
             data["pos_y"] *= pscale
             data["pos_z"] *= pscale
@@ -1045,7 +1045,7 @@ class InputOutput:
         simulation : :class:`sarkas.processes.Process`
             Process class containing MD run info to save.
         """
-        file_list = ["parameters", "integrator", "potential", "species"]
+        file_list = ["parameters", "algorithm", "integrator", "potential", "species"]
 
         # Redirect to the correct process folder
         if self.process == "preprocessing":
@@ -1241,7 +1241,7 @@ class InputOutput:
 
                 print(f"No. of species = {len(simulation.parameters.species_num)}")
                 # This line below is to prevent printing electron background in the case of LJ potential
-                species_to_print = simulation.species[:-1] if simulation.potential.type == "lj" else simulation.species
+                species_to_print = simulation.species[:-1] if simulation.potential.type in ["lj", "lennardjones"] else simulation.species
                 for isp, sp in enumerate(species_to_print):
                     if sp.name != "electron_background":
                         print("Species ID: {}".format(isp))
@@ -1251,6 +1251,8 @@ class InputOutput:
                 simulation.parameters.pretty_print()
                 # Potential Info
                 simulation.potential.pretty_print()
+                # Algorithm Info
+                simulation.algorithm.pretty_print()
                 # Integrator
                 simulation.integrator.pretty_print()
 

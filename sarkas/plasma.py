@@ -357,7 +357,7 @@ class Species:
             msg += elec_mag_msg
 
         else:
-            if potential_type == "lj":
+            if potential_type in ["lj", "lennardjones"] or hasattr(self, "sigma") or hasattr(self, "epsilon"):
                 pot_msg = (
                     f"\tEpsilon = {self.epsilon:.6e} {energy_units}\n"
                     f"\tSigma = {self.sigma:.6e} {length_units}\n"

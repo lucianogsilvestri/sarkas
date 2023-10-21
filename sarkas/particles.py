@@ -944,14 +944,13 @@ class Particles:
 
         data = np_load(file_name, allow_pickle=True)
 
-        self.pos = data["pos"]
-        self.vel = data["vel"]
-        self.acc = data["acc"]
+        for key, values in data.items():
+            self.__dict__[key] = values
 
-        self.rdf_hist = data["rdf_hist"]
+        # self.rdf_hist = data["rdf_hist"]
 
-        if "cntr" in data.files:
-            self.pbc_cntr = data["cntr"]
+        # if "cntr" in data.files:
+        #     self.pbc_cntr = data["cntr"]
 
     def calculate_electric_current(self):
         """Calculate the electric current of each particle and store it into :attr:`electric_current`."""
@@ -992,12 +991,12 @@ class Particles:
     #     self.pressure /= self.box_volume
 
     def calculate_species_electric_current(self):
-        """Calculate the energy current of each species from :attr:`heat_flux_species_tensor` and stores it into :attr:`species_heat_flux`.\n
+        """Calculate the electric current of each species stores it into :attr:`species_electric_current`.\n
         Note that :attr:`heat_flux_species_tensor` is calculated in the force loop if requested."""
         self.species_electric_current = self.species_charges * vector_species_loop(self.vel, self.species_num)
 
     def calculate_species_heat_flux(self):
-        """Calculate the energy current of each species from :attr:`heat_flux_species_tensor` and stores it into :attr:`species_heat_flux`.\n
+        """Calculate the heat flux of each species from :attr:`heat_flux_species_tensor` and stores it into :attr:`species_heat_flux`.\n
         Note that :attr:`heat_flux_species_tensor` is calculated in the force loop if requested."""
         self.species_heat_flux = vector_cross_species_loop(self.heat_flux_species_tensor, self.species_num)
 

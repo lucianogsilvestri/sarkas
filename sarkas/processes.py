@@ -38,13 +38,13 @@ from warnings import warn
 from .core import Parameters
 from .particles import Particles
 from .plasma import Species
-from .potentials.core import Potential
 from .time_evolution.integrators import Integrator
 
 # Sarkas modules
 from .utilities.io import InputOutput, print_to_logger
 from .utilities.maths import force_error_analytic_pp, force_error_approx_pppm
 from .utilities.timing import SarkasTimer
+from .utilities.exceptions import InputFileError
 
 
 class Process:
@@ -85,12 +85,11 @@ class Process:
     """
 
     def __init__(self, input_file: str = None):
-        self.potential = Potential()
+        self.potential = None
         self.integrator = Integrator()
         self.parameters = Parameters()
         self.particles = Particles()
-
-        self.species = []  # Deprecated
+        self.algorithm = None
         self.species = []
         self.threads_ls = []
         self.observables_dict = {}
@@ -193,7 +192,74 @@ class Process:
                 # self.__dict__[lkey.lower()].__dict__.update(vals)
 
                 if lkey == "Potential":
-                    self.potential.from_dict(nested_dict[lkey])
+                    
+                    package_name = f"sarkas.potentials" 
+                    module_name = f".{vals['type'].lower()}"
+                    vals["type"] = vals["type"].lower()
+                    if vals["type"] in ["lj", "lennardjones", "mie"]:
+                        potential_type = "LennardJones"
+                    elif vals["type"] in ["yukawa_sr", "yukawa_lr"]:
+                        potential_type = vals["type"].capitalize()
+                        potential_type = f"{potential_type[:-2]}{potential_type[-2:].swapcase()}"
+                    elif vals["type"] == 'yukawa':
+                        potential_type = vals["type"].capitalize()
+                        if vals["method"].lower() not in ["pppm", "p3m", "pm"]:
+                            potential_type = f"{potential_type}_SR"
+                        else:
+                            potential_type = f"{potential_type}_LR"
+
+                    # Catch an error that would otherwise be confusing for the user and raise a more detailed error
+                    try:
+                        module = import_module(module_name, package=package_name)
+                    except ModuleNotFoundError:
+                        raise InputFileError(
+                            f"No potential module with name {module_name} found. This type of error is usually due to mispelling and or capitalization. Check your input file"
+                        )
+
+                    # Catch an error that would otherwise be confusing for the user and raise a more detailed error
+                    try:
+                        class_name = getattr(module, potential_type)
+                    except AttributeError:
+                        raise InputFileError(
+                            f"No potential class with name {potential_type} found in {module_name}. Check the spelling and capitalization of your potential type."
+                        )
+
+                    self.potential = class_name()
+                    self.potential.from_dict(vals)
+
+                elif lkey == "Algorithm":
+                    package_name = f"sarkas.potentials" 
+                    module_name = f".algorithms"
+
+                    # Catch an error that would otherwise be confusing for the user and raise a more detailed error
+                    try:
+                        module = import_module(module_name, package=package_name)
+                    except ModuleNotFoundError:
+                        raise InputFileError(
+                            f"No algorithm module with name {module_name} found."
+                            f"This type of error is usually due to mispelling and or capitalization. Check your input file"
+                        )
+
+                    if vals["type"].lower() in ["pp", "lcl", "linked_cell_list"]:
+                        alg_type = "LinkedCellList"
+                        
+                    elif vals["type"].lower() in ["brute", "brute force", "brute_force"]:
+                        alg_type = "BruteForce"
+                        
+                    elif vals["type"].lower() in ["minimum_image", "min_img", "min_image"]:
+                        alg_type = "MinimumImage"
+                        
+                    elif vals["type"].lower() in ["fmm", "fast_multipoles"]:
+                        alg_type = "FastMultipoles"
+                    
+                    # Catch an error that would otherwise be confusing for the user and raise a more detailed error
+                    try:
+                        class_name = getattr(module, alg_type)
+                    except AttributeError:
+                        raise InputFileError(
+                            f"No potential class with name {alg_type} found in {module_name}. Check the spelling and capitalization of your potential type."
+                        )
+                    self.algorithm = class_name()
 
                 elif lkey == "Integrator":
                     self.integrator.from_dict(nested_dict[lkey])
@@ -224,6 +290,43 @@ class Process:
                         self.transport_dict[inst.__long_name__] = inst
                         self.transport_dict[inst.__long_name__].from_dict(params)
 
+        # Backwards compatibility. Old input files might not have an Algorithm class defined,
+        #  but they have the information inside the potential class. 
+        if self.algorithm is None:
+            package_name = f"sarkas.potentials" 
+            module_name = f".algorithms"
+
+            # Catch an error that would otherwise be confusing for the user and raise a more detailed error
+            try:
+                module = import_module(module_name, package=package_name)
+            except ModuleNotFoundError:
+                raise InputFileError(
+                    f"No algorithm module with name {module_name} found."
+                    f"This type of error is usually due to mispelling and or capitalization. Check your input file"
+                )
+
+            if self.potential.method.lower() in ["pp", "lcl", "linked_cell_list"]:
+                alg_type = "LinkedCellList"
+                
+            elif self.potential.method.lower() in ["brute", "brute force", "brute_force"]:
+                alg_type = "BruteForce"
+                
+            elif self.potential.method.lower() in ["minimum_image", "min_img", "min_image"]:
+                alg_type = "MinimumImage"
+                
+            elif self.potential.method.lower() in ["fmm", "fast_multipoles"]:
+                alg_type = "FastMultipoles"
+            
+            # Catch an error that would otherwise be confusing for the user and raise a more detailed error
+            try:
+                class_name = getattr(module, alg_type)
+            except AttributeError:
+                raise InputFileError(
+                    f"No potential class with name {alg_type} found in {module_name}. Check the spelling and capitalization of your potential type."
+                )
+            
+            self.algorithm = class_name()
+        
         # electron properties has been moved to the Parameters class. Therefore I need to put this here.
         if hasattr(self.potential, "electron_temperature"):
             self.parameters.electron_temperature = self.potential.electron_temperature
@@ -308,7 +411,7 @@ class Process:
         for it in trange(it_start, it_end, disable=not self.parameters.verbose):
             # Calculate the Potential energy and update particles' data
 
-            self.integrator.update(self.particles)
+            self.integrator.update(self.particles, self.algorithm, self.potential)
 
             if (it + 1) % dump_step == 0:
                 self.particles.calculate_observables()
@@ -381,9 +484,13 @@ class Process:
 
         # Copy relevant subsclasses attributes into parameters class. This is needed for post-processing.
         self.parameters.copy_io_attrs(self.io)
-        # Update parameters' dictionary with filenames and directories
 
+        # Update parameters' dictionary with filenames and directories
         self.parameters.potential_type = self.potential.type.lower()
+        
+        if hasattr(self.potential, 'rc'):
+            self.parameters.cutoff_radius = self.potential.rc
+
         self.parameters.setup(self.species)
         self.parameters.dt = self.integrator.dt
         # Initialize particles
@@ -392,14 +499,16 @@ class Process:
         time_ptcls = self.timer.current()
 
         # Initialize potential and calculate initial potential
-        self.potential.setup(self.parameters, self.species)
-        self.potential.calc_acc_pot(self.particles)
+        self.potential.setup(self.parameters, self.species) 
+
+        self.algorithm.setup(self.parameters)
+        self.algorithm.update(self.particles, self.potential)
+
         time_pot = self.timer.current()
         self.parameters.cutoff_radius = self.potential.rc
 
         # Initialize Integrator
         self.integrator.setup(self.parameters, self.potential)
-
         # Copy needed parameters for pretty print
         self.parameters.dt = self.integrator.dt
         self.parameters.equilibration_integrator = self.integrator.equilibration_type
@@ -1712,8 +1821,9 @@ class Simulation(Process):
         it_start = self.check_restart(phase="production")
 
         self.integrator.update = self.integrator.type_setup(self.integrator.production_type)
-        # Update measurement flag for rdf.
-        self.potential.measure = True
+        # Reinitialize the rdf for the production phase
+        self.particles.rdf_hist *= 0
+
         self.timer.start()
         self.evolve("production", False, it_start, self.parameters.production_steps, self.parameters.prod_dump_step)
         time_eq = self.timer.stop()

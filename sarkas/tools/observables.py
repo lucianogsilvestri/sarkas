@@ -3463,86 +3463,129 @@ class RadialDistributionFunction(Observable):
         self.update_finish()
 
     @compute_doc
-    def compute(self):
+    def compute(self, cutoff_radius: float = None, no_bins: int = None, from_dumps: bool = False):
+
+        if from_dumps:
+            from ..potentials.algorithms import LinkedCellList, MinimumImage
+
+            self.update_parameters(no_bins, cutoff_radius)
+
+            if self.cutoff_radius > 0.5 * self.box_lengths.min():
+                print("Cutoff radius larger than half of the smallest box length. I will use the minimum image algorithm")
+                self.algorithm = MinimumImage()
+                self.algorithm.box_lengths = self.box_lengths
+            else:
+                self.algorithm = LinkedCellList()
+                self.algorithm.box_lengths = self.box_lengths
+                self.algorithm.cutoff_radius = self.rc
+                self.algorithm.create_cells_array()
+            
+            hist_flag = True
+        else:
+            self.update_parameters()
+            hist_flag = False
 
         t0 = self.timer.current()
-        self.calc_slices_data()
+        self.calc_slices_data(calculate_hist=hist_flag)
         self.average_slices_data()
         self.save_hdf()
         self.save_pickle()
         tend = self.timer.current()
         time_stamp(self.log_file, self.__long_name__ + " Calculation", self.timer.time_division(tend - t0), self.verbose)
 
-    def calc_slices_data(self):
+    def update_parameters(self, no_bins: int = None, cutoff_radius: float = None):
 
-        # initialize temporary arrays
-        r_values = zeros(self.no_bins)
-        bin_vol = zeros(self.no_bins)
-        pair_density = zeros((self.num_species, self.num_species))
+        if no_bins:
+            self.no_bins = no_bins
+            self.rdf_hist = zeros( (no_bins, self.num_species, self.num_species))
+        else:
+            datap = load_from_restart(self.dump_dir, 0)
+            self.rdf_hist = datap["rdf_hist"].copy()
+            # Make sure you are getting the right number of bins and redefine dr_rdf.
+            self.no_bins = datap["rdf_hist"].shape[0]
 
-        # This is needed to be certain the number of bins is the same.
-        # if not isinstance(rdf_hist, ndarray):
-        #     # Find the last dump by looking for the largest number in the checkpoints filenames
-        #     dumps_list = listdir(self.dump_dir)
-        #     dumps_list.sort(key=num_sort)
-        #     name, ext = os.path.splitext(dumps_list[-1])
-        #     _, number = name.split('_')
+        if cutoff_radius:
+            self.rc = cutoff_radius
 
-        datap = load_from_restart(self.dump_dir, 0)
-
-        # Make sure you are getting the right number of bins and redefine dr_rdf.
-        self.no_bins = datap["rdf_hist"].shape[0]
         self.dr_rdf = self.rc / self.no_bins
+        # initialize temporary arrays
+        self.r_values = zeros(self.no_bins)
+        self.bin_vol = zeros(self.no_bins)
+        self.pair_density = zeros((self.num_species, self.num_species))
 
         # No. of pairs per volume
         for i, sp1 in enumerate(self.species_num):
-            pair_density[i, i] = sp1 * (sp1 - 1) / self.box_volume
+            self.pair_density[i, i] = sp1 * (sp1 - 1) / self.box_volume
             if self.num_species > 1:
                 for j, sp2 in enumerate(self.species_num[i + 1 :], i + 1):
-                    pair_density[i, j] = sp1 * sp2 / self.box_volume
+                    self.pair_density[i, j] = sp1 * sp2 / self.box_volume
 
         # Calculate the volume of each bin
         # The formula for the N-dimensional sphere is
         # pi^{N/2}/( factorial( N/2) )
         # from https://en.wikipedia.org/wiki/N-sphere#:~:text=In%20general%2C%20the-,volume,-%2C%20in%20n%2Ddimensional
-        sphere_shell_const = (pi ** (self.dimensions / 2.0)) / factorial(self.dimensions / 2.0)
-        bin_vol[0] = sphere_shell_const * self.dr_rdf**self.dimensions
+        self.sphere_shell_const = (pi ** (self.dimensions / 2.0)) / factorial(self.dimensions / 2.0)
+        self.bin_vol[0] = self.sphere_shell_const * self.dr_rdf**self.dimensions
         for ir in range(1, self.no_bins):
             r1 = ir * self.dr_rdf
             r2 = (ir + 1) * self.dr_rdf
-            bin_vol[ir] = sphere_shell_const * (r2**self.dimensions - r1**self.dimensions)
-            r_values[ir] = (ir + 0.5) * self.dr_rdf
+            self.bin_vol[ir] = self.sphere_shell_const * (r2**self.dimensions - r1**self.dimensions)
+            self.r_values[ir] = (ir + 0.5) * self.dr_rdf
 
         # Save the ra values for simplicity
-        self.ra_values = r_values / self.a_ws
+        self.ra_values = self.r_values / self.a_ws
+        self.dataframe['Interparticle_Distance'] = self.r_values
+        self.dataframe_slices['Interparticle_Distance'] = self.r_values
 
-        self.dataframe["Interparticle_Distance"] = r_values
-        self.dataframe_slices["Interparticle_Distance"] = r_values
-
+    def calc_slices_data(self, calculate_hist: bool = False):
+        
         dump_init = 0
+        # Let's compute
+        start_slice_step = 0
+        end_slice_step = self.slice_steps * self.dump_step
 
-        for isl in tqdm(range(self.no_slices), desc="Calculating RDF for slice", disable=not self.verbose):
+        for isl in tqdm(range(self.no_slices), desc=f"Calculating {self.__long_name__} for slice", disable=not self.verbose, position = 0):
 
-            # Grab the data from the dumps. The -1 is for '0'-indexing
-            dump_end = (isl + 1) * (self.slice_steps - 1) * self.dump_step
+            if calculate_hist:
+                # Read the position data from each dump and calculate the rdf_hist using the algorithm.
+                for it, dump in enumerate(tqdm(range(start_slice_step, end_slice_step, self.dump_step), desc="Timestep",position=1,disable=not self.verbose, leave=False)):
+                    datap = load_from_restart(self.dump_dir, dump)
+                    self.algorithm.update_rdf(datap["pos"], datap["id"], self.rdf_hist)
 
-            data_init = load_from_restart(self.dump_dir, int(dump_init))
-            data_end = load_from_restart(self.dump_dir, int(dump_end))
-            for i, sp1 in enumerate(self.species_names):
-                for j, sp2 in enumerate(self.species_names[i:], i):
-                    denom_const = pair_density[i, j] * self.slice_steps * self.dump_step
-                    # Each slice should be considered as an independent system.
-                    # The RDF is calculated from the difference between the last dump of the slice and the initial dump
-                    # of the slice
-                    rdf_hist_init = data_init["rdf_hist"][:, i, j] + data_init["rdf_hist"][:, j, i]
-                    rdf_hist_end = data_end["rdf_hist"][:, i, j] + data_end["rdf_hist"][:, j, i]
-                    rdf_hist_slc = rdf_hist_end - rdf_hist_init
+                    if it == start_slice_step:
+                        data_init = self.rdf_hist.copy()
+                    
+                data_end = self.rdf_hist.copy()
+                time_const = int( (end_slice_step - start_slice_step)/self.dump_step)
+                self.normalize_rdf(data_init, data_end, isl, timestep_normalization=time_const)
 
-                    col_name = f"{sp1}-{sp2} RDF_slice {isl}"
-                    col_data = rdf_hist_slc / denom_const / bin_vol
-                    self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
+                start_slice_step += self.slice_steps * self.dump_step
+                end_slice_step += self.slice_steps * self.dump_step
 
-            dump_init = dump_end
+            else:
+                # Grab the data from the dumps. The -1 is for '0'-indexing
+                dump_end = (isl + 1) * (self.slice_steps - 1) * self.dump_step
+
+                data_init = load_from_restart(self.dump_dir, int(dump_init))
+                data_end = load_from_restart(self.dump_dir, int(dump_end))
+                time_const = self.slice_steps * self.dump_step
+                self.normalize_rdf(data_init=data_init["rdf_hist"], data_end=data_end["rdf_hist"], slice_no = isl, timestep_normalization= time_const )
+                
+                # for i, sp1 in enumerate(self.species_names):
+                #     for j, sp2 in enumerate(self.species_names[i:], i):
+                #         denom_const = self.pair_density[i, j] * self.slice_steps * self.dump_step
+                #         # Each slice should be considered as an independent system.
+                #         # The RDF is calculated from the difference between the last dump of the slice and the initial dump
+                #         # of the slice
+                #         rdf_hist_init = data_init["rdf_hist"][:, i, j] + data_init["rdf_hist"][:, j, i]
+                #         rdf_hist_end = data_end["rdf_hist"][:, i, j] + data_end["rdf_hist"][:, j, i]
+                #         rdf_hist_slc = rdf_hist_end - rdf_hist_init
+
+                #         col_name = f"{sp1}-{sp2} RDF_slice {isl}"
+                #         col_data = rdf_hist_slc / denom_const / self.bin_vol
+                #         self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
+
+                dump_init = dump_end
 
     @avg_slices_doc
     def average_slices_data(self):
@@ -3630,6 +3673,46 @@ class RadialDistributionFunction(Observable):
                 obs_indx += 1
 
         return hartrees, corrs
+
+    def compute_from_dumps(self, cutoff_radius: float = None, no_bins: int = None):
+
+        from ..potentials.algorithms import LinkedCellList, MinimumImage
+
+        self.update_parameters(no_bins, cutoff_radius)
+
+        if self.cutoff_radius > 0.5 * self.box_lengths.min():
+            print("Cutoff radius larger than half of the smallest box length. I will use the minimum image algorithm")
+            self.algorithm = MinimumImage()
+            self.algorithm.box_lengths = self.box_lengths
+        else:
+            self.algorithm = LinkedCellList()
+            self.algorithm.box_lengths = self.box_lengths
+            self.algorithm.cutoff_radius = self.rc
+            self.algorithm.create_cells_array()
+
+        t0 = self.timer.current()
+        self.calc_slices_data(calculate_hist=True)
+        self.average_slices_data()
+        self.save_hdf()
+        self.save_pickle()
+        tend = self.timer.current()
+        time_stamp(self.log_file, self.__long_name__ + " Calculation", self.timer.time_division(tend - t0), self.verbose)
+
+    def normalize_rdf(self, data_init, data_end, slice_no, timestep_normalization):
+
+        for i, sp1 in enumerate(self.species_names):
+            for j, sp2 in enumerate(self.species_names[i:], i):
+                denom_const = self.pair_density[i, j] * timestep_normalization
+                # Each slice should be considered as an independent system.
+                # The RDF is calculated from the difference between the last dump of the slice and the initial dump
+                # of the slice
+                rdf_hist_init = data_init[:, i, j] + data_init[:, j, i]
+                rdf_hist_end = data_end[:, i, j] + data_end[:, j, i]
+                rdf_hist_slc = rdf_hist_end - rdf_hist_init
+
+                col_name = f"{sp1}-{sp2} RDF_slice {slice_no}"
+                col_data = rdf_hist_slc / denom_const / self.bin_vol
+                self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
 
 
 class StaticStructureFactor(Observable):

@@ -3,15 +3,15 @@ Module handling the potential class.
 """
 from copy import deepcopy
 from fmm3dpy import hfmm3d, lfmm3d
-from numpy import array, inf, int64, ndarray, pi, sqrt, tanh
+from numpy import array, inf, int64, ndarray, pi, sqrt, tanh, zeros
 from warnings import warn
 
 from ..utilities.exceptions import AlgorithmWarning
 from ..utilities.fdints import fdm1h, invfd1h
 from .force_pm import force_optimized_green_function as gf_opt
-from .force_pm import update as pm_update
-from .force_pp import update as pp_update
-from .force_pp import update_0D as pp_update_0D
+# from .force_pm import update as pm_update
+# from .force_pp import update as pp_update
+# from .force_pp import update_0D as pp_update_0D
 
 
 class Potential:
@@ -349,102 +349,102 @@ class Potential:
 
         self.__dict__.update(input_dict)
 
-    def method_pretty_print(self):
-        """Print algorithm information."""
+    # def method_pretty_print(self):
+    #     """Print algorithm information."""
 
-        msg = f"\nALGORITHM: {self.method}\n"
-        # PP section
-        if self.method != "fmm":
-            pp_cells = (self.box_lengths / self.rc).astype(int)
-            ptcls_in_loop = int(self.total_num_density * (self.dimensions * self.rc) ** self.dimensions)
-            dim_const = (self.dimensions + 1) / 3.0 * pi
-            pp_neighbors = int(self.total_num_density * dim_const * self.rc**self.dimensions)
+    #     msg = f"\nALGORITHM: {self.method}\n"
+    #     # PP section
+    #     if self.method != "fmm":
+    #         pp_cells = (self.box_lengths / self.rc).astype(int)
+    #         ptcls_in_loop = int(self.total_num_density * (self.dimensions * self.rc) ** self.dimensions)
+    #         dim_const = (self.dimensions + 1) / 3.0 * pi
+    #         pp_neighbors = int(self.total_num_density * dim_const * self.rc**self.dimensions)
 
-            fmm_msg = (
-                f"rcut = {self.rc / self.a_ws:.4f} a_ws = {self.rc:.6e} {self.units_dict['length']}\n"
-                f"No. of PP cells per dimension = {pp_cells}\n"
-                f"No. of particles in PP loop = {ptcls_in_loop}\n"
-                f"No. of PP neighbors per particle = {pp_neighbors}\n"
-            )
+    #         fmm_msg = (
+    #             f"rcut = {self.rc / self.a_ws:.4f} a_ws = {self.rc:.6e} {self.units_dict['length']}\n"
+    #             f"No. of PP cells per dimension = {pp_cells}\n"
+    #             f"No. of particles in PP loop = {ptcls_in_loop}\n"
+    #             f"No. of PP neighbors per particle = {pp_neighbors}\n"
+    #         )
 
-            msg += fmm_msg
+    #         msg += fmm_msg
 
-        if self.method == "pppm":
-            # PM Section
-            h_a = self.pppm_h_array / self.a_ws
-            halpha = self.pppm_h_array * self.pppm_alpha_ewald
-            inv_halpha = (1.0 / halpha).astype(int)
+    #     if self.method == "pppm":
+    #         # PM Section
+    #         h_a = self.pppm_h_array / self.a_ws
+    #         halpha = self.pppm_h_array * self.pppm_alpha_ewald
+    #         inv_halpha = (1.0 / halpha).astype(int)
 
-            pppm_msg = (
-                f"Charge assignment orders: {self.pppm_cao}\n"
-                f"FFT aliases: {self.pppm_aliases}\n"
-                f"Mesh: {self.pppm_mesh}\n"
-                f"Ewald parameter alpha = {self.pppm_alpha_ewald * self.a_ws:.4f} / a_ws = {self.pppm_alpha_ewald:.6e} {self.units_dict['inverse length']}\n"
-                f"Mesh width = {h_a[0]:.4f}, {h_a[1]:.4f}, {h_a[2]:.4f} a_ws\n"
-                f"           = {self.pppm_h_array[0]:.4e}, {self.pppm_h_array[1]:.4e}, {self.pppm_h_array[2]:.4e} {self.units_dict['length']}\n"
-                f"Mesh size * Ewald_parameter (h * alpha) = {halpha[0]:.4f}, {halpha[1]:.4f}, {halpha[2]:.4f}\n"
-                f"                                        ~ 1/{inv_halpha[0]}, 1/{inv_halpha[1]}, 1/{inv_halpha[2]}\n"
-                f"PP Force Error = {self.pppm_pp_err:.6e}\n"
-                f"PM Force Error = {self.pppm_pm_err:.6e}\n"
-            )
-            msg += pppm_msg
+    #         pppm_msg = (
+    #             f"Charge assignment orders: {self.pppm_cao}\n"
+    #             f"FFT aliases: {self.pppm_aliases}\n"
+    #             f"Mesh: {self.pppm_mesh}\n"
+    #             f"Ewald parameter alpha = {self.pppm_alpha_ewald * self.a_ws:.4f} / a_ws = {self.pppm_alpha_ewald:.6e} {self.units_dict['inverse length']}\n"
+    #             f"Mesh width = {h_a[0]:.4f}, {h_a[1]:.4f}, {h_a[2]:.4f} a_ws\n"
+    #             f"           = {self.pppm_h_array[0]:.4e}, {self.pppm_h_array[1]:.4e}, {self.pppm_h_array[2]:.4e} {self.units_dict['length']}\n"
+    #             f"Mesh size * Ewald_parameter (h * alpha) = {halpha[0]:.4f}, {halpha[1]:.4f}, {halpha[2]:.4f}\n"
+    #             f"                                        ~ 1/{inv_halpha[0]}, 1/{inv_halpha[1]}, 1/{inv_halpha[2]}\n"
+    #             f"PP Force Error = {self.pppm_pp_err:.6e}\n"
+    #             f"PM Force Error = {self.pppm_pm_err:.6e}\n"
+    #         )
+    #         msg += pppm_msg
 
-        msg += f"Tot Force Error = {self.force_error:.6e}\n"
+    #     msg += f"Tot Force Error = {self.force_error:.6e}\n"
 
-        print(msg)
+    #     print(msg)
 
-    def method_setup(self):
-        """Setup algorithm's specific parameters."""
+    # def method_setup(self):
+    #     """Setup algorithm's specific parameters."""
 
-        # Check for cutoff radius
-        if not self.method == "fmm":
-            self.linked_list_on = True  # linked list on
+    #     # Check for cutoff radius
+    #     if not self.method == "fmm":
+    #         self.linked_list_on = True  # linked list on
 
-            mask = self.box_lengths > 0.0
-            min_length = self.box_lengths[mask].min()
-            self.calc_acc_pot = self.update_linked_list
-            if not self.rc:
-                warn(
-                    f"\nThe cut-off radius is not defined. I will use the brute force method.",
-                    category=AlgorithmWarning,
-                )
-                self.rc = min_length / 2.0
-                self.linked_list_on = False  # linked list off
-                self.calc_acc_pot = self.update_brute
+    #         mask = self.box_lengths > 0.0
+    #         min_length = self.box_lengths[mask].min()
+    #         self.calc_acc_pot = self.update_linked_list
+    #         if not self.rc:
+    #             warn(
+    #                 f"\nThe cut-off radius is not defined. I will use the brute force method.",
+    #                 category=AlgorithmWarning,
+    #             )
+    #             self.rc = min_length / 2.0
+    #             self.linked_list_on = False  # linked list off
+    #             self.calc_acc_pot = self.update_brute
 
-            if self.rc > min_length / 2.0:
-                warn(
-                    f"\nThe cut-off radius is larger than half of the minimum box length. "
-                    f"I will use the brute force method.",
-                    # f"L_min/ 2 = {0.5 * min_length:.4e} will be used as rc",
-                    category=AlgorithmWarning,
-                )
+    #         if self.rc > min_length / 2.0:
+    #             warn(
+    #                 f"\nThe cut-off radius is larger than half of the minimum box length. "
+    #                 f"I will use the brute force method.",
+    #                 # f"L_min/ 2 = {0.5 * min_length:.4e} will be used as rc",
+    #                 category=AlgorithmWarning,
+    #             )
 
-                self.rc = min_length / 2.0
-                self.linked_list_on = False  # linked list off
-                self.calc_acc_pot = self.update_linked_list
+    #             self.rc = min_length / 2.0
+    #             self.linked_list_on = False  # linked list off
+    #             self.calc_acc_pot = self.update_linked_list
 
-            if self.a_rs != 0.0:
-                warn("\nShort-range cut-off enabled. Use this feature with care!", category=AlgorithmWarning)
+    #         if self.a_rs != 0.0:
+    #             warn("\nShort-range cut-off enabled. Use this feature with care!", category=AlgorithmWarning)
 
-            # renaming
-            if self.method == "p3m":
-                self.method == "pppm"
+    #         # renaming
+    #         if self.method == "p3m":
+    #             self.method == "pppm"
 
-            # Compute pppm parameters
-            if self.method == "pppm":
-                self.pppm_on = True
-                self.pppm_setup()
-                self.calc_acc_pot = self.update_pppm
-        else:
-            self.linked_list_on = False
-            self.pppm_on = False
-            if self.type == "coulomb":
-                self.force_error = self.fmm_precision
-                self.calc_acc_pot = self.update_fmm_coulomb
-            else:
-                self.force_error = self.fmm_precision
-                self.calc_acc_pot = self.update_fmm_yukawa
+    #         # Compute pppm parameters
+    #         if self.method == "pppm":
+    #             self.pppm_on = True
+    #             self.pppm_setup()
+    #             self.calc_acc_pot = self.update_pppm
+    #     else:
+    #         self.linked_list_on = False
+    #         self.pppm_on = False
+    #         if self.type == "coulomb":
+    #             self.force_error = self.fmm_precision
+    #             self.calc_acc_pot = self.update_fmm_coulomb
+    #         else:
+    #             self.force_error = self.fmm_precision
+    #             self.calc_acc_pot = self.update_fmm_yukawa
 
     def pppm_setup(self):
         """Calculate the pppm parameters."""
@@ -508,8 +508,8 @@ class Potential:
         """Print potential information in a user-friendly way."""
 
         print("\nPOTENTIAL: ", self.type)
-        self.pot_pretty_print(potential=self)
-        self.method_pretty_print()
+        self.pot_pretty_print()
+        # self.method_pretty_print()
 
     def setup(self, params, species):
         """Set up the potential class.
@@ -523,230 +523,151 @@ class Potential:
 
         # Enforce consistency
         self.type = self.type.lower()
-        self.method = self.method.lower()
+        # self.method = self.method.lower()
 
         self.copy_params(params)
-        self.type_setup(species)
-        self.method_setup()
+        self.update_params(species)
+        # self.type_setup(species)
+        # self.method_setup()
 
-    def type_setup(self, species):
-        # Update potential-specific parameters
-        # Coulomb potential
 
-        if self.type == "coulomb":
-            if self.method == "pp":
-                warn("Use the PP method with care for pure Coulomb interactions.", category=AlgorithmWarning)
+    # def update_linked_list(self, ptcls):
+    #     """
+    #     Calculate the pp part of the acceleration.
 
-            from .coulomb import pretty_print_info, update_params
+    #     Parameters
+    #     ----------
+    #     ptcls : :class:`sarkas.particles.Particles`
+    #         Particles data.
 
-            self.pot_update_params = update_params
-            update_params(self)
+    #     """
+    #     ptcls.potential_energy, ptcls.acc, ptcls.virial_species_tensor, ptcls.heat_flux_species_tensor = pp_update(
+    #         ptcls.pos,
+    #         ptcls.vel,
+    #         ptcls.id,
+    #         ptcls.masses,
+    #         self.box_lengths,
+    #         self.rc,
+    #         self.matrix,
+    #         self.force,
+    #         self.measure,
+    #         ptcls.rdf_hist,
+    #     )
 
-        elif self.type == "yukawa":
-            # Yukawa potential
-            from .yukawa import pretty_print_info, update_params
+    #     # if self.type != "lj":
+    #     #     # Mie Energy of charged systems
+    #     #     # J-M.Caillol, J Chem Phys 101 6080(1994) https: // doi.org / 10.1063 / 1.468422
+    #     #     dipole = ptcls.charges @ ptcls.pos
+    #     #     ptcls.total_potential_energy += 2.0 * pi * (dipole**2).sum() / (3.0 * self.box_volume * self.fourpie0)
 
-            self.calc_screening_length(species)
+    # def update_brute(self, ptcls):
+    #     """
+    #     Calculate particles' acceleration and potential brutally.
 
-            self.pot_update_params = update_params
-            update_params(self)
+    #     Parameters
+    #     ----------
+    #     ptcls: :class:`sarkas.particles.Particles`
+    #         Particles data.
 
-        elif self.type == "egs":
-            # exact gradient-corrected screening (EGS) potential
-            from .egs import pretty_print_info, update_params
+    #     """
+    #     ptcls.potential_energy, ptcls.acc, ptcls.virial_species_tensor, ptcls.heat_flux_species_tensor = pp_update_0D(
+    #         ptcls.pos,
+    #         ptcls.vel,
+    #         ptcls.id,
+    #         ptcls.masses,
+    #         self.box_lengths,
+    #         self.rc,
+    #         self.matrix,
+    #         self.force,
+    #         self.measure,
+    #         ptcls.rdf_hist,
+    #     )
+    #     # if self.type != "lj":
+    #     #     # Mie Energy of charged systems
+    #     #     # J-M.Caillol, J Chem Phys 101 6080(1994) https: // doi.org / 10.1063 / 1.468422
+    #     #     dipole = ptcls.charges @ ptcls.pos
+    #     #     ptcls.total_potential_energy += 2.0 * pi * (dipole**2).sum() / (3.0 * self.box_volume * self.fourpie0)
 
-            self.calc_screening_length(species)
+    # def update_pm(self, ptcls):
+    #     """Calculate the pm part of the potential and acceleration.
 
-            self.pot_update_params = update_params
-            update_params(self, species)
+    #     Parameters
+    #     ----------
+    #     ptcls : :class:`sarkas.particles.Particles`
+    #         Particles' data
 
-        elif self.type == "lj":
-            # Lennard-Jones potential
-            from .lennardjones import pretty_print_info, update_params
+    #     """
+    #     U_long, acc_l_r = pm_update(
+    #         ptcls.pos,
+    #         ptcls.charges,
+    #         ptcls.masses,
+    #         self.pppm_mesh,
+    #         self.pppm_h_array,
+    #         self.pppm_h_volume,
+    #         self.box_volume,
+    #         self.pppm_green_function,
+    #         self.pppm_kx,
+    #         self.pppm_ky,
+    #         self.pppm_kz,
+    #         self.pppm_cao,
+    #     )
 
-            self.pot_update_params = update_params
-            update_params(self)
+    #     # Ewald Self-energy
+    #     U_long += self.QFactor * self.pppm_alpha_ewald / sqrt(pi)
 
-        elif self.type == "moliere":
-            # Moliere potential
-            from .moliere import pretty_print_info, update_params
+    #     # Neutrality condition
+    #     # U_long += -pi * self.total_net_charge**2.0 / (2.0 * self.box_volume * self.pppm_alpha_ewald**2)
 
-            self.pot_update_params = update_params
-            update_params(self)
+    #     ptcls.potential_energy += U_long
 
-        elif self.type == "qsp":
-            # QSP potential
-            from .qsp import pretty_print_info, update_params
+    #     ptcls.acc += acc_l_r
 
-            self.screening_length_type = "qsp"
-            self.calc_screening_length(species)
-            self.pot_update_params = update_params
-            update_params(self, species)
+    # def update_pppm(self, ptcls):
+    #     """Calculate particles' potential and accelerations using pppm method.
 
-        elif self.type == "hs_yukawa":
-            # Hard-Sphere Yukawa
-            from .hs_yukawa import update_params
+    #     Parameters
+    #     ----------
+    #     ptcls : :class:`sarkas.particles.Particles`
+    #         Particles' data.
 
-            self.calc_screening_length(species)
+    #     """
+    #     self.update_linked_list(ptcls)
+    #     self.update_pm(ptcls)
 
-            self.pot_update_params = update_params
-            update_params(self)
+    # def update_fmm_coulomb(self, ptcls):
+    #     """Calculate particles' potential and accelerations using FMM method.
 
-        elif self.type == "fitted":
+    #     Parameters
+    #     ----------
+    #     ptcls : :class:`sarkas.particles.Particles`
+    #         Particles' data
 
-            from .fitted_pot import pretty_print_info, update_params
+    #     """
 
-            self.screening_length_type = "thomas-fermi"
-            self.calc_screening_length(species)
-            self.pot_update_params = update_params
-            update_params(self)
+    #     out_fmm = lfmm3d(eps=self.fmm_precision, sources=ptcls.pos.transpose(), charges=ptcls.charges, pg=2)
+    #     ptcls.potential_energy = ptcls.charges * out_fmm.pot.real / self.fourpie0
+    #     acc = -(ptcls.charges * out_fmm.grad.real / ptcls.masses) / self.fourpie0
+    #     ptcls.acc = acc.transpose().copy()
 
-        elif self.type == "tabulated":
-            # Tabulated potential
-            from .tabulated import pretty_print_info, update_params
+    # def update_fmm_yukawa(self, ptcls):
+    #     """Calculate particles' potential and accelerations using FMM method.
 
-            self.calc_screening_length(species)
+    #     Parameters
+    #     ----------
+    #     ptcls : :class:`sarkas.particles.Particles`
+    #         Particles' data
 
-            self.pot_update_params = update_params
-            update_params(self)
+    #     """
+    #     out_fmm = hfmm3d(
+    #         eps=self.fmm_precision,
+    #         zk=1j / self.screening_length,
+    #         sources=ptcls.pos.transpose(),
+    #         charges=ptcls.charges,
+    #         pg=2,
+    #     )
 
-        self.pot_pretty_print = pretty_print_info
+    #     ptcls.potential_energy = ptcls.charges * out_fmm.pot.real / self.fourpie0
+    #     acc = -(ptcls.charges * out_fmm.grad.real / ptcls.masses) / self.fourpie0
+    #     ptcls.acc = acc.transpose().copy()
 
-    def update_linked_list(self, ptcls):
-        """
-        Calculate the pp part of the acceleration.
 
-        Parameters
-        ----------
-        ptcls : :class:`sarkas.particles.Particles`
-            Particles data.
-
-        """
-        ptcls.potential_energy, ptcls.acc, ptcls.virial_species_tensor, ptcls.heat_flux_species_tensor = pp_update(
-            ptcls.pos,
-            ptcls.vel,
-            ptcls.id,
-            ptcls.masses,
-            self.box_lengths,
-            self.rc,
-            self.matrix,
-            self.force,
-            self.measure,
-            ptcls.rdf_hist,
-        )
-
-        # if self.type != "lj":
-        #     # Mie Energy of charged systems
-        #     # J-M.Caillol, J Chem Phys 101 6080(1994) https: // doi.org / 10.1063 / 1.468422
-        #     dipole = ptcls.charges @ ptcls.pos
-        #     ptcls.total_potential_energy += 2.0 * pi * (dipole**2).sum() / (3.0 * self.box_volume * self.fourpie0)
-
-    def update_brute(self, ptcls):
-        """
-        Calculate particles' acceleration and potential brutally.
-
-        Parameters
-        ----------
-        ptcls: :class:`sarkas.particles.Particles`
-            Particles data.
-
-        """
-        ptcls.potential_energy, ptcls.acc, ptcls.virial_species_tensor, ptcls.heat_flux_species_tensor = pp_update_0D(
-            ptcls.pos,
-            ptcls.vel,
-            ptcls.id,
-            ptcls.masses,
-            self.box_lengths,
-            self.rc,
-            self.matrix,
-            self.force,
-            self.measure,
-            ptcls.rdf_hist,
-        )
-        # if self.type != "lj":
-        #     # Mie Energy of charged systems
-        #     # J-M.Caillol, J Chem Phys 101 6080(1994) https: // doi.org / 10.1063 / 1.468422
-        #     dipole = ptcls.charges @ ptcls.pos
-        #     ptcls.total_potential_energy += 2.0 * pi * (dipole**2).sum() / (3.0 * self.box_volume * self.fourpie0)
-
-    def update_pm(self, ptcls):
-        """Calculate the pm part of the potential and acceleration.
-
-        Parameters
-        ----------
-        ptcls : :class:`sarkas.particles.Particles`
-            Particles' data
-
-        """
-        U_long, acc_l_r = pm_update(
-            ptcls.pos,
-            ptcls.charges,
-            ptcls.masses,
-            self.pppm_mesh,
-            self.pppm_h_array,
-            self.pppm_h_volume,
-            self.box_volume,
-            self.pppm_green_function,
-            self.pppm_kx,
-            self.pppm_ky,
-            self.pppm_kz,
-            self.pppm_cao,
-        )
-
-        # Ewald Self-energy
-        U_long += self.QFactor * self.pppm_alpha_ewald / sqrt(pi)
-
-        # Neutrality condition
-        # U_long += -pi * self.total_net_charge**2.0 / (2.0 * self.box_volume * self.pppm_alpha_ewald**2)
-
-        ptcls.potential_energy += U_long
-
-        ptcls.acc += acc_l_r
-
-    def update_pppm(self, ptcls):
-        """Calculate particles' potential and accelerations using pppm method.
-
-        Parameters
-        ----------
-        ptcls : :class:`sarkas.particles.Particles`
-            Particles' data.
-
-        """
-        self.update_linked_list(ptcls)
-        self.update_pm(ptcls)
-
-    def update_fmm_coulomb(self, ptcls):
-        """Calculate particles' potential and accelerations using FMM method.
-
-        Parameters
-        ----------
-        ptcls : :class:`sarkas.particles.Particles`
-            Particles' data
-
-        """
-
-        out_fmm = lfmm3d(eps=self.fmm_precision, sources=ptcls.pos.transpose(), charges=ptcls.charges, pg=2)
-        ptcls.potential_energy = ptcls.charges * out_fmm.pot.real / self.fourpie0
-        acc = -(ptcls.charges * out_fmm.grad.real / ptcls.masses) / self.fourpie0
-        ptcls.acc = acc.transpose().copy()
-
-    def update_fmm_yukawa(self, ptcls):
-        """Calculate particles' potential and accelerations using FMM method.
-
-        Parameters
-        ----------
-        ptcls : :class:`sarkas.particles.Particles`
-            Particles' data
-
-        """
-        out_fmm = hfmm3d(
-            eps=self.fmm_precision,
-            zk=1j / self.screening_length,
-            sources=ptcls.pos.transpose(),
-            charges=ptcls.charges,
-            pg=2,
-        )
-
-        ptcls.potential_energy = ptcls.charges * out_fmm.pot.real / self.fourpie0
-        acc = -(ptcls.charges * out_fmm.grad.real / ptcls.masses) / self.fourpie0
-        ptcls.acc = acc.transpose().copy()
