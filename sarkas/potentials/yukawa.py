@@ -31,7 +31,7 @@ from scipy.integrate import quad
 from warnings import warn
 
 from .core import Potential
-from ..utilities.maths import force_error_analytic_lcl, force_error_analytic_pp
+from ..utilities.maths import force_error_analytic_pp
 
 
 
@@ -152,14 +152,14 @@ class Yukawa_SR(Potential):
         return u_r, dv_dr, d2v_dr2
 
 
-    def pot_pretty_print(self):
+    def pot_pretty_print(self, additional_msg: str = None):
         """
         Print potential specific parameters in a user-friendly way.
 
         Parameters
         ----------
-        potential : :class:`sarkas.potentials.core.Potential`
-            Class handling potential form.
+        additional_msg: str
+            Additional message to print out. It is appended to the default message.
 
         """
         msg = (
@@ -168,6 +168,9 @@ class Yukawa_SR(Potential):
             f"kappa = {self.a_ws / self.screening_length:.4f}\n"
             f"Gamma_eff = {self.coupling_constant:.2f}"
         )
+        if additional_msg:
+            msg += additional_msg
+
         print(msg)
 
 
@@ -418,14 +421,14 @@ class Yukawa_LR(Potential):
 
         return u_r, dv_dr, d2v_dr2
 
-    def pot_pretty_print_info(self):
+    def pot_pretty_print_info(self, additional_msg):
         """
         Print potential specific parameters in a user-friendly way.
 
         Parameters
         ----------
-        potential : :class:`sarkas.potentials.core.Potential`
-            Class handling potential form.
+        additional_msg: str
+            Additional message to print out. It is appended to the default message.
 
         """
         msg = (
@@ -434,6 +437,9 @@ class Yukawa_LR(Potential):
             f"kappa = {self.a_ws / self.screening_length:.4f}\n"
             f"Gamma_eff = {self.coupling_constant:.2f}"
         )
+        if additional_msg:
+            msg += additional_msg
+
         print(msg)
 
     def force_error_integrand(self, r, pot_matrix):
