@@ -1378,7 +1378,7 @@ class PreProcess(Process):
             self.pp_acc_time = zeros(loops)
             for i in trange(loops, desc="PP acceleration timer", disable=not self.parameters.verbose):
                 self.timer.start()
-                self.potential.update_linked_list(self.particles)
+                self.algorithm.update(self.particles, self.potential)
                 self.pp_acc_time[i] = self.timer.stop()
 
             # Calculate the mean excluding the first value because that time include numba compilation time
