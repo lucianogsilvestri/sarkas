@@ -267,7 +267,6 @@ class Integrator:
             )
 
     def boundary_condition_setup(self):
-
         self.supported_boundary_conditions = {
             "periodic": self.periodic_bc,
             "absorbing": self.absorbing_bc,
@@ -332,13 +331,11 @@ class Integrator:
         # Assign integrator.update to the correct method
 
         if int_type == "langevin":
-
             self.sigma = sqrt(2.0 * self.langevin_gamma * self.kB * self.thermostat_temperatures / self.species_masses)
             self.c1 = 1.0 - 0.5 * self.langevin_gamma * self.dt
             self.c2 = 1.0 / (1.0 + 0.5 * self.langevin_gamma * self.dt)
 
         elif int_type == "magnetic_verlet":
-
             # Calculate functions for magnetic integrator
             # This could be used when the generalization to Forest-Ruth and MacLachlan algorithms will be implemented
             # In a magnetic Velocity-Verlet the coefficient is 1/2, see eq.~(78) in :cite:`Chin2008`
@@ -357,7 +354,6 @@ class Integrator:
                 int_type = "magnetic_pos_verlet_zdir"
 
         elif int_type == "magnetic_boris":
-
             # In a leapfrog-type algorithm the coefficient is different for the acceleration and magnetic rotation
             # see eq.~(79) in :cite:`Chin2008`
             self.magnetic_helpers(1.0)
@@ -508,11 +504,6 @@ class Integrator:
         ptcls: :class:`sarkas.particles.Particles`
             Particles data.
 
-        Returns
-        -------
-        potential_energy : float
-             Total potential energy.
-
         Notes
         -----
         This integrator is faster than `magnetic_verlet` but valid only for a magnetic field in the :math:`z`-direction.
@@ -587,11 +578,6 @@ class Integrator:
         ptcls: :class:`sarkas.particles.Particles`
             Particles data.
 
-        Returns
-        -------
-        potential_energy : float
-             Total potential energy.
-
         Notes
         -----
         :cite:`Chin2008` equations are written for a negative charge. This allows him to write
@@ -655,11 +641,6 @@ class Integrator:
         ptcls: :class:`sarkas.particles.Particles`
             Particles data.
 
-        Returns
-        -------
-        potential_energy : float
-             Total potential energy.
-
         """
         # First half step of velocity update: Apply exp(dt * V_F / 2)
         ptcls.vel += 0.5 * ptcls.acc * self.dt
@@ -697,11 +678,6 @@ class Integrator:
         ptcls: :class:`sarkas.particles.Particles`
             Particles data.
 
-        Returns
-        -------
-        potential_energy : float
-             Total potential energy.
-
         """
 
         # First half step of velocity update: Apply exp(eV_F/2)
@@ -735,11 +711,6 @@ class Integrator:
         ----------
         ptcls: :class:`sarkas.particles.Particles`
             Particles data.
-
-        Returns
-        -------
-        potential_energy : float
-             Total potential energy.
 
         Notes
         -----
@@ -797,11 +768,6 @@ class Integrator:
         ptcls: :class:`sarkas.particles.Particles`
             Particles data.
 
-        Returns
-        -------
-        potential_energy : float
-             Total potential energy.
-
         Notes
         -----
         :cite:`Chin2008` equations are written for a negative charge. This allows him to write
@@ -854,11 +820,6 @@ class Integrator:
         ----------
         ptcls: :class:`sarkas.particles.Particles`
             Particles data.
-
-        Returns
-        -------
-        potential_energy : float
-             Total potential energy.
 
         """
         # Drift half step
@@ -913,11 +874,6 @@ class Integrator:
         ----------
         ptcls: :class:`sarkas.particles.Particles`
             Particles data.
-
-        Returns
-        -------
-        potential_energy : float
-             Total potential energy.
 
         """
         # Drift half step
@@ -1065,9 +1021,9 @@ class Integrator:
         integrator_msg += time_msg
         if self.potential_type == "qsp":
             wp_e = self.species_plasma_frequencies[0]
-            t_we = (2.0 * pi)/wp_e
+            t_we = (2.0 * pi) / wp_e
             wp_ions = norm(self.species_plasma_frequencies[1:])
-            t_wi = (2.0 * pi)/wp_ions
+            t_wi = (2.0 * pi) / wp_ions
             qsp_msg = (
                 f"e plasma frequency = {wp_e:.6e} {self.units_dict['frequency']}\n"
                 f"w_pe dt = {self.dt * wp_e:.2e} [rad]\n"
@@ -1079,7 +1035,6 @@ class Integrator:
                 f"ions plasma period (T_i) = {t_wi:.6e} {self.units_dict['time']}\n"
                 f"dt/T_i = {self.dt/t_wi:.2e}\n"
                 f"Timesteps per ion plasma cycle ~ {int(t_wi/self.dt)}\n"
-
             )
             integrator_msg += qsp_msg
 
@@ -1087,10 +1042,10 @@ class Integrator:
             integrator_msg += f"The plasma frequency is defined as w_p = sqrt( epsilon / (sigma^2 * mass) )\n"
 
         if self.magnetized:
-            high_wc = abs(self.species_cyclotron_frequencies).max() 
-            low_wc = abs(self.species_cyclotron_frequencies).min() 
-            t_wc_high = 2.0 * pi/high_wc
-            t_wc_low = 2.0 * pi/low_wc
+            high_wc = abs(self.species_cyclotron_frequencies).max()
+            low_wc = abs(self.species_cyclotron_frequencies).min()
+            t_wc_high = 2.0 * pi / high_wc
+            t_wc_low = 2.0 * pi / low_wc
             mag_msg = "\nMagnetic Timescales:\n"
             if high_wc > low_wc:
                 mag_msg += (
@@ -1104,7 +1059,7 @@ class Integrator:
                     f"Cyclotron period (T) = {t_wc_low:.6e} {self.units_dict['time']}\n"
                     f"dt/T = = {self.dt/t_wc_low:.2e}\n"
                     f"Timesteps per plasma cycle ~ {int(t_wc_low/self.dt)}\n"
-                        )
+                )
             else:
                 mag_msg += (
                     f"Cyclotron frequency (w_c) = {high_wc:.6e} {self.units_dict['frequency']}\n"
@@ -1130,6 +1085,7 @@ class Integrator:
 
         msg += integrator_msg
         print(msg)
+
 
 @jit(void(float64[:, :], float64[:], float64[:], int64[:], float64), nopython=True)
 def berendsen(vel, T_desired, T, species_np, tau):
@@ -1192,7 +1148,6 @@ def enforce_pbc(pos, cntr, box_vector):
     # Loop over all particles
     for p in arange(pos.shape[0]):
         for d in arange(pos.shape[1]):
-
             # If particle is outside of box in positive direction, wrap to negative side
             # if pos[d,p] > box_vector[d]:
             pos[p, d] -= box_vector[d] * (pos[p, d] > box_vector[d])
@@ -1230,7 +1185,6 @@ def enforce_abc(pos, vel, acc, charges, box_vector):
     # Loop over all particles
     for p in arange(pos.shape[0]):
         for d in arange(pos.shape[1]):
-
             # If particle is outside of box in positive direction, remove charge, velocity and acceleration
             if pos[p, d] >= box_vector[d]:
                 pos[p, d] = box_vector[d]
@@ -1269,7 +1223,6 @@ def enforce_rbc(pos, vel, box_vector, dt):
     # Loop over all particles
     for p in arange(pos.shape[0]):
         for d in arange(pos.shape[1]):
-
             # If particle is outside of box in positive direction, wrap to negative side
             if pos[p, d] > box_vector[d] or pos[p, d] < 0.0:
                 # Revert velocity
