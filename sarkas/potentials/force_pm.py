@@ -32,29 +32,24 @@ def assgnmnt_func(cao, x):
     W = zeros(cao)
 
     if cao == 1:
-
         W[0] = 1.0
 
     elif cao == 2:
-
         W[0] = 0.5 * (1.0 - 2.0 * x)
         W[1] = 0.5 * (1.0 + 2.0 * x)
 
     elif cao == 3:
-
         W[0] = (1.0 - 4.0 * x + 4.0 * x**2) / 8.0
         W[1] = (3.0 - 4.0 * x**2) / 4.0
         W[2] = (1.0 + 4.0 * x + 4.0 * x**2) / 8.0
 
     elif cao == 4:
-
         W[0] = (1.0 - 6.0 * x + 12.0 * x**2 - 8.0 * x**3) / 48.0
         W[1] = (23.0 - 30.0 * x - 12.0 * x**2 + 24.0 * x**3) / 48.0
         W[2] = (23.0 + 30.0 * x - 12.0 * x**2 - 24.0 * x**3) / 48.0
         W[3] = (1.0 + 6.0 * x + 12.0 * x**2 + 8.0 * x**3) / 48.0
 
     elif cao == 5:
-
         W[0] = (1.0 - 8.0 * x + 24.0 * x**2 - 32.0 * x**3 + 16.0 * x**4) / 384.0
         W[1] = (19.0 - 44.0 * x + 24.0 * x**2 + 16.0 * x**3 - 16.0 * x**4) / 96.0
         W[2] = (115.0 - 120.0 * x**2 + 48.0 * x**4) / 192.0
@@ -70,7 +65,6 @@ def assgnmnt_func(cao, x):
         W[5] = (1.0 + 10.0 * x + 40.0 * x**2 + 80.0 * x**3 + 80.0 * x**4 + 32.0 * x**5) / 3840.0
 
     elif cao == 7:
-
         W[0] = (
             1.0 - 12.0 * x + 60.0 * x * 2 - 160.0 * x**3 + 240.0 * x**4 - 192.0 * x**5 + 64.0 * x**6
         ) / 46080.0
@@ -166,9 +160,8 @@ def calc_acc_pm(E_x_r, E_y_r, E_z_r, mesh_pos, mesh_points, q_over_m, cao, mesh_
     acc = zeros_like(mesh_pos)
 
     for ipart, q_m in enumerate(q_over_m):
-
         ix = mesh_points[ipart, 0]
-        x = mesh_pos[ipart,0 ] - (ix + mid[0])
+        x = mesh_pos[ipart, 0] - (ix + mid[0])
 
         iy = mesh_points[ipart, 1]
         y = mesh_pos[ipart, 1] - (iy + mid[1])
@@ -196,7 +189,6 @@ def calc_acc_pm(E_x_r, E_y_r, E_z_r, mesh_pos, mesh_points, q_over_m, cao, mesh_
             iyn = iy - pshift[1]  # min. index along y-axis
 
             for i in range(cao[1]):
-
                 # if iyn < 0:
                 #     r_i = iyn + mesh_sz[1]
                 # elif iyn > (mesh_sz[1] - 1):
@@ -228,9 +220,9 @@ def calc_acc_pm(E_x_r, E_y_r, E_z_r, mesh_pos, mesh_points, q_over_m, cao, mesh_
 
             izn += 1
 
-    acc[:,0] = E_x_p
-    acc[:,1] = E_y_p
-    acc[:,2] = E_z_p
+    acc[:, 0] = E_x_p
+    acc[:, 1] = E_y_p
+    acc[:, 2] = E_z_p
 
     return acc
 
@@ -276,7 +268,6 @@ def calc_charge_dens(mesh_pos, mesh_points, charges, cao, mesh_sz, mid, pshift):
     # (ix + 0.5)*h_array[0] = midpoint between the two mesh points closest to the particle
 
     for ipart in range(len(charges)):
-
         ix = mesh_points[ipart, 0]
         delta_x = mesh_pos[ipart, 0] - (ix + mid[0])
 
@@ -294,7 +285,6 @@ def calc_charge_dens(mesh_pos, mesh_points, charges, cao, mesh_sz, mid, pshift):
         izn = iz - pshift[2]  # min. index along z-axis
 
         for g in range(cao[2]):
-
             # if izn < 0:
             #   r_g = izn + mesh_sz[2]
             # elif izn > (mesh_sz[2] - 1):
@@ -306,7 +296,6 @@ def calc_charge_dens(mesh_pos, mesh_points, charges, cao, mesh_sz, mid, pshift):
             iyn = iy - pshift[1]  # min. index along y-axis
 
             for i in range(cao[1]):
-
                 r_i = iyn + mesh_sz[1] * (iyn < 0) - mesh_sz[1] * (iyn > (mesh_sz[1] - 1))
 
                 # if iyn < 0:
@@ -472,7 +461,6 @@ def calc_pot_pm(phi_r, mesh_pos, mesh_points, charges, cao, mesh_sz, mid, pshift
     pot_p = zeros_like(charges)  # potential energy for
 
     for ipart, q in enumerate(charges):
-
         ix = mesh_points[ipart, 0]
         x = mesh_pos[ipart, 0] - (ix + mid[0])
 
@@ -502,7 +490,6 @@ def calc_pot_pm(phi_r, mesh_pos, mesh_points, charges, cao, mesh_sz, mid, pshift
             iyn = iy - pshift[1]  # min. index along y-axis
 
             for i in range(cao[1]):
-
                 # if iyn < 0:
                 #     r_i = iyn + mesh_sz[1]
                 # elif iyn > (mesh_sz[1] - 1):
@@ -969,9 +956,9 @@ def update(pos, charges, masses, mesh_sizes, mesh_spacings, mesh_volume, box_vol
     phi_k = G_k * rho_k
 
     # Charge density
-    rho_k_real = rho_k.real
-    rho_k_imag = rho_k.imag
-    rho_k_sq = rho_k_real * rho_k_real + rho_k_imag * rho_k_imag
+    # rho_k_real = rho_k.real
+    # rho_k_imag = rho_k.imag
+    # rho_k_sq = rho_k_real * rho_k_real + rho_k_imag * rho_k_imag
 
     # Calculate the Electric field's component on the mesh
     E_kx, E_ky, E_kz = calc_field(phi_k, kx_v, ky_v, kz_v)
