@@ -370,20 +370,39 @@ class InputOutput:
 
         """
 
+         # Get particles info
+        if self.process == 'postprocessing':
+            params = self.read_pickle_single("parameters", self.directory_tree["simulation"]["path"])
+        else:
+            params = self.read_pickle_single("parameters", self.directory_tree[self.process]["path"])
+
+        dump_dir = self.directory_tree[self.process][phase]["dumps"]["path"]
+        pot_fit_dir = join(self.directory_tree[self.process][phase]["path"], "potfit_configs")
+
         if phase == "equilibration":
-            pot_fit_dir = join(self.equilibration_dir, "potfit_configs")
-            dump_dir = self.eq_dump_dir
-            dump_step = self.eq_dump_step
+            dump_step = params.eq_dump_step
 
         elif phase == "magnetization":
-            pot_fit_dir = join(self.magnetization_dir, "potfit_configs")
-            dump_dir = self.mag_dump_dir
-            dump_step = self.mag_dump_step
+            dump_step = params.mag_dump_step
 
         else:
-            pot_fit_dir = join(self.production_dir, "potfit_configs")
-            dump_dir = self.prod_dump_dir
-            dump_step = self.prod_dump_step
+            dump_step = params.prod_dump_step
+
+
+        # if phase == "equilibration":
+        #     pot_fit_dir = join(self.equilibration_dir, "potfit_configs")
+        #     dump_dir = self.eq_dump_dir
+        #     dump_step = self.eq_dump_step
+
+        # elif phase == "magnetization":
+        #     pot_fit_dir = join(self.magnetization_dir, "potfit_configs")
+        #     dump_dir = self.mag_dump_dir
+        #     dump_step = self.mag_dump_step
+
+        # else:
+        #     pot_fit_dir = join(self.production_dir, "potfit_configs")
+        #     dump_dir = self.prod_dump_dir
+        #     dump_step = self.prod_dump_step
 
         if not exists(pot_fit_dir):
             mkdir(pot_fit_dir)
@@ -412,15 +431,18 @@ class InputOutput:
 
         dump_skip *= dump_step
 
+        acc = zeros( (params.total_num_ptcls, 3) )
+
         for i in trange(dump_start, dump_end, dump_skip, disable=not self.verbose):
             dump = dumps_dict[i]
             file_name = join(dump_dir, dump)
             data = np_load(file_name, allow_pickle=True)
 
             # TODO: Find a more pythonic way of doing this
-            data["acc"][:,0] *= masses
-            data["acc"][:,1] *= masses
-            data["acc"][:,2] *= masses
+            # DEv NOTE: data is a view of the npz file. It is not a copy. Hence, we need modify it.
+            acc[:,0] = data["acc"][:,0] * masses
+            acc[:,1] = data["acc"][:,1] * masses
+            acc[:,2] = data["acc"][:,2] * masses
 
             fname = join(pot_fit_dir, f"config_{i}.out")
             f_xyz = open(fname, "w")
@@ -434,7 +456,7 @@ class InputOutput:
 
             savetxt(
                 f_xyz,
-                c_[data["id"], data["pos"], data["acc"]],
+                c_[data["id"], data["pos"], acc],
                 fmt="%i %.6e %.6e %.6e %.6e %.6e %.6e",
             )
 

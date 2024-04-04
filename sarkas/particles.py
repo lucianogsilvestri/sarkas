@@ -1109,11 +1109,11 @@ class Particles:
             )
             raise ParticlesError(msg)
 
-        self.id = data["id"]
-        self.names = data["names"]
-        self.pos = data["pos"]
-        self.vel = data["vel"]
-        self.acc = data["acc"]
+        self.id = data["id"].copy()
+        self.names = data["names"].copy()
+        self.pos = data["pos"].copy()
+        self.vel = data["vel"].copy()
+        self.acc = data["acc"].copy()
         # self.pbc_cntr = data["cntr"]
         # self.rdf_hist = data["rdf_hist"]
         # self.heat_flux_species_tensor = data["energy current"]

@@ -1059,7 +1059,7 @@ class Integrator:
             f"Total plasma frequency = {wp_tot:.6e} {self.units_dict['frequency']}\n"
             f"w_p dt = {wp_dt:.2e} [rad]\n"
             f"Total plasma period (T) = {t_wp:.6e} {self.units_dict['time']}\n"
-            f"dt/T = = {self.dt/t_wp:.2e}\n"
+            f"dt/T = {self.dt/t_wp:.2e}\n"
             f"Timesteps per plasma cycle ~ {int(t_wp/self.dt)} \n"
         )
         integrator_msg += time_msg
@@ -1097,12 +1097,12 @@ class Integrator:
                     f"Largest cyclotron frequency (w_c) = {high_wc:.6e} {self.units_dict['frequency']}\n"
                     f"w_c dt = {high_wc * self.dt:.2e} [rad]\n"
                     f"Cyclotron period (T) = {t_wc_high:.6e} {self.units_dict['time']}\n"
-                    f"dt/T = = {self.dt/t_wc_high:.2e}\n"
+                    f"dt/T = {self.dt/t_wc_high:.2e}\n"
                     f"Timesteps per plasma cycle ~ {int(t_wc_high/self.dt)}\n"
                     f"Smallest cyclotron frequency (w_c) = {low_wc:.6e} {self.units_dict['frequency']}\n"
                     f"w_c dt = {low_wc * self.dt:.2e} [rad]\n"
                     f"Cyclotron period (T) = {t_wc_low:.6e} {self.units_dict['time']}\n"
-                    f"dt/T = = {self.dt/t_wc_low:.2e}\n"
+                    f"dt/T = {self.dt/t_wc_low:.2e}\n"
                     f"Timesteps per plasma cycle ~ {int(t_wc_low/self.dt)}\n"
                         )
             else:
@@ -1110,7 +1110,7 @@ class Integrator:
                     f"Cyclotron frequency (w_c) = {high_wc:.6e} {self.units_dict['frequency']}\n"
                     f"w_c dt = {high_wc * self.dt:.2e} [rad]\n"
                     f"Cyclotron period (T) = {t_wc_high:.6e} {self.units_dict['time']}\n"
-                    f"dt/T = = {self.dt/t_wc_high:.2e}\n"
+                    f"dt/T = {self.dt/t_wc_high:.2e}\n"
                     f"Timesteps per plasma cycle ~ {int(t_wc_high/self.dt)}\n"
                 )
 
