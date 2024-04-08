@@ -477,22 +477,28 @@ def pretty_print_info(potential):
     i_deBroglie_lambda = sqrt(2.0) * pi / potential.matrix[1, 1, 1]
     a_ws = potential.a_ws
 
-    print(f"QSP type: {potential.qsp_type}")
-    print(f"Pauli term: {potential.qsp_pauli}")
-    print(f"e de Broglie wavelength = {e_deBroglie_lambda / a_ws:.4f} a_ws = {e_deBroglie_lambda:.6e} ", end="")
-    print("[cm]" if potential.units == "cgs" else "[m]")
-    print(f"ion de Broglie wavelength  = {i_deBroglie_lambda / a_ws:.4f} a_ws = {i_deBroglie_lambda:.6e} ", end="")
-    print("[cm]" if potential.units == "cgs" else "[m]")
-    print(f"e-e screening length = {ee_scr_len / a_ws:.4f} a_ws = {ee_scr_len:.6e} ", end="")
-    print("[cm]" if potential.units == "cgs" else "[m]")
-    print(f"e-e screening kappa = {potential.matrix[0, 0, 1] * a_ws:.4e}")
-    print(f"i-i screening length = {ii_scr_len / a_ws:.4f} a_ws = {ii_scr_len:.6e} ", end="")
-    print("[cm]" if potential.units == "cgs" else "[m]")
-    print(f"i-i screening kappa = {potential.matrix[1, 1, 1] * a_ws:.4e}")
-    print(f"e-i screening length = {ei_scr_len / a_ws:.4f} a_ws = {ei_scr_len:.6e} ", end="")
-    print("[cm]" if potential.units == "cgs" else "[m]")
-    print(f"e-i coupling constant = {potential.coupling_constant:.4f}")
-    print(f"e-i screening kappa = {potential.matrix[0, 1, 1] * a_ws:.4e}")
+    info_str = f"QSP type: {potential.qsp_type}\n"
+    info_str += f"Pauli term: {potential.qsp_pauli}\n"
+    info_str += f"e de Broglie wavelength = {e_deBroglie_lambda / a_ws:.4e} a_ws = {e_deBroglie_lambda:.6e} {potential.units_dict['length']}\n"
+    info_str += f"ion de Broglie wavelength  = {i_deBroglie_lambda / a_ws:.4e} a_ws = {i_deBroglie_lambda:.6e} {potential.units_dict['length']}\n"
+    info_str += (
+        f"In the following screening length/kappa refers to the argument in the exponential of the diffraction term.\n"
+    )
+    info_str += (
+        f"e-e screening length = {ee_scr_len / a_ws:.4e} a_ws = {ee_scr_len:.6e} {potential.units_dict['length']}\n"
+    )
+    info_str += f"e-e screening kappa = {potential.matrix[0, 0, 1] * a_ws:.4e}\n"
+    info_str += (
+        f"i-i screening length = {ii_scr_len / a_ws:.4e} a_ws = {ii_scr_len:.6e} {potential.units_dict['length']}\n"
+    )
+    info_str += f"i-i screening kappa = {potential.matrix[1, 1, 1] * a_ws:.4e}\n"
+    info_str += (
+        f"e-i screening length = {ei_scr_len / a_ws:.4e} a_ws = {ei_scr_len:.6e} {potential.units_dict['length']}\n"
+    )
+    info_str += f"e-i coupling constant = {potential.coupling_constant:.4e}\n"
+    info_str += f"e-i screening kappa = a_i/lambda_TF = {potential.ai / potential.screening_length:.4e}"
+
+    print(info_str)
 
 
 def update_params(potential, species):
@@ -533,12 +539,12 @@ def update_params(potential, species):
     # Redefine ion temperatures and ion total number density
     total_ion_temperature = 0.0
     total_ion_number_density = 0.0
-    for is1, sp1 in enumerate(species[1:]):
+    for _, sp1 in enumerate(species[1:]):
         total_ion_temperature += sp1.concentration * sp1.temperature
         total_ion_number_density += sp1.number_density
 
     # Calculate the total and ion Wigner-Seitz Radius from the total density
-    ai = (3.0 / (four_pi * total_ion_number_density)) ** (1.0 / 3.0)  # Ion WS
+    potential.ai = (3.0 / (four_pi * total_ion_number_density)) ** (1.0 / 3.0)  # Ion WS
 
     deBroglie_const = TWOPI * potential.hbar**2 / potential.kB
 
@@ -559,7 +565,6 @@ def update_params(potential, species):
 
                 # Pauli term only for e-e interaction
                 if sp1.name == sp2.name:  # e-e
-
                     if potential.qsp_type == "hansen":
                         potential.matrix[i, j, 2] = log_2 * potential.kB * sp1.temperature
                         potential.matrix[i, j, 3] = four_pi / (log_2 * lambda_deB**2)

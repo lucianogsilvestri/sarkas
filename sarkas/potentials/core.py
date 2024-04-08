@@ -264,7 +264,6 @@ class Potential:
             params.horing_delta /= params.horing_par_correction
 
     def calc_screening_length(self, species):
-
         # Consistency
         self.screening_length_type = self.screening_length_type.lower()
 
@@ -281,7 +280,7 @@ class Potential:
         elif self.screening_length_type in ["kappa", "from_kappa"]:
             self.screening_length = self.a_ws / self.kappa
         elif self.screening_length_type in ["qsp", "deBroglie"]:
-            self.screening_length = species[0].deBroglie_wavelength / (2.0 * pi)
+            self.screening_length = species[0].ThomasFermi_wavelength
         elif self.screening_length_type in ["coulomb"]:
             self.screening_length = inf
         elif self.screening_length_type in ["custom"]:
@@ -593,7 +592,6 @@ class Potential:
             update_params(self)
 
         elif self.type == "fitted":
-
             from .fitted_pot import pretty_print_info, update_params
 
             self.screening_length_type = "thomas-fermi"

@@ -9,7 +9,7 @@ import sys
 import yaml
 from copy import copy, deepcopy
 from IPython import get_ipython
-from numpy import c_, float64
+from numpy import c_, float64, full, int64
 from numpy import load as np_load
 from numpy import savetxt, savez, zeros
 from numpy.random import randint
@@ -57,7 +57,6 @@ class InputOutput:
     """
 
     def __init__(self, process: str = "preprocess"):
-
         self.electrostatic_equilibration: bool = True
         self.eq_dump_dir: str = "dumps"
         self.equilibration_dir: str = "Equilibration"
@@ -111,7 +110,7 @@ class InputOutput:
         self.xyz_dir: str = None
         self.xyz_filename: str = None
         self.process = process
-        self.data_to_save = ["pos", "vel", "acc", "rdf_hist"]
+        self.data_to_save = ["names", "id", "pos", "vel", "acc", "rdf_hist"]
 
     def __repr__(self):
         sortedDict = dict(sorted(self.__dict__.items(), key=lambda x: x[0].lower()))
@@ -297,7 +296,7 @@ class InputOutput:
             dump_step = self.prod_dump_step
 
         # Get particles info
-        params = self.read_pickle_single("parameters")
+        params = self.read_pickle_single("parameters", self.directory_tree["simulation"]["path"])
 
         # Rescale constants. This is needed since OVITO has a small number limit.
         pscale = 1.0 / params.a_ws
@@ -319,13 +318,24 @@ class InputOutput:
             dump_end = len(dumps) * dump_step
 
         dump_skip *= dump_step
+        names = full(params.total_num_ptcls, "", dtype=params.species_names.dtype)
+        ids = full(params.total_num_ptcls, 0, dtype=int64)
+
+        species_start = 0
+        species_end = 0
+        for name, n, i in zip(params.species_names, params.species_num, range(len(params.species_names))):
+            species_end += n
+            names[species_start:species_end] = name
+            ids[species_start:species_end] = i
+            species_start += n
 
         for i in trange(dump_start, dump_end, dump_skip, disable=not self.verbose):
             dump = dumps_dict[i]
-            
+
             # TODO: Do we really need to use read_particles_npz ? Can we find a way to save the .xyz file in a different way?
-            # I need a structured array for np.c_[], 
+            # I need a structured array for np.c_[],
             data = self.read_particles_npz(dump_dir, dump)
+            data["names"] = names
             data["pos_x"] *= pscale
             data["pos_y"] *= pscale
             data["pos_z"] *= pscale
@@ -370,8 +380,8 @@ class InputOutput:
 
         """
 
-         # Get particles info
-        if self.process == 'postprocessing':
+        # Get particles info
+        if self.process == "postprocessing":
             params = self.read_pickle_single("parameters", self.directory_tree["simulation"]["path"])
         else:
             params = self.read_pickle_single("parameters", self.directory_tree[self.process]["path"])
@@ -387,7 +397,6 @@ class InputOutput:
 
         else:
             dump_step = params.prod_dump_step
-
 
         # if phase == "equilibration":
         #     pot_fit_dir = join(self.equilibration_dir, "potfit_configs")
@@ -431,7 +440,7 @@ class InputOutput:
 
         dump_skip *= dump_step
 
-        acc = zeros( (params.total_num_ptcls, 3) )
+        acc = zeros((params.total_num_ptcls, 3))
 
         for i in trange(dump_start, dump_end, dump_skip, disable=not self.verbose):
             dump = dumps_dict[i]
@@ -440,9 +449,9 @@ class InputOutput:
 
             # TODO: Find a more pythonic way of doing this
             # DEv NOTE: data is a view of the npz file. It is not a copy. Hence, we need modify it.
-            acc[:,0] = data["acc"][:,0] * masses
-            acc[:,1] = data["acc"][:,1] * masses
-            acc[:,2] = data["acc"][:,2] * masses
+            acc[:, 0] = data["acc"][:, 0] * masses
+            acc[:, 1] = data["acc"][:, 1] * masses
+            acc[:, 2] = data["acc"][:, 2] * masses
 
             fname = join(pot_fit_dir, f"config_{i}.out")
             f_xyz = open(fname, "w")
@@ -526,7 +535,6 @@ class InputOutput:
         if "Parameters" in dics.keys():
             keyed = "Parameters"
             for key, value in dics[keyed].items():
-
                 if key == "verbose":
                     self.verbose = value
 
@@ -974,7 +982,7 @@ class InputOutput:
         # which is in conflict with the desired fmt. i.e. data["names"] was not recognized as a string.
         # So I have to create a new structured array and pass this. I could not think of a more Pythonic way.
         struct_array = zeros(
-            data["names"].size,
+            data["pos"].shape[0],
             dtype=[
                 ("names", "U6"),
                 ("id", int),
@@ -989,8 +997,10 @@ class InputOutput:
                 ("acc_z", float64),
             ],
         )
-        struct_array["names"] = data["names"]
-        struct_array["id"] = data["id"]
+        if "id" in data.files:
+            struct_array["id"] = data["id"]
+        if "names" in data.files:
+            struct_array["names"] = data["names"]
         struct_array["pos_x"] = data["pos"][:, 0]
         struct_array["pos_y"] = data["pos"][:, 1]
         struct_array["pos_z"] = data["pos"][:, 2]
@@ -1209,9 +1219,7 @@ class InputOutput:
 
             print(f"\nJob ID: {self.job_id}")
             print(f"Job directory: {self.job_dir}")
-            print(
-                f"{self.directory_tree[self.process]['name']} directory: \n{self.directory_tree[self.process]['path']}"
-            )
+            print(f"{self.directory_tree[self.process]['name']} directory: \n{self.directory_tree[self.process]['path']}")
 
             print(
                 f"\nEquilibration dumps directory: \n{self.directory_tree[self.process]['equilibration']['dumps']['path']}"
@@ -1254,7 +1262,6 @@ class InputOutput:
                 simulation.integrator.pretty_print()
 
             elif self.process in ["simulation", "preprocessing"]:
-    
                 print("\nPARTICLES:")
                 print(f"Total No. of particles = {simulation.parameters.total_num_ptcls}")
 
