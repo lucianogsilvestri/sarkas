@@ -897,7 +897,7 @@ class PreProcess(Process):
         ax.set_xlabel("Mesh size")
         ax.set_ylabel(r"Cells = $L/r_c$")
         ax.set_title("2D Lagrangian")
-        fig.savefig(join(self.io.preprocessing_dir, "2D_Lagrangian.png"))
+        fig.savefig(join(self.io.directory_tree["preprocessing"]["path"], "2D_Lagrangian.png"))
 
         # ax[1].set_xticks([8, 16, 32, 64, 128])
         # ax[1].set_xticklabels([8, 16, 32, 64, 128])
@@ -1047,14 +1047,14 @@ class PreProcess(Process):
         if not data_df:
             try:
                 data_df = read_csv(
-                    join(self.io.preprocessing_dir, f"TimingStudy_data_{self.io.job_id}.csv"), index_col=False
+                    join(self.io.directory_tree["preprocessing"]["path"], f"TimingStudy_data_{self.io.job_id}.csv"), index_col=False
                 )
                 self.dataframe = data_df.copy()
             except FileNotFoundError:
                 print(f"I could not find the data from the timing study. Running the timing study now.")
                 self.timing_study_calculation()
         else:
-            data_df = self.dataframe.copy(deep=True)
+            data_df = self.dataframe
 
         fig, ax = plt.subplots(1, 3, figsize=(21, 7))
         scatterplot(data=data_df, x="pp_cells", y="pp_acc_time [s]", hue="M_x", s=100, palette="viridis", ax=ax[0])
@@ -1071,7 +1071,9 @@ class PreProcess(Process):
         fig_path = self.pppm_plots_dir
         fig.savefig(join(fig_path, f"PPPM_Times_{self.io.job_id}.png"))
 
-        print(f"\nFigures can be found in {self.pppm_plots_dir}")
+        msg = f"\nFigures can be found in {self.pppm_plots_dir}"
+        self.io.write_to_logger(msg)
+
 
     def make_force_v_timing_plot(self, data_df: DataFrame = None):
         """Make contour maps of the force error and total acc time as functions of LCL cells and PM meshes for each
@@ -1090,7 +1092,7 @@ class PreProcess(Process):
         if not data_df:
             try:
                 data_df = read_csv(
-                    join(self.io.preprocessing_dir, f"TimingStudy_data_{self.io.job_id}.csv"), index_col=False
+                    join(self.io.directory_tree["preprocessing"]["path"], f"TimingStudy_data_{self.io.job_id}.csv"), index_col=False
                 )
                 self.dataframe = data_df.copy()
             except FileNotFoundError:
@@ -1432,7 +1434,7 @@ class PreProcess(Process):
         self.input_alpha = self.potential.pppm_alpha_ewald
         self.input_cao = self.potential.pppm_cao.copy()
 
-        data = DataFrame()
+        data = []
         # Rescaling constant to calculate the PP force error
         rescaling_constant = (
             sqrt(self.potential.total_num_ptcls) * self.potential.a_ws**2 / sqrt(self.potential.pbox_volume)
@@ -1497,40 +1499,63 @@ class PreProcess(Process):
                         self.potential.update_linked_list(self.particles)
                         pp_acc_time += self.timer.stop() / 3.0
 
-                    data = data.append(
-                        {
-                            "pp_cells": cell,
-                            "r_cut": self.potential.rc,
-                            "pppm_alpha_ewald": self.potential.pppm_alpha_ewald,
-                            "pppm_cao_x": self.potential.pppm_cao[0],
-                            "pppm_cao_y": self.potential.pppm_cao[1],
-                            "pppm_cao_z": self.potential.pppm_cao[2],
-                            "M_x": self.potential.pppm_mesh[0],
-                            "M_y": self.potential.pppm_mesh[1],
-                            "M_z": self.potential.pppm_mesh[2],
-                            "Mesh volume": self.potential.pppm_mesh.prod(),
-                            "Mesh": f"{self.potential.pppm_mesh[0], self.potential.pppm_mesh[1], self.potential.pppm_mesh[2]}",
-                            "h_x": self.potential.pppm_h_array[0],
-                            "h_y": self.potential.pppm_h_array[1],
-                            "h_z": self.potential.pppm_h_array[2],
-                            "h_M volume": self.potential.pppm_h_array.prod(),
-                            "h_x alpha": self.potential.pppm_h_array[0] * self.potential.pppm_alpha_ewald,
-                            "h_y alpha": self.potential.pppm_h_array[1] * self.potential.pppm_alpha_ewald,
-                            "h_z alpha": self.potential.pppm_h_array[2] * self.potential.pppm_alpha_ewald,
-                            "h_M a_ws^3": self.potential.pppm_h_array.prod() * self.potential.pppm_alpha_ewald**3,
-                            "G_k time [s]": green_time * 1.0e-9,
-                            "pp_acc_time [s]": pp_acc_time * 1.0e-9,
-                            "pm_acc_time [s]": pm_acc_time * 1.0e-9,
-                            "tot_acc_time [s]": (pp_acc_time + pm_acc_time) * 1.0e-9,
-                            "pppm_pp_error [measured]": self.potential.pppm_pp_err,
-                            "pppm_pm_error [measured]": self.potential.pppm_pm_err,
-                            "force error [measured]": self.potential.force_error,
-                        },
-                        ignore_index=True,
-                    )
+                    data_row = [
+                        cell,
+                        self.potential.rc,
+                        self.potential.pppm_alpha_ewald,
+                        self.potential.pppm_cao[0],
+                        self.potential.pppm_cao[1],
+                        self.potential.pppm_cao[2],
+                        self.potential.pppm_mesh[0],
+                        self.potential.pppm_mesh[1],
+                        self.potential.pppm_mesh[2],
+                        self.potential.pppm_mesh.prod(),
+                        self.potential.pppm_h_array[0],
+                        self.potential.pppm_h_array[1],
+                        self.potential.pppm_h_array[2],
+                        self.potential.pppm_h_array.prod(),
+                        self.potential.pppm_h_array[0] * self.potential.pppm_alpha_ewald,
+                        self.potential.pppm_h_array[1] * self.potential.pppm_alpha_ewald,
+                        self.potential.pppm_h_array[2] * self.potential.pppm_alpha_ewald,
+                        self.potential.pppm_h_array.prod() * self.potential.pppm_alpha_ewald**3,
+                        green_time * 1.0e-9,
+                        pp_acc_time * 1.0e-9,
+                        pm_acc_time * 1.0e-9,
+                        (pp_acc_time + pm_acc_time) * 1.0e-9,
+                        self.potential.pppm_pp_err,
+                        self.potential.pppm_pm_err,
+                        self.potential.force_error,
+                    ]
+                    data.append(data_row)
 
-        self.dataframe = data
-        csv_location = join(self.io.preprocessing_dir, f"TimingStudy_data_{self.io.job_id}.csv")
+        column_names = ["pp_cells",
+                "r_cut",
+                "pppm_alpha_ewald",
+                "pppm_cao_x",
+                "pppm_cao_y",
+                "pppm_cao_z",
+                "M_x",
+                "M_y",
+                "M_z",
+                "Mesh volume",
+                "h_x",
+                "h_y",
+                "h_z",
+                "h_M volume",
+                "h_x alpha",
+                "h_y alpha",
+                "h_z alpha",
+                "h_M a_ws^3",
+                "G_k time [s]",
+                "pp_acc_time [s]",
+                "pm_acc_time [s]",
+                "tot_acc_time [s]",
+                "pppm_pp_error [measured]",
+                "pppm_pm_error [measured]",
+                "force error [measured]"]
+
+        self.dataframe = DataFrame(data, columns=column_names)
+        csv_location = join(self.io.directory_tree["preprocessing"]["path"], f"TimingStudy_data_{self.io.job_id}.csv")
         self.dataframe.to_csv(csv_location, index=False)
 
         # Reset the original values.

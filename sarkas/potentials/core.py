@@ -529,9 +529,30 @@ class Potential:
         self.method_setup()
 
     def type_setup(self, species):
-        # Update potential-specific parameters
-        # Coulomb potential
+        """
+        Update potential-specific parameters.
 
+        Parameters
+        ----------
+        species : list
+            List of :class:`sarkas.plasma.Species` objects.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        - Coulomb potential
+        - Yukawa potential
+        - Yukawa-Friedel potential
+        - exact gradient-corrected screening (EGS) potential
+        - Lennard-Jones potential
+        - Moliere potential
+        - QSP potential
+        - Hard-Sphere Yukawa
+        - Tabulated potential
+        """
         if self.type == "coulomb":
             if self.method == "pp":
                 warn("Use the PP method with care for pure Coulomb interactions.", category=AlgorithmWarning)
@@ -544,6 +565,15 @@ class Potential:
         elif self.type == "yukawa":
             # Yukawa potential
             from .yukawa import pretty_print_info, update_params
+
+            self.calc_screening_length(species)
+
+            self.pot_update_params = update_params
+            update_params(self)
+        
+        elif self.type == "yukawa-friedel":
+            # Yukawa-Friedel potential
+            from .yukawa_ft import pretty_print_info, update_params
 
             self.calc_screening_length(species)
 

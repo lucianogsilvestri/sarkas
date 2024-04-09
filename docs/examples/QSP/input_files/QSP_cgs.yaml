@@ -20,11 +20,11 @@ Potential:
     type: QSP                         # potential type
     qsp_type: Deutsch
     method: pppm
-    rc: 3.119964e-08                  # cut-off radius, cm
-    pppm_mesh: [32,32,32]
+    rc: 2.8119964e-08                  # cut-off radius, cm
+    pppm_mesh: [64,64,64]
     pppm_aliases: [3,3,3]
     pppm_cao: 6
-    pppm_alpha_ewald: 9.466103e+07
+    pppm_alpha_ewald: 1.401516e+08 #9.466103e+07
 
 Integrator:
     type: verlet
