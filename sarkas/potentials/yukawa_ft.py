@@ -145,7 +145,7 @@ def pretty_print_info(potential):
         f"a_ws/screening length = {potential.a_ws / potential.screening_length:.4f}\n"
         f"A = {potential.matrix[0,0,0]/kTa:.4f} beta/a_ws = {potential.matrix[0,0,0]:.6e} {potential.units_dict['energy']}\n"
         f"kappa_y = {potential.a_ws  * potential.matrix[0,0,1]:.4f} / a_ws  = {potential.matrix[0,0,1]:.6e} {potential.units_dict['inverse length']}\n"
-        f"B = {potential.matrix[0,0,2]/kTa:.4f} beta/a_ws = {potential.matrix[0,0,2]:.6e} {potential.units_dict['energy']}\n"
+        f"B = {potential.matrix[0,0,2]/kTa/potential.a_ws**2:.4f} beta/a_ws^3 = {potential.matrix[0,0,2]:.6e} {potential.units_dict['energy']}\n"
         f"kappa_ft = {potential.a_ws *  potential.matrix[0,0,3]:.4f} / a_ws = {potential.matrix[0,0,3]:.6e} {potential.units_dict['inverse length']}\n"
         f"q_ft = {potential.a_ws * potential.matrix[0,0,4]:.4f} / a_ws = {potential.matrix[0,0,4]:.6e} {potential.units_dict['inverse length']}\n"
         f"phase = {potential.matrix[0,0,5]:.6e} [rad]\n"
@@ -257,7 +257,7 @@ def calc_force_error_quad(a, rc, pot_matrix):
     
     # Un-dimensionalize the screening length.
     params[1] *= a
-    params[3] *= a
+    params[3] *= a**3
     params[4] *= a
     
     r_c = rc / a

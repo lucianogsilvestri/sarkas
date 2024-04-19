@@ -1,0 +1,46 @@
+# keywords: YOCP, Yukawa, PP, mks, random_no_reject
+Particles:
+    - Species:
+        name: Al
+        number_density: 6.03e+22
+        mass: 4.513068464544e-23
+        Z: 3.0
+        temperature_eV: 1.0
+        num: 4096                # T = 0.5 eV
+
+Potential:
+    type: Yukawa-Friedel                           # potential type
+    method: PP
+    rc: 10.0e-8                              # cm, cut-off radius
+    screening_length_type: thomas-fermi
+    ft_params: [5.643048e-17, 3.449355e+08, 3.529030e-36, 0.000000e+00, 3.742168e+08, -6.724320e+00]
+
+Integrator:
+    type: Verlet
+    dt: 5.0e-17                             # sec
+    thermostat_type: Berendsen                         # thermostat type
+    thermalization_timestep: 300
+    berendsen_tau: 2.0
+
+Parameters:
+    rand_seed: 314159265
+    units: cgs                              # units
+    boundary_conditions: periodic
+    load_method: qmc
+    qmc_sequence: sobol
+    equilibration_steps: 10000              # number of timesteps for the equilibrium
+    production_steps: 10000                # number of timesteps after the equilibrium
+    eq_dump_step: 100
+    prod_dump_step: 100
+
+IO:
+    verbose: yes
+    job_dir: Al_rho2.7_T1eV_yft            # dir name to save data. The default is "Checkpoint"
+    data_to_save: ["id", "names", "pos", "vel", "acc", "rdf_hist"]
+
+Observables:
+  - Thermodynamics:
+      phase: production
+
+  - RadialDistributionFunction:
+      no_bins: 250
