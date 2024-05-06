@@ -86,17 +86,16 @@ class Process:
 
     from .potentials.core import Potential
 
-    def __init__(self, 
-                 input_file: str = None, 
-                 potential_class: Potential = None,
-                 integrator_class: Integrator = None,
-                 particles_class: Particles = None,
-                 parameters_class: Parameters = None,
-                 io_class: InputOutput = None,
-                 species: list = None,
-                 
-                 ):
-        
+    def __init__(
+        self,
+        input_file: str = None,
+        potential_class: Potential = None,
+        integrator_class: Integrator = None,
+        particles_class: Particles = None,
+        parameters_class: Parameters = None,
+        io_class: InputOutput = None,
+        species: list = None,
+    ):
         if potential_class is not None:
             self.potential = potential_class
         else:
@@ -109,14 +108,14 @@ class Process:
 
         if particles_class is not None:
             self.particles = particles_class
-        else:   
+        else:
             self.particles = Particles()
-        
+
         if parameters_class is not None:
             self.parameters = parameters_class
         else:
             self.parameters = Parameters()
-        
+
         if io_class is not None:
             self.io = io_class
         else:
@@ -126,7 +125,7 @@ class Process:
             self.species = species
         else:
             self.species = []
-    
+
         self.threads_ls = []
         self.observables_dict = {}
         self.transport_dict = {}
@@ -150,7 +149,7 @@ class Process:
 
         Notes
         -----
-        This method reads the simulation parameters from a YAML file and returns them as a nested dictionary. 
+        This method reads the simulation parameters from a YAML file and returns them as a nested dictionary.
         It uses the :meth:`sarkas.utilities.io.InputOutput.from_yaml` to read the YAML file.
 
         If the `filename` parameter is provided, it will override the input file path specified during object initialization.
@@ -159,7 +158,7 @@ class Process:
         --------
         >>> process = Process(input_file='/path/to/input.yaml')
         >>> params_dict = process.common_parser()
-        
+
         """
         if filename:
             self.input_file = filename
@@ -1047,9 +1046,10 @@ class PreProcess(Process):
         if not data_df:
             try:
                 data_df = read_csv(
-                    join(self.io.directory_tree["preprocessing"]["path"], f"TimingStudy_data_{self.io.job_id}.csv"), index_col=False
+                    join(self.io.directory_tree["preprocessing"]["path"], f"TimingStudy_data_{self.io.job_id}.csv"),
+                    index_col=False,
                 )
-                self.dataframe = data_df.copy()
+                self.dataframe = data_df
             except FileNotFoundError:
                 print(f"I could not find the data from the timing study. Running the timing study now.")
                 self.timing_study_calculation()
@@ -1074,7 +1074,6 @@ class PreProcess(Process):
         msg = f"\nFigures can be found in {self.pppm_plots_dir}"
         self.io.write_to_logger(msg)
 
-
     def make_force_v_timing_plot(self, data_df: DataFrame = None):
         """Make contour maps of the force error and total acc time as functions of LCL cells and PM meshes for each
         charge assignment order sequence.
@@ -1092,7 +1091,8 @@ class PreProcess(Process):
         if not data_df:
             try:
                 data_df = read_csv(
-                    join(self.io.directory_tree["preprocessing"]["path"], f"TimingStudy_data_{self.io.job_id}.csv"), index_col=False
+                    join(self.io.directory_tree["preprocessing"]["path"], f"TimingStudy_data_{self.io.job_id}.csv"),
+                    index_col=False,
                 )
                 self.dataframe = data_df.copy()
             except FileNotFoundError:
@@ -1134,13 +1134,13 @@ class PreProcess(Process):
             luxnorm = LogNorm(vmin=minv, vmax=maxt)
             CS = ax1.contourf(m_mesh, c_mesh, force_error_map, levels=lvls, cmap=luxmap, norm=luxnorm)
             clb = fig.colorbar(ScalarMappable(norm=luxnorm, cmap=luxmap), ax=ax1)
-            clb.set_label(r"Force Error  [$Q^2/ a_{\rm ws}^2$] " + f"@ cao = {cao}", rotation=270, va="bottom")
+            clb.set_label(r"Force Error [$Q^2/ a_{\rm ws}^2$]", rotation=270, va="bottom")
             CS2 = ax1.contour(CS, colors="w")
             ax1.clabel(CS2, fmt="%1.0e", colors="w")
 
             if cao == self.potential.pppm_cao[0]:
                 input_Nc = int(self.potential.box_lengths[0] / self.potential.rc)
-                ax1.scatter(self.potential.pppm_mesh[0], input_Nc, s=200, c="k")
+                ax1.scatter(self.potential.pppm_mesh[0], input_Nc, s=200, c="w")
 
             ax1.set_xscale("log", base=2)
             ax1.set(xlabel="Mesh size", ylabel=r"LCL Cells", title=f"Force Error Map @ cao = {cao}")
@@ -1460,10 +1460,7 @@ class PreProcess(Process):
                 self.potential.pppm_cao = cao * array([1, 1, 1], dtype=int)
 
                 # Update the potential matrix since alpha has changed
-                if self.potential.type == "qsp":
-                    self.potential.pot_update_params(self.potential, self.species)
-                else:
-                    self.potential.pot_update_params(self.potential, self.species)
+                self.potential.pot_update_params(self.potential, self.species)
                 # The Green's function depends on alpha, Mesh and cao. It also updates the pppm_pm_err
                 green_time = self.green_function_timer()
 
@@ -1528,31 +1525,33 @@ class PreProcess(Process):
                     ]
                     data.append(data_row)
 
-        column_names = ["pp_cells",
-                "r_cut",
-                "pppm_alpha_ewald",
-                "pppm_cao_x",
-                "pppm_cao_y",
-                "pppm_cao_z",
-                "M_x",
-                "M_y",
-                "M_z",
-                "Mesh volume",
-                "h_x",
-                "h_y",
-                "h_z",
-                "h_M volume",
-                "h_x alpha",
-                "h_y alpha",
-                "h_z alpha",
-                "h_M a_ws^3",
-                "G_k time [s]",
-                "pp_acc_time [s]",
-                "pm_acc_time [s]",
-                "tot_acc_time [s]",
-                "pppm_pp_error [measured]",
-                "pppm_pm_error [measured]",
-                "force error [measured]"]
+        column_names = [
+            "pp_cells",
+            "r_cut",
+            "pppm_alpha_ewald",
+            "pppm_cao_x",
+            "pppm_cao_y",
+            "pppm_cao_z",
+            "M_x",
+            "M_y",
+            "M_z",
+            "Mesh volume",
+            "h_x",
+            "h_y",
+            "h_z",
+            "h_M volume",
+            "h_x alpha",
+            "h_y alpha",
+            "h_z alpha",
+            "h_M a_ws^3",
+            "G_k time [s]",
+            "pp_acc_time [s]",
+            "pm_acc_time [s]",
+            "tot_acc_time [s]",
+            "pppm_pp_error [measured]",
+            "pppm_pm_error [measured]",
+            "force error [measured]",
+        ]
 
         self.dataframe = DataFrame(data, columns=column_names)
         csv_location = join(self.io.directory_tree["preprocessing"]["path"], f"TimingStudy_data_{self.io.job_id}.csv")

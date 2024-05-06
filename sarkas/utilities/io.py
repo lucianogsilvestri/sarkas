@@ -11,7 +11,7 @@ from copy import copy, deepcopy
 from IPython import get_ipython
 from numpy import c_, float64, full, int64
 from numpy import load as np_load
-from numpy import savetxt, savez, zeros
+from numpy import s_, savetxt, savez, zeros
 from numpy.random import randint
 from os import listdir, mkdir, symlink
 from os.path import basename, exists, join
@@ -258,14 +258,21 @@ class InputOutput:
             w = csv.writer(f)
             w.writerow(data.values())
 
-    def dump_xyz(self, phase: str = "production", dump_start: int = 0, dump_end: int = None, dump_skip: int = 1):
+    def dump_xyz(
+        self,
+        phase: str = "production",
+        dump_start: int = 0,
+        dump_end: int = None,
+        dump_skip: int = 1,
+        ptcls_list: list = None,
+    ):
         """
         Save the XYZ file by reading Sarkas dumps.
 
         Parameters
         ----------
         phase : str
-            Phase from which to read dumps. 'equilibration' or 'production'.
+            Phase from which to read dumps. 'equilibration' or 'production'. Default is 'production'.
 
         dump_start : int
             Step number from which to start saving. Default is 0.
@@ -275,6 +282,9 @@ class InputOutput:
 
         dump_skip : int
             Interval of dumps to skip. Default is 1
+
+        ptcls_list : list
+            List of particle indices to save. Default is None.
 
         """
         # TODO: Find a way so that the user can pass strings of the information to save for OVITO.
@@ -318,6 +328,11 @@ class InputOutput:
             dump_end = len(dumps) * dump_step
 
         dump_skip *= dump_step
+        if ptcls_list is None:
+            ptcls_slice = s_[:]
+        else:
+            ptcls_slice = s_[ptcls_list]
+
         names = full(params.total_num_ptcls, "", dtype=params.species_names.dtype)
         ids = full(params.total_num_ptcls, 0, dtype=int64)
 
@@ -334,8 +349,8 @@ class InputOutput:
 
             # TODO: Do we really need to use read_particles_npz ? Can we find a way to save the .xyz file in a different way?
             # I need a structured array for np.c_[],
-            data = self.read_particles_npz(dump_dir, dump)
-            data["names"] = names
+            data = self.read_particles_npz(dump_dir, dump, ptcls_list)
+            data["names"] = names[ptcls_slice]  # [[0, 50, 100, 500, 1023, 1024, 1074, 1124,1524, 2047]]
             data["pos_x"] *= pscale
             data["pos_y"] *= pscale
             data["pos_z"] *= pscale
@@ -349,7 +364,7 @@ class InputOutput:
             data["acc_y"] *= ascale
             data["acc_z"] *= ascale
 
-            f_xyz.writelines("{0:d}\n".format(self.total_num_ptcls))
+            f_xyz.writelines("{0:d}\n".format(data["pos_x"].shape[0]))
             f_xyz.writelines("name x y z vx vy vz ax ay az\n")
             savetxt(
                 f_xyz,
@@ -954,7 +969,7 @@ class InputOutput:
         return InputOutput.read_particles_npz(fldr, filename)
 
     @staticmethod
-    def read_particles_npz(fldr: str, filename: str):
+    def read_particles_npz(fldr: str, filename: str, ptcls_list: list = None):
         """
         Load particles' data from dumps.
 
@@ -981,8 +996,12 @@ class InputOutput:
         # was not working, because the columns of np.c_[] all have the data type <U32
         # which is in conflict with the desired fmt. i.e. data["names"] was not recognized as a string.
         # So I have to create a new structured array and pass this. I could not think of a more Pythonic way.
+        if ptcls_list is None:
+            ptcls = s_[:]
+        else:
+            ptcls = s_[ptcls_list]  # [0, 50, 100, 500, 1023, 1024, 1074, 1124, 1524, 2047]
         struct_array = zeros(
-            data["pos"].shape[0],
+            len(ptcls),
             dtype=[
                 ("names", "U6"),
                 ("id", int),
@@ -998,20 +1017,20 @@ class InputOutput:
             ],
         )
         if "id" in data.files:
-            struct_array["id"] = data["id"]
+            struct_array["id"] = data["id"][ptcls]
         if "names" in data.files:
-            struct_array["names"] = data["names"]
-        struct_array["pos_x"] = data["pos"][:, 0]
-        struct_array["pos_y"] = data["pos"][:, 1]
-        struct_array["pos_z"] = data["pos"][:, 2]
+            struct_array["names"] = data["names"][ptcls]
+        struct_array["pos_x"] = data["pos"][ptcls, 0]
+        struct_array["pos_y"] = data["pos"][ptcls, 1]
+        struct_array["pos_z"] = data["pos"][ptcls, 2]
 
-        struct_array["vel_x"] = data["vel"][:, 0]
-        struct_array["vel_y"] = data["vel"][:, 1]
-        struct_array["vel_z"] = data["vel"][:, 2]
+        struct_array["vel_x"] = data["vel"][ptcls, 0]
+        struct_array["vel_y"] = data["vel"][ptcls, 1]
+        struct_array["vel_z"] = data["vel"][ptcls, 2]
 
-        struct_array["acc_x"] = data["acc"][:, 0]
-        struct_array["acc_y"] = data["acc"][:, 1]
-        struct_array["acc_z"] = data["acc"][:, 2]
+        struct_array["acc_x"] = data["acc"][ptcls, 0]
+        struct_array["acc_y"] = data["acc"][ptcls, 1]
+        struct_array["acc_z"] = data["acc"][ptcls, 2]
 
         return struct_array
 
