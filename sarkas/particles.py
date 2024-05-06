@@ -182,6 +182,7 @@ class Particles:
         self.thermodynamics_calculator_dict = {
             "Kinetic Energy": self.calculate_species_kinetic_temperature,
             "Potential Energy": self.calculate_species_potential_energy,
+            "Velocity Moments": self.calculate_species_velocity_moments,
             "Momentum": self.calculate_species_momentum,
             "Electric Current": self.calculate_species_electric_current,
             "Pressure Tensor": self.calculate_species_pressure_tensor,
@@ -190,7 +191,7 @@ class Particles:
         }
         self.qmc_sequence = None
         self.available_qmc_sequences = ["halton", "sobol", "poissondisk", "latinhypercube"]
-        self.max_velocity_distribution_moment = 6
+        self.max_velocity_distribution_moment = 4
 
     def __repr__(self):
         sortedDict = dict(sorted(self.__dict__.items(), key=lambda x: x[0].lower()))
@@ -309,7 +310,7 @@ class Particles:
 
         if hasattr(params, "max_velocity_distribution_moment"):
             self.max_velocity_distribution_moment = params.max_velocity_distribution_moment
-            self.species_velocity_moments = zeros((self.num_species, self.max_velocity_distribution_moment))
+            self.species_velocity_moments = zeros((self.num_species, self.max_velocity_distribution_moment, 3))
 
         self.restart_step = params.restart_step
         self.particles_input_file = params.particles_input_file
@@ -571,6 +572,9 @@ class Particles:
         if "Heat Flux" in self.observables_list:
             self.heat_flux_species_tensor = zeros((3, self.num_species, self.num_species))
             self.species_heat_flux = zeros((self.num_species, 3))
+
+        if "Velocity Moments" in self.observables_list:
+            self.species_velocity_moments = zeros((self.num_species, self.max_velocity_distribution_moment, 3))
 
     def initialize_positions(self, species: list = None):
         """
@@ -1249,7 +1253,7 @@ class Particles:
         for i, num in enumerate(self.species_num):
             species_end += num
             for mom in range(self.max_velocity_distribution_moment):
-                self.species_velocity_moments[i, mom] = moment(
+                self.species_velocity_moments[i, mom, :] = moment(
                     self.vel[species_start:species_end, :], moment=mom + 1, axis=0
                 )
             species_start += num
@@ -1334,8 +1338,12 @@ class Particles:
             "Total Energy": self.species_kinetic_energy.sum() + self.species_potential_energy.sum(),
             "Total Kinetic Energy": self.species_kinetic_energy.sum(),
             "Total Potential Energy": self.species_potential_energy.sum(),
-            "Total Temperature": self.species_num.transpose() @ self.species_temperatures / self.total_num_ptcls,
+            "Total Temperature": self.species_num.transpose() @ self.species_temperatures / self.total_num_ptcls
         }
+        # for i in range(self.species_velocity_moments.shape[1]):
+        #     data[f"X Velocity Moment {i + 1}"] = self.species_velocity_moments[0, i, 0]
+        #     data[f"Y Velocity Moment {i + 1}"] = self.species_velocity_moments[0, i, 1]
+        #     data[f"Z Velocity Moment {i + 1}"] = self.species_velocity_moments[0, i, 2]
 
         if self.num_species > 1:
             for sp, (temp, kin, pot) in enumerate(
@@ -1368,8 +1376,12 @@ class Particles:
             "Total Pressure": self.species_pressure.sum(),
             "Ideal Pressure": self.species_pressure_kin_tensor.sum(axis=-1).trace() / self.dimensions,
             "Excess Pressure": self.species_pressure_pot_tensor.sum(axis=-1).trace() / self.dimensions,
-            "Total Enthalpy": self.species_enthalpy.sum(),
+            "Total Enthalpy": self.species_enthalpy.sum()
         }
+        for i in range(self.species_velocity_moments.shape[1]):
+            data[f"X Velocity Moment {i + 1}"] = self.species_velocity_moments[0, i, 0]
+            data[f"Y Velocity Moment {i + 1}"] = self.species_velocity_moments[0, i, 1]
+            data[f"Z Velocity Moment {i + 1}"] = self.species_velocity_moments[0, i, 2]
 
         if self.num_species > 1:
             for sp, (temp, kin, pot) in enumerate(
