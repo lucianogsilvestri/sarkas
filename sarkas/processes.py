@@ -437,7 +437,8 @@ class Process:
         t0 = self.timer.current()
         self.particles.setup(self.parameters, self.species)
         time_ptcls = self.timer.current()
-
+        self.parameters.particles_initialization_time = time_ptcls - t0
+        
         # Initialize potential and calculate initial potential
         self.potential.setup(self.parameters, self.species)
         self.potential.calc_acc_pot(self.particles)

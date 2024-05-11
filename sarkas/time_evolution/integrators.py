@@ -988,13 +988,22 @@ class Integrator:
     def pretty_print(self):
         """Print integrator and thermostat information in a user-friendly way."""
 
+        wp_tot = norm(self.species_plasma_frequencies)
+        wp_dt = wp_tot * self.dt
+        t_wp = 2.0 * pi / wp_tot
+
         if self.thermalization:
+            N = -log(0.01) / (self.thermalization_rate * self.dt)
+            Np = -log(0.01) / (self.thermalization_rate * 2.0 * pi / wp_tot)
             msg = (
                 f"\nTHERMOSTAT:\n"
                 f"Type: {self.thermostat_type}\n"
                 f"First thermostating timestep, i.e. thermalization_timestep = {self.thermalization_timestep}\n"
-                f"Berendsen parameter tau: {self.berendsen_tau:.3f} [timesteps]\n"
-                f"Berendsen relaxation rate: {self.thermalization_rate:.3f} [1/timesteps]\n"
+                f"Berendsen parameter tau: {self.berendsen_tau:.3f}\n"
+                f"Berendsen relaxation rate: {self.thermalization_rate:.3f}\n"
+                f"Timesteps to decay to 0.01: exp( - N dt/tau) = 0.01 ==> N = {N:.2e}\n"
+                f"langevin_gamma * (2 pi / w_p) = {self.thermalization_rate * (2.0 * pi/ wp_tot):.2e}\n"
+                f"Plasma cycles to decay to 0.01: exp( - N_p dt/tau) = 0.01 ==> N_p = {Np:.2e}\n"
                 "Thermostating temperatures:\n"
             )
             for i, (t, t_ev) in enumerate(zip(self.thermostat_temperatures, self.thermostat_temperatures_eV)):
@@ -1007,9 +1016,6 @@ class Integrator:
             integrator_msg += f"Magnetization Integrator Type: {self.magnetization_type}\n"
         integrator_msg += f"Production Integrator Type: {self.production_type}\n"
 
-        wp_tot = norm(self.species_plasma_frequencies)
-        wp_dt = wp_tot * self.dt
-        t_wp = 2.0 * pi / wp_tot
         time_msg = (
             f"Time step = {self.dt:.6e} {self.units_dict['time']}\n"
             f"Total plasma frequency = {wp_tot:.6e} {self.units_dict['frequency']}\n"
@@ -1072,14 +1078,14 @@ class Integrator:
             integrator_msg += mag_msg
 
         if self.equilibration_type == "langevin" or self.production_type == "langevin":
-            N = -log(0.001) / (self.langevin_gamma * self.dt)
-            Np = -log(0.001) / (self.langevin_gamma * 2.0 * pi / wp_tot)
+            N = -log(0.01) / (2.0 * self.langevin_gamma * self.dt)
+            Np = -log(0.01) / (2.0 * self.langevin_gamma * 2.0 * pi / wp_tot)
             lang_msg = (
                 f"langevin_gamma = {self.langevin_gamma:.4e} {self.units_dict['Hertz']}\n"
                 f"langevin_gamma * dt = {self.langevin_gamma * self.dt:.2e}\n"
-                f"Timestep to decay to 0.001: exp( - gamma N dt) = 0.001 ==> N = {N:.2e}\n"
+                f"Timestep to decay to 0.01: exp( - 2 gamma N dt) = 0.01 ==> N = {N:.2e}\n"
                 f"langevin_gamma * (2 pi / w_p) = {self.langevin_gamma * (2.0 * pi/ wp_tot):.2e}\n"
-                f"Plasma cycles to decay to 0.001: exp( - gamma N_p dt) = 0.001 ==> N_p = {Np:.2e}\n"
+                f"Plasma cycles to decay to 0.01: exp( - 2 gamma N_p dt) = 0.01 ==> N_p = {Np:.2e}\n"
             )
             integrator_msg += lang_msg
 
@@ -1088,7 +1094,7 @@ class Integrator:
 
 
 @jit(void(float64[:, :], float64[:], float64[:], int64[:], float64), nopython=True)
-def berendsen(vel, T_desired, T, species_np, tau):
+def berendsen(vel, T_desired, T, species_np, thermalization_rate):
     """
     Numba'd function to update particle velocity based on Berendsen thermostat :cite:`Berendsen1984`.
 
@@ -1106,18 +1112,12 @@ def berendsen(vel, T_desired, T, species_np, tau):
     species_np : numpy.ndarray
         Number of each species.
 
-    tau : float
+    thermalization_rate : float
         Scale factor.
 
     """
 
-    # if it < therm_timestep:
-    #     fact = sqrt(T_desired / T)
-    # else:
-    #     fact = sqrt(1.0 + (T_desired / T - 1.0) * tau)  # eq.(11)
-
-    # branchless programming
-    fact = sqrt(1.0 + (T_desired / T - 1.0) * tau)
+    fact = sqrt(1.0 + (T_desired / T - 1.0) * thermalization_rate)
     species_start = 0
     species_end = 0
 

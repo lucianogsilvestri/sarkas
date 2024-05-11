@@ -979,58 +979,6 @@ class Observable:
             print(f"\nFiles {self.observable_filenames['hdf_acf']['path']} not found!")
             # self.compute_acf()
 
-    # def parse(self, acf_data: bool = False):
-    #     """
-    #     Grab the pandas dataframe from the saved csv file. If file does not exist call :meth:`compute()`.
-    #     """
-
-    #     if self.__name__ == "rdf":
-    #         acf_data = False
-
-    #     if self.k_observable:
-    #         try:
-    #             self.dataframe = read_hdf(self.filename_hdf, mode="r", index_col=False)
-
-    #             k_data = load(self.k_file)
-    #             self.k_list = k_data["k_list"]
-    #             self.k_counts = k_data["k_counts"]
-    #             self.ka_values = k_data["ka_values"]
-
-    #         except FileNotFoundError:
-    #             print("\nFile {} not found!".format(self.filename_hdf))
-    #             # print("\nComputing Observable now ...")
-    #             # self.compute()
-    #     else:
-    #         try:
-    #             if hasattr(self, "filename_csv"):
-    #                 self.dataframe = read_csv(self.filename_csv, index_col=False)
-    #             else:
-    #                 self.dataframe = read_hdf(self.filename_hdf, mode="r", index_col=False)
-
-    #         except FileNotFoundError:
-    #             if hasattr(self, "filename_csv"):
-    #                 data_file = self.filename_csv
-    #             else:
-    #                 data_file = self.filename_hdf
-    #             print("\nData file not found! \n {}".format(data_file))
-    #             # print("\nComputing Observable now ...")
-    #             # self.compute()
-
-    #         if hasattr(self, "dataframe_slices"):
-    #             self.dataframe_slices = read_hdf(self.filename_hdf_slices, mode="r", index_col=False)
-
-    #         if acf_data:
-    #             self.parse_acf()
-
-    # def parse_acf(self):
-    #     try:
-    #         self.dataframe_acf = read_hdf(self.filename_hdf_acf, mode="r", index_col=False)
-    #         self.dataframe_acf_slices = read_hdf(self.filename_hdf_acf_slices, mode="r", index_col=False)
-    #     except FileNotFoundError:
-    #         print(f"\nFiles {self.filename_hdf_acf} not found!")
-    #         # print("\nComputing Observable now ...")
-    #         # self.compute_acf()
-
     def parse_k_data(self):
         """Read in the precomputed Fourier space data. Recalculate if not correct."""
 

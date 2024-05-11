@@ -599,7 +599,7 @@ class Particles:
 
         elif self.load_method in ["uniform", "random_no_reject"]:
             self.pos = self.uniform_no_reject(
-                0.5 * self.box_lengths - 0.5 * self.pbox_lengths, 0.5 * self.box_lengths + 0.5 * self.pbox_lengths
+                0.0 * self.pbox_lengths, self.pbox_lengths
             )
 
         elif self.load_method == "gaussian":
@@ -611,20 +611,24 @@ class Particles:
             for sp, sp_num in enumerate(self.species_num):
                 sp_end += sp_num
                 self.pos[sp_start:sp_end, :] = self.gaussian(
-                    self.box_lengths[0] / 2.0, self.load_gauss_sigma[sp], (sp_num, 3)
+                    self.pbox_lengths[0] / 2.0, self.load_gauss_sigma[sp], (sp_num, 3)
                 )
                 sp_start += sp_num
 
         elif self.load_method in ["qmc", "quasi_monte_carlo"]:
             # Ensure that we are not making silly typos
             self.qmc_sequence = self.qmc_sequence.lower()
-
+                
             if self.qmc_sequence not in self.available_qmc_sequences:
                 raise AttributeError(
                     f"Quasi Monte Carlo sequence not recognized. Please choose from {self.available_qmc_sequences}"
                 )
+            if hasattr(self, "qmc_seed"):
+                kwargs = {"seed": self.qmc_seed}
+            else:
+                kwargs = {}
 
-            self.pos = self.quasi_monte_carlo(self.qmc_sequence, self.total_num_ptcls, self.dimensions, self.box_lengths)
+            self.pos = self.quasi_monte_carlo(self.qmc_sequence, self.total_num_ptcls, self.dimensions, self.pbox_lengths, **kwargs)
 
         elif self.load_method == "species_specific":
             sp_start = 0
@@ -635,8 +639,8 @@ class Particles:
                     sp_end += sp.num
                     if sp.initial_spatial_distribution in ["uniform", "random_no_reject"]:
                         self.pos[sp_start:sp_end, :] = self.uniform_no_reject(
-                            0.5 * self.box_lengths - 0.5 * self.pbox_lengths,
-                            0.5 * self.box_lengths + 0.5 * self.pbox_lengths,
+                            0.0 * self.pbox_lengths,
+                             self.pbox_lengths,
                         )
                     elif sp.initial_spatial_distribution == "gaussian":
                         if sp.gaussian_sigma is None:
@@ -673,13 +677,14 @@ class Particles:
 
                         for dim in range(self.dimensions):
                             self.pos[sp_start:sp_end, dim] = self.gaussian(sp_mean[dim], sp_sigma[dim], (sp.num, 1))
+                            
                     elif sp.initial_spatial_distribution in ["quasi_monte_carlo", "qmc"]:
                         if sp.qmc_sequence not in self.available_qmc_sequences:
                             raise AttributeError(
                                 f"Quasi Monte Carlo sequence not recognized. Please choose from {self.available_qmc_sequences}"
                             )
                         self.pos[sp_start:sp_end, :] = self.quasi_monte_carlo(
-                            sp.qmc_sequence, sp.num, self.dimensions, self.box_lengths
+                            sp.qmc_sequence, sp.num, self.dimensions, self.pbox_lengths
                         )
                     elif sp.initial_spatial_distribution in ["quasi_monte_carlo_rejection", "qmc_reject"]:
                         if self.qmc_sequence not in self.available_qmc_sequences:
@@ -687,7 +692,7 @@ class Particles:
                                 f"Quasi Monte Carlo sequence not recognized. Please choose from {self.available_qmc_sequences}"
                             )
                         self.pos[sp_start:sp_end, :] = self.quasi_monte_carlo_rejection(
-                            sp.qmc_sequence, sp_num, self.dimensions, self.load_rejection_radius, self.box_lengths
+                            sp.qmc_sequence, sp_num, self.dimensions, self.load_rejection_radius, self.pbox_lengths
                         )
                     sp_start += sp.num
         else:
@@ -1340,11 +1345,7 @@ class Particles:
             "Total Potential Energy": self.species_potential_energy.sum(),
             "Total Temperature": self.species_num.transpose() @ self.species_temperatures / self.total_num_ptcls
         }
-        # for i in range(self.species_velocity_moments.shape[1]):
-        #     data[f"X Velocity Moment {i + 1}"] = self.species_velocity_moments[0, i, 0]
-        #     data[f"Y Velocity Moment {i + 1}"] = self.species_velocity_moments[0, i, 1]
-        #     data[f"Z Velocity Moment {i + 1}"] = self.species_velocity_moments[0, i, 2]
-
+        
         if self.num_species > 1:
             for sp, (temp, kin, pot) in enumerate(
                 zip(self.species_temperatures, self.species_kinetic_energy, self.species_potential_energy)
@@ -1378,10 +1379,6 @@ class Particles:
             "Excess Pressure": self.species_pressure_pot_tensor.sum(axis=-1).trace() / self.dimensions,
             "Total Enthalpy": self.species_enthalpy.sum()
         }
-        for i in range(self.species_velocity_moments.shape[1]):
-            data[f"X Velocity Moment {i + 1}"] = self.species_velocity_moments[0, i, 0]
-            data[f"Y Velocity Moment {i + 1}"] = self.species_velocity_moments[0, i, 1]
-            data[f"Z Velocity Moment {i + 1}"] = self.species_velocity_moments[0, i, 2]
 
         if self.num_species > 1:
             for sp, (temp, kin, pot) in enumerate(
