@@ -307,7 +307,9 @@ class Particles:
 
         if hasattr(params, "qmc_sequence"):
             self.qmc_sequence = params.qmc_sequence
-
+        if hasattr(params, "qmc_seed"):
+            self.qmc_seed = params.qmc_seed
+            
         if hasattr(params, "max_velocity_distribution_moment"):
             self.max_velocity_distribution_moment = params.max_velocity_distribution_moment
             self.species_velocity_moments = zeros((self.num_species, self.max_velocity_distribution_moment, 3))
@@ -677,7 +679,7 @@ class Particles:
 
                         for dim in range(self.dimensions):
                             self.pos[sp_start:sp_end, dim] = self.gaussian(sp_mean[dim], sp_sigma[dim], (sp.num, 1))
-                            
+
                     elif sp.initial_spatial_distribution in ["quasi_monte_carlo", "qmc"]:
                         if sp.qmc_sequence not in self.available_qmc_sequences:
                             raise AttributeError(
