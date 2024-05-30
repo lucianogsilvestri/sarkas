@@ -560,7 +560,7 @@ class Potential:
             from .coulomb import pretty_print_info, update_params
 
             self.pot_update_params = update_params
-            update_params(self)
+            update_params(self, species)
 
         elif self.type == "yukawa":
             # Yukawa potential
@@ -569,7 +569,7 @@ class Potential:
             self.calc_screening_length(species)
 
             self.pot_update_params = update_params
-            update_params(self)
+            update_params(self, species)
         
         elif self.type == "yukawa-friedel":
             # Yukawa-Friedel potential
@@ -578,7 +578,7 @@ class Potential:
             self.calc_screening_length(species)
 
             self.pot_update_params = update_params
-            update_params(self)
+            update_params(self, species)
 
         elif self.type == "egs":
             # exact gradient-corrected screening (EGS) potential
@@ -594,14 +594,14 @@ class Potential:
             from .lennardjones import pretty_print_info, update_params
 
             self.pot_update_params = update_params
-            update_params(self)
+            update_params(self, species)
 
         elif self.type == "moliere":
             # Moliere potential
             from .moliere import pretty_print_info, update_params
 
             self.pot_update_params = update_params
-            update_params(self)
+            update_params(self, species)
 
         elif self.type == "qsp":
             # QSP potential
@@ -619,7 +619,7 @@ class Potential:
             self.calc_screening_length(species)
 
             self.pot_update_params = update_params
-            update_params(self)
+            update_params(self, species)
 
         elif self.type == "fitted":
             from .fitted_pot import pretty_print_info, update_params
@@ -627,7 +627,7 @@ class Potential:
             self.screening_length_type = "thomas-fermi"
             self.calc_screening_length(species)
             self.pot_update_params = update_params
-            update_params(self)
+            update_params(self, species)
 
         elif self.type == "tabulated":
             # Tabulated potential
@@ -636,7 +636,7 @@ class Potential:
             self.calc_screening_length(species)
 
             self.pot_update_params = update_params
-            update_params(self)
+            update_params(self, species)
 
         self.pot_pretty_print = pretty_print_info
 

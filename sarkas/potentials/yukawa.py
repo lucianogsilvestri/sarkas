@@ -224,7 +224,7 @@ def pretty_print_info(potential):
     print(msg)
 
 
-def update_params(potential):
+def update_params(potential, species):
     """
     Assign potential dependent simulation's parameters.
 

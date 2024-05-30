@@ -163,7 +163,7 @@ class Integrator:
         self.species_num = params.species_num.copy()
         self.species_plasma_frequencies = params.species_plasma_frequencies.copy()
         self.species_masses = params.species_masses.copy()
-        self.species_temperatures = params.species_temperatures.copy()
+        self.species_temperature = params.species_temperature.copy()
         self.verbose = params.verbose
         self.units_dict = params.units_dict
         # Enforce consistency
@@ -176,8 +176,8 @@ class Integrator:
         elif self.thermostat_temperatures_eV:
             self.thermostat_temperatures = self.thermostat_temperatures_eV.copy() * self.eV2K
         elif not self.thermostat_temperatures_eV and not self.thermostat_temperatures:
-            self.thermostat_temperatures = params.species_temperatures.copy()
-            self.thermostat_temperatures_eV = params.species_temperatures_eV.copy()
+            self.thermostat_temperatures = params.species_temperature.copy()
+            self.thermostat_temperatures_eV = params.species_temperature_eV.copy()
 
         # Backwards compatibility
         if hasattr(self, "equilibration_steps"):
@@ -928,7 +928,7 @@ class Integrator:
         berendsen(
             ptcls.vel,
             self.thermostat_temperatures,
-            ptcls.species_temperatures,
+            ptcls.species_temperature,
             self.species_num,
             self.thermalization_rate,
         )
@@ -993,8 +993,8 @@ class Integrator:
         t_wp = 2.0 * pi / wp_tot
 
         if self.thermalization:
-            N = -log(0.01) / (self.thermalization_rate * self.dt)
-            Np = -log(0.01) / (self.thermalization_rate * 2.0 * pi / wp_tot)
+            N = int(-log(0.01) / (self.thermalization_rate) ) # Number of timesteps to decay to 0.01
+            Np = int( N / (t_wp / self.dt) )# Number of plasma cycles to decay to 0.01
             msg = (
                 f"\nTHERMOSTAT:\n"
                 f"Type: {self.thermostat_type}\n"
@@ -1002,8 +1002,8 @@ class Integrator:
                 f"Berendsen parameter tau: {self.berendsen_tau:.3f}\n"
                 f"Berendsen relaxation rate: {self.thermalization_rate:.3f}\n"
                 f"Timesteps to decay to 0.01: exp( - N dt/tau) = 0.01 ==> N = {N:.2e}\n"
-                f"langevin_gamma * (2 pi / w_p) = {self.thermalization_rate * (2.0 * pi/ wp_tot):.2e}\n"
-                f"Plasma cycles to decay to 0.01: exp( - N_p dt/tau) = 0.01 ==> N_p = {Np:.2e}\n"
+                # f"(2 pi / w_p) tau/dt = {self.thermalization_rate * (t_wp / self.dt):.2e}\n"
+                f"Plasma cycles to decay to 0.01: exp( - N_p t_wp/tau) = 0.01 ==> N_p = {Np:.2e}\n"
                 "Thermostating temperatures:\n"
             )
             for i, (t, t_ev) in enumerate(zip(self.thermostat_temperatures, self.thermostat_temperatures_eV)):

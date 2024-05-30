@@ -40,6 +40,7 @@ from numpy import (
     rint,
     roll,
     savez,
+    sort,
     sqrt,
     trapz,
     triu_indices,
@@ -64,6 +65,7 @@ from pandas import (
     Series,
     to_numeric,
 )
+import h5py
 from pickle import dump
 from pickle import load as pickle_load
 from scipy.fft import fft, fftfreq, fftshift
@@ -1561,33 +1563,35 @@ class Observable:
 
         # Get the total number of dumps by looking at the files in the directory
         self.dump_dir = self.directory_tree["postprocessing"][self.phase]["dumps"]["path"]
+        self.h5md_filepath = self.h5md_filenames_tree['postprocessing'][self.phase]
+        # self.h5md_file = h5py.File(self.h5md_filepath, 'r')
 
-        self.prod_no_dumps = len(listdir(self.directory_tree["postprocessing"]["production"]["dumps"]["path"]))
-        self.eq_no_dumps = len(listdir(self.directory_tree["postprocessing"]["equilibration"]["dumps"]["path"]))
+        self.prod_no_dumps = params.production_steps// params.prod_dump_step # len(listdir(self.directory_tree["postprocessing"]["production"]["dumps"]["path"]))
+        self.eq_no_dumps = params.equilibration_steps // params.eq_dump_step # len(listdir(self.directory_tree["postprocessing"]["equilibration"]["dumps"]["path"]))
 
         # Check for magnetized plasma options
         if self.magnetized and self.electrostatic_equilibration:
-            self.mag_no_dumps = len(listdir(self.directory_tree["postprocessing"]["magnetization"]["dumps"]["path"]))
+            self.mag_no_dumps = params.magnetization_steps // params.mag_dump_step
 
         # Assign dumps variables based on the choice of phase
         if self.phase == "equilibration":
-            self.no_dumps = self.eq_no_dumps
+            self.no_dumps = 1 +  self.eq_no_dumps # Add 1 to include the initial dump
             self.dump_step = self.eq_dump_step
             self.no_steps = self.equilibration_steps
 
         elif self.phase == "production":
-            self.no_dumps = self.prod_no_dumps
+            self.no_dumps = 1 +  self.prod_no_dumps # Add 1 to include the initial dump
             self.dump_step = self.prod_dump_step
             self.no_steps = self.production_steps
 
         elif self.phase == "magnetization":
-            self.no_dumps = self.mag_no_dumps
+            self.no_dumps = 1 +  self.mag_no_dumps # Add 1 to include the initial dump
             self.dump_step = self.mag_dump_step
             self.no_steps = self.magnetization_steps
 
         self.plasma_period = 2.0 * pi / self.total_plasma_frequency  # Plasma period in sec
         self.timesteps_per_plasma_period = self.plasma_period // self.dt  # Number of timesteps per plasma period
-
+        
         # Needed for preprocessing pretty print
         self.update_block_attributes(
             independent_slices=independent_slices,
@@ -1658,13 +1662,17 @@ class Observable:
             if self.no_slices == 1:
                 # Default case
                 # Independent blocks = True and no_slices = 1
-                self.timesteps_shift = self.no_steps
-                self.timesteps_per_slice = self.no_steps
-
+                # The +1 is to include the initial dump
+                self.timesteps_shift = self.no_steps + 1
+                self.timesteps_per_slice = self.no_steps + 1
+                
                 self.plasma_periods_shift = int(self.timesteps_shift // self.timesteps_per_plasma_period)
                 self.plasma_periods_per_slice = int(self.no_steps * self.dt // self.plasma_period)
 
-                self.block_length = int(self.timesteps_per_slice // self.dump_step)
+                self.block_length = int(self.timesteps_per_slice // self.dump_step) + 1
+                
+                self.dumps_per_slice = self.timesteps_per_slice//self.dump_step + 1
+                self.dumps_shift = self.timesteps_shift//self.dump_step + 1
                 self.dumps_per_block = self.no_dumps
             else:
                 # Independent blocks = True and no_slices > 1
@@ -1678,6 +1686,9 @@ class Observable:
                 self.timesteps_per_slice = int(self.no_steps // self.no_slices)
                 self.block_length = int(self.timesteps_per_slice // self.dump_step)
                 self.dumps_per_block = int(self.no_dumps // self.no_slices)
+                
+                self.dumps_per_slice = self.timesteps_per_slice//self.dump_step
+                self.dumps_shift = self.timesteps_shift//self.dump_step
 
                 self.plasma_periods_shift = int(self.timesteps_shift // self.timesteps_per_plasma_period)
                 self.plasma_periods_per_slice = int(self.block_length // self.timesteps_per_plasma_period)
@@ -2919,9 +2930,9 @@ class HeatFlux(Observable):
         The method uses a progress bar to indicate the progress of reading data from the dump files.
 
         """
-        start_dump_no = 0
-        end_dump_no = self.no_steps + 1  # +1 because range() does not include the last number
-        step = self.dump_step
+        # start_dump_no = 0
+        # end_dump_no = self.no_steps + 1  # +1 because range() does not include the last number
+        # step = self.dump_step
         cols = [f"{self.__long_name__}_{sp}_{axis}" for sp in self.species_names for axis in self.dim_labels]
         columns = [f"{self.__long_name__}_Species_Time"]
         columns.extend(cols)
@@ -2932,37 +2943,43 @@ class HeatFlux(Observable):
         # Parse the particles from the dump files
         # heat_flux_species_tensor = zeros((3, self.num_species))
         # Parse the particles from the dump files
-        for it, dump in enumerate(
-            tqdm(
-                range(start_dump_no, end_dump_no, step),
-                desc=f"\nRead data from dumps",
-                disable=not self.verbose,
-                position=0,
-                leave=False,
-            )
-        ):
-            datap = load_from_restart(self.dump_dir, dump)
-            time_ = datap["time"]
-            heat_flux_species_tensor = datap["species_heat_flux"]
-            # Initialize the data dictionary with the time_ value
-            # data.update( [ (f"{self.__long_name__}_Species_Time", time_) ] )
-            data[it, 0] = time_
+        # for it, dump in enumerate(
+        #     tqdm(
+        #         range(start_dump_no, end_dump_no, step),
+        #         desc=f"\nRead data from dumps",
+        #         disable=not self.verbose,
+        #         position=0,
+        #         leave=False,
+        #     )
+        # ):
+        #     datap = load_from_restart(self.dump_dir, dump)
+        #     time_ = datap["time"]
+        #     heat_flux_species_tensor = datap["species_heat_flux"]
+        #     # Initialize the data dictionary with the time_ value
+        #     # data.update( [ (f"{self.__long_name__}_Species_Time", time_) ] )
+        #     data[it, 0] = time_
 
-            # # Add heat flux data for each species and axis to the dictionary
-            # data.update(
-            #     [
-            #         (f"{self.__long_name__}_{sp}_{axis}", heat_flux_species_tensor[iax, isp])
-            #         for isp, sp in enumerate(self.species_names)
-            #         for iax, axis in enumerate(self.dim_labels)
-            #     ]
-            # )
-            data[it, 1:] = [
-                heat_flux_species_tensor[iax, isp]
-                for isp, sp in enumerate(self.species_names)
-                for iax, axis in enumerate(self.dim_labels)
-            ]
+        #     # # Add heat flux data for each species and axis to the dictionary
+        #     # data.update(
+        #     #     [
+        #     #         (f"{self.__long_name__}_{sp}_{axis}", heat_flux_species_tensor[iax, isp])
+        #     #         for isp, sp in enumerate(self.species_names)
+        #     #         for iax, axis in enumerate(self.dim_labels)
+        #     #     ]
+        #     # )
+        #     data[it, 1:] = [
+        #         heat_flux_species_tensor[isp, iax]
+        #         for isp, sp in enumerate(self.species_names)
+        #         for iax, axis in enumerate(self.dim_labels)
+        #     ]
 
             # dataset = concat([dataset, DataFrame(data, index=[it])])
+        with h5py.File(self.h5md_filepath, "r") as h5md_file:
+            time_ = h5md_file["observables"]["species_heat_flux"]["time"][:]
+            heat_flux_species_tensor = h5md_file["observables"]["species_heat_flux"]["value"][:, :, :]
+            # Store the data into list for fast conversion to DataFrame
+            data[:, 0] = time_
+            data[:, 1:] = heat_flux_species_tensor.reshape((self.no_dumps, -1))
 
         self.simulation_dataframe = DataFrame(data, columns=columns)
 
@@ -3816,18 +3833,12 @@ class PressureTensor(Observable):
 
         This method reads data from dump files for each species and axis, and stores it in a pandas DataFrame.
         The DataFrame is then assigned to the `simulation_dataframe` attribute of the class instance.
-
-        The method uses a progress bar to indicate the progress of reading data from the dump files.
-
         """
-        start_dump_no = 0
-        end_dump_no = self.no_steps + 1  # because the last dump is not included in the range otherwise
-        step = self.dump_step
         tensor_cols = [
             f"Total_Pressure Tensor {ax1}{ax2}"
             for iax1, ax1 in enumerate(self.dim_labels)
             for _, ax2 in enumerate(self.dim_labels[iax1:], iax1)
-        ]
+            ]
         columns = [f"Quantity_Time"]
         columns.append(f"Total_Pressure")
         columns.extend(tensor_cols)
@@ -3844,55 +3855,25 @@ class PressureTensor(Observable):
             columns.extend(sp_pressure_cols)
             columns.extend(sp_tensor_cols)
 
-        # dataset = DataFrame(columns=columns)
-        # data = dict.fromkeys(columns, [])
-        # Storing the data into a numpy array and then creating a dataframe is much faster than appending to a dataframe
         data = zeros((self.no_dumps, len(columns)))
-        # Parse the particles from the dump files
-        # pressure = zeros(self.block_length)
-        # pt_kin_temp = zeros((self.dimensions, self.dimensions, self.num_species))
-        # pt_pot_temp = zeros((self.dimensions, self.dimensions, self.num_species))
-        # pt_temp = zeros((self.dimensions, self.dimensions, self.num_species))
-        # species_pressure = zeros((self.num_species))
-        for it, dump in enumerate(
-            tqdm(
-                range(start_dump_no, end_dump_no, step),
-                desc=f"\nRead data from dumps",
-                disable=not self.verbose,
-                position=0,
-                leave=False,
-            )
-        ):
-            datap = load_from_restart(self.dump_dir, dump)
-            time_ = datap["time"]
-            pt_pot_temp = datap["species_pressure_pot_tensor"]  # shape = (dim, dim, num_species)
-            pt_kin_temp = datap["species_pressure_kin_tensor"]  # shape = (dim, dim, num_species)
-            pt_temp = pt_pot_temp + pt_kin_temp
-            species_pressure = zeros((self.num_species))
 
+        species_pressure = zeros((self.no_dumps, self.num_species))
+
+        with h5py.File(self.h5md_filepath, 'r') as h5md_file:
+            
+            data[:,0] = h5md_file["observables"]["species_pressure_tensor"]["time"][:]
+            pt_temp = h5md_file["observables"]["species_pressure_tensor"]["value"][:,:,:,:]
+
+        # TODO: There must be a faster way to do this
+        for it in range(species_pressure.shape[0]):
+            
+            species_half_tensor = zeros( (len(triu_indices(self.dimensions)[0])))
             for isp in range(self.num_species):
-                species_pressure[isp] = (pt_temp[:, :, isp]).trace() / self.dimensions
-
-            data[it, 0] = time_
-            data[it, 1] = species_pressure.sum()
-            data[it, 2:] = pt_temp.sum(axis=-1)[triu_indices(self.dimensions)]
-            # data.update(
-            #     [(f"Quantity_Time", time_)]
-            #     )
-
-            # # Add the total pressure data to the dictionary
-            # data.update(
-            #     [(f"Total_Pressure", species_pressure.sum())]
-            #     )
-
-            # # Add pressure tensor for each axis pair
-            # data.update(
-            #     [(f"Total_Pressure Tensor {ax1}{ax2}", pt_temp[iax1, iax2, :].sum())
-            #         for iax1, ax1 in enumerate(self.dim_labels)
-            #         for iax2, ax2 in enumerate(self.dim_labels[iax1:], iax1)
-            #     ]
-            # )
-
+                species_pressure[it, isp] = (pt_temp[it, isp, :, :]).trace() / self.dimensions
+                species_half_tensor += pt_temp[it,isp][triu_indices(self.dimensions)]
+            data[it, 1] = species_pressure[it].sum()
+            data[it, 2:] = species_half_tensor
+            
             if self.num_species > 1:
                 # Add the pressure of each species
                 data.update([(f"{sp}_Pressure", species_pressure[isp]) for isp, sp in enumerate(self.species_names)])
@@ -4112,11 +4093,12 @@ class RadialDistributionFunction(Observable):
         #     dumps_list.sort(key=num_sort)
         #     name, ext = os.path.splitext(dumps_list[-1])
         #     _, number = name.split('_')
-
-        datap = load_from_restart(self.dump_dir, 0)
+        # self.h5md_file = h5py.File(self.h5md_filepath, "r")
+        with h5py.File(self.h5md_filepath, "r") as h5md_file:
+            datap = h5md_file["observables"]["rdf_hist"]['value'][0]
 
         # Make sure you are getting the right number of bins and redefine dr_rdf.
-        self.no_bins = datap["rdf_hist"].shape[0]
+        self.no_bins = datap.shape[-1]
         self.dr_rdf = self.rc / self.no_bins
 
         # No. of pairs per volume
@@ -4146,29 +4128,31 @@ class RadialDistributionFunction(Observable):
 
         dump_init = 0
         dump_end = 0
-        step = self.timesteps_shift  # rint(self.plasma_periods_shift * self.timesteps_per_plasma_period).astype(int)
+        step = self.timesteps_shift //self.dump_step # rint(self.plasma_periods_shift * self.timesteps_per_plasma_period).astype(int)
 
-        for isl in tqdm(range(self.no_slices), desc="Calculating RDF for slice", disable=not self.verbose):
-            dump_end += self.timesteps_per_slice
+        with h5py.File(self.h5md_filepath, "r") as h5md_file:
+            for isl in tqdm(range(self.no_slices), desc="Calculating RDF for slice", disable=not self.verbose):
+                dump_end += self.timesteps_per_slice // self.dump_step
+                # data_init = load_from_restart(self.dump_dir, dump_init)
+                # data_end = load_from_restart(self.dump_dir, dump_end)
+                data_init = h5md_file["observables"]["rdf_hist"]['value'][dump_init, :,:,:]
+                data_end = h5md_file["observables"]["rdf_hist"]['value'][dump_end, :,:,:]
+                for i, sp1 in enumerate(self.species_names):
+                    for j, sp2 in enumerate(self.species_names[i:], i):
+                        denom_const = pair_density[i, j] * self.timesteps_per_slice
+                        # Each slice should be considered as an independent system.
+                        # The RDF is calculated from the difference between the last dump of the slice and the initial dump
+                        # of the slice
+                        rdf_hist_init = data_init[i, j, :] + data_init[j, i, :]
+                        rdf_hist_end = data_end[i, j, :] + data_end[j, i, :]
+                        rdf_hist_slc = rdf_hist_end - rdf_hist_init
 
-            data_init = load_from_restart(self.dump_dir, dump_init)
-            data_end = load_from_restart(self.dump_dir, dump_end)
-            for i, sp1 in enumerate(self.species_names):
-                for j, sp2 in enumerate(self.species_names[i:], i):
-                    denom_const = pair_density[i, j] * self.timesteps_per_slice
-                    # Each slice should be considered as an independent system.
-                    # The RDF is calculated from the difference between the last dump of the slice and the initial dump
-                    # of the slice
-                    rdf_hist_init = data_init["rdf_hist"][:, i, j] + data_init["rdf_hist"][:, j, i]
-                    rdf_hist_end = data_end["rdf_hist"][:, i, j] + data_end["rdf_hist"][:, j, i]
-                    rdf_hist_slc = rdf_hist_end - rdf_hist_init
+                        col_name = f"{sp1}-{sp2} RDF_slice {isl}"
+                        col_data = rdf_hist_slc / denom_const / bin_vol
+                        self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
 
-                    col_name = f"{sp1}-{sp2} RDF_slice {isl}"
-                    col_data = rdf_hist_slc / denom_const / bin_vol
-                    self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
-
-            dump_init += step
-            dump_end += step
+                dump_init += step
+                dump_end += step
 
     @avg_slices_doc
     def average_slices_data(self):
@@ -4464,7 +4448,7 @@ class Thermodynamics(Observable):
         if ensemble == "NVE":
             self.specific_heat_volume_slice = zeros(self.no_slices)
             for isl in range(self.no_slices):
-                kin_2 = (self.dataframe_slices[("Total Kinetic Energy", f"slice {isl}")].std()) ** 2
+                kin_2 = (self.dataframe_slices[("Kinetic Energy", f"slice {isl}")].std()) ** 2
                 denom = 1 - 2.0 * self.beta_slices[isl] ** 2 * kin_2 / (self.dimensions * self.total_num_ptcls)
                 self.specific_heat_volume_slice[isl] = 0.5 * self.dimensions * self.kB * self.total_num_ptcls / denom
         else:
@@ -4486,7 +4470,7 @@ class Thermodynamics(Observable):
         self.calculate_beta_simulation(ensemble=ensemble)
 
         if ensemble == "NVE":
-            kin_2 = (self.simulation_dataframe["Total Kinetic Energy"].std()) ** 2
+            kin_2 = (self.simulation_dataframe["Kinetic Energy"].std()) ** 2
             denom = 1 - 2.0 * self.beta**2 * kin_2 / (self.dimensions * self.total_num_ptcls)
             self.specific_heat_volume = 0.5 * self.dimensions * self.kB * self.total_num_ptcls / denom
         else:
@@ -4673,15 +4657,71 @@ class Thermodynamics(Observable):
 
         return nkT, u_hartree, u_corr, p_hartree, p_corr
 
+    def _create_column_mapping(self):
+        """
+        Create a dynamic mapping from thermodynamics_list to properly capitalized column names.
+        """
+        def capitalize_words(s):
+            return ' '.join(word.capitalize() for word in s.split('_'))
+        
+        return {key: capitalize_words(key) if key.lower() != 'temperature' else 'Temperature' for key in self.thermodynamics_list}
+
     def grab_sim_data(self, phase=None):
         """
-        Grab the pandas dataframe from the saved csv file.
-        """
-        if phase:
-            self.phase = phase.lower()
+        Grab the simulation data and store it in a pandas DataFrame.
 
-        self.simulation_dataframe = read_csv(self.filenames_tree["thermodynamics"][self.phase]["path"], index_col=False)
-        self.fldr = self.directory_tree["simulation"][self.phase]["path"]
+        Parameters
+        ----------
+        phase : str, optional
+            Phase to grab the data from. Default is None.
+
+        """
+
+        if phase is not None:
+            self.phase = phase.lower()
+            h5md_filepath = self.h5md_filenames_tree["postprocessing"][self.phase]
+        else:
+            h5md_filepath = self.h5md_filepath
+
+        total_thermodynamics_data = { key : zeros(self.no_dumps) for key in self.thermodynamics_list }
+        time_data = zeros(self.no_dumps)
+
+        with h5py.File(h5md_filepath, 'r') as file:
+            observables_group = file['observables']
+            for sp_name in self.species_names:
+                species_group = observables_group[sp_name]
+                
+                for obs_name in self.thermodynamics_list:
+                    
+                    try:
+                        obs_data = species_group[obs_name]
+                        # Assuming 'value' dataset exists and is indexed by step
+                        const = 1.0 if obs_name == 'temperature' else species_group.attrs['particle_number']/self.total_num_ptcls
+                        total_thermodynamics_data[obs_name] += obs_data['value'][:] * const
+
+                        if obs_name == 'temperature': 
+                            time_data = obs_data['time'][:]
+
+                    except KeyError:
+                        print(f"Observable '{obs_name}' not found for species '{sp_name}'")
+        
+        # Add time data to the total thermodynamics data dictionary
+        total_thermodynamics_data['time'] = time_data
+
+        # Create a DataFrame from the total thermodynamics data
+        self.simulation_dataframe = DataFrame(total_thermodynamics_data)
+
+        # Create dynamic column mapping
+        column_mapping = self._create_column_mapping()
+        column_mapping['time'] = 'Time'  # Ensure 'time' is mapped to 'Time'
+
+        # Rename columns according to the mapping
+        self.simulation_dataframe.rename(columns=column_mapping, inplace=True)
+
+        # Ensure 'Time' is the first column
+        cols = self.simulation_dataframe.columns.tolist()
+        cols.insert(0, cols.pop(cols.index('Time')))
+        self.simulation_dataframe = self.simulation_dataframe[cols]
 
     def temp_energy_plot(
         self,
@@ -4721,7 +4761,7 @@ class Thermodynamics(Observable):
             phase = phase.lower()
             self.phase = phase
             if self.phase == "equilibration":
-                self.no_dumps = self.eq_no_dumps
+                self.no_dumps = 1 +  self.eq_no_dumps # Add 1 to include the initial dump
                 self.dump_dir = self.eq_dump_dir
                 self.dump_step = self.eq_dump_step
                 # self.saving_dir = self.equilibration_dir
@@ -4730,7 +4770,7 @@ class Thermodynamics(Observable):
                 # self.simulation_dataframe = self.simulation_dataframe.iloc[1:, :]
 
             elif self.phase == "production":
-                self.no_dumps = self.prod_no_dumps
+                self.no_dumps = 1 +  self.prod_no_dumps # Add 1 to include the initial dump
                 self.dump_dir = self.prod_dump_dir
                 self.dump_step = self.prod_dump_step
                 # self.saving_dir = self.production_dir
@@ -4738,7 +4778,7 @@ class Thermodynamics(Observable):
                 self.grab_sim_data(self.phase)
 
             elif self.phase == "magnetization":
-                self.no_dumps = self.mag_no_dumps
+                self.no_dumps = 1 +  self.mag_no_dumps # Add 1 to include the initial dump
                 self.dump_dir = self.mag_dump_dir
                 self.dump_step = self.mag_dump_step
                 # self.saving_dir = self.magnetization_dir
@@ -4959,8 +4999,8 @@ class Thermodynamics(Observable):
                 # calculate the actual coupling constant
                 t_ratio = self.T_desired / self.simulation_dataframe["Temperature"].mean()
                 coupling_constant = (
-                    self.simulation_dataframe["Total Potential Energy"].mean()
-                    / self.simulation_dataframe["Total Kinetic Energy"].mean()
+                    self.simulation_dataframe["Potential Energy"].mean()
+                    / self.simulation_dataframe["Kinetic Energy"].mean()
                 )
                 to_append = [
                     f"Equilibration cycles = {eq_cycles}",
@@ -5018,7 +5058,7 @@ class Thermodynamics(Observable):
     #     else:
     #         self.parse()
 
-    #     Gamma = self.simulation_dataframe["Total Potential Energy"] / self.simulation_dataframe["Total Kinetic Energy"]
+    #     Gamma = self.simulation_dataframe["Total Kinetic Energy"] / self.simulation_dataframe["Total Kinetic Energy"]
     #     Gamma_T = self.simulation_dataframe["Total Potential Energy"] * self.beta / self.total_num_ptcls
     #     Gamma_a = self.coupling_constant * self.T_desired / (self.simulation_dataframe["Temperature"])
     #     time_mul, energy_mul, _, _, time_lbl, energy_lbl = plot_labels(
@@ -5139,9 +5179,6 @@ class VelocityAutoCorrelationFunction(Observable):
         if no_ptcls_per_species:
             self.select_random_indices(no_ptcls_per_species)
 
-        start_dump_no = 0
-        end_dump_no = self.no_steps + 1  # +1 because range() does not include the last number
-        step = self.dump_step
         cols = [
             f"{sp}_{np}_{axis}"
             for isp, sp in enumerate(self.species_names)
@@ -5151,23 +5188,29 @@ class VelocityAutoCorrelationFunction(Observable):
         columns = [f"Species_Particle_Time"]
         columns.extend(cols)
 
+        
         data = zeros((self.no_dumps, len(columns)))
-        # Parse the particles from the dump files
-        for it, dump in enumerate(
-            tqdm(
-                range(start_dump_no, end_dump_no, step),
-                desc=f"\nRead data from dumps",
-                disable=not self.verbose,
-                position=0,
-                leave=False,
-            )
-        ):
-            datap = load_from_restart(self.dump_dir, dump)
-            time_ = datap["time"]
-            velocities = datap["vel"][self.particles_id, :]
+        # start_dump_no = 0
+        # end_dump_no = self.no_dumps 
+        # step = 1
+        
+        with h5py.File(self.h5md_filepath, "r") as h5md_file: 
+            # # Parse the particles from the dump files
+            # for it, dump in enumerate(
+            #     tqdm(
+            #         range(start_dump_no, end_dump_no, step),
+            #         desc=f"\nRead data from dumps",
+            #         disable=not self.verbose,
+            #         position=0,
+            #         leave=False,
+            #     )
+            # ):
+                
+            time_ = h5md_file["particles"]["time"][:]
+            velocities = h5md_file["particles"]["vel"][:, self.particles_id, :]
             # Initialize the data dictionary with the time_ value
-            data[it, 0] = time_
-            data[it, 1:] = velocities.flatten()
+            data[:, 0] = time_
+            data[:, 1:] =  velocities.reshape( (velocities.shape[0], -1)) # velocities.flatten()
 
         self.simulation_dataframe = DataFrame(data, columns=columns)
 
@@ -5354,7 +5397,7 @@ class VelocityAutoCorrelationFunction(Observable):
                 )
 
             # Generate unique random indices for the current range
-            random_indices = rng.choice(range(species_start, species_end), size=num_ptcls, replace=False)
+            random_indices = sort(rng.choice(range(species_start, species_end), size=num_ptcls, replace=False))
 
             # Append the current random indices to the combined list
             combined_random_indices.extend(random_indices)

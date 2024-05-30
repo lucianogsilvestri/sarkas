@@ -20,6 +20,7 @@ from numpy import (
     triu_indices,
     zeros,
 )
+import h5py
 from numpy.random import Generator, PCG64
 from os.path import join
 from scipy.linalg import norm
@@ -120,8 +121,8 @@ class Particles:
         :meth:`calculate_total_kinetic_energy()` calculates the total kinetic energy and stores it in :attr:`tottal_kinetic_energy` a float.\n\n
         Quantities requiring cross species evaluation are stored in `numpy.ndarray` as `.[quantity]_species_tensor`.\n
         For example:
-        :attr:`virial_species_tensor` is a 3 x 3 x :attr:`num_species` x :attr:`num_species` tensor.
-        :attr:`heat_flux_species_tensor` is a 3 x :attr:`num_species` x :attr:`num_species` tensor.
+        :attr:`virial_species_tensor` is a  :attr:`num_species` x :attr:`num_species` x 3 x 3 tensor.
+        :attr:`heat_flux_species_tensor` is a :attr:`num_species` x :attr:`num_species` x  3 tensor.
         The attributes :attr:`potential_energy`, :attr:`virial_species_tensor`, :attr:`heat_flux_species_tensor` are calculated by the :class:`sarkas.potentials.core.Potential` class.\n
         Therefore, this class is missing the :meth:`calculate_potential_energy`, :meth:`calculate_virial`, :meth:`calculate_heat_flux` methods.
     """
@@ -164,42 +165,31 @@ class Particles:
         self.no_grs = None
         self.rdf_hist = None
 
-        self.observables_list = [
-            "Kinetic Energy",
-            "Potential Energy",
-        ]  #  "Pressure Tensor", "Enthalpy", "Heat Flux"]
-        self.species_observables_calculator_dict = {
-            "Kinetic Energy": self.calculate_species_kinetic_temperature,
-            "Potential Energy": self.calculate_species_potential_energy,
+        self.observables_list = ["Radial Distribution Function"]
+        self.observables_arrays_list = ['rdf_hist']
+        self.thermodynamics_list = ['total_energy', 'kinetic_energy', 'potential_energy', 'temperature'] # 'pressure', 'enthalpy']
+        
+        self.species_thermodynamics_data = {} # Associated method to initialize it
+        self.species_thermodynamics_method_map = {}
+        
+        self.species_observables_method_map = {
             "Momentum": self.calculate_species_momentum,
             "Velocity Moments": self.calculate_species_velocity_moments,
             "Electric Current": self.calculate_species_electric_current,
             "Pressure Tensor": self.calculate_species_pressure_tensor,
-            "Enthalpy": self.calculate_species_enthalpy,
-            "Heat Flux": self.calculate_species_heat_flux,
-        }
-
-        self.thermodynamics_calculator_dict = {
-            "Kinetic Energy": self.calculate_species_kinetic_temperature,
-            "Potential Energy": self.calculate_species_potential_energy,
-            "Velocity Moments": self.calculate_species_velocity_moments,
-            "Momentum": self.calculate_species_momentum,
-            "Electric Current": self.calculate_species_electric_current,
-            "Pressure Tensor": self.calculate_species_pressure_tensor,
-            "Enthalpy": self.calculate_species_enthalpy,
             "Heat Flux": self.calculate_species_heat_flux,
         }
         self.qmc_sequence = None
         self.available_qmc_sequences = ["halton", "sobol", "poissondisk", "latinhypercube"]
         self.max_velocity_distribution_moment = 4
 
-    def __repr__(self):
-        sortedDict = dict(sorted(self.__dict__.items(), key=lambda x: x[0].lower()))
-        disp = "Particles( \n"
-        for key, value in sortedDict.items():
-            disp += "\t{} : {}\n".format(key, value)
-        disp += ")"
-        return disp
+    # def __repr__(self):
+    #     sortedDict = dict(sorted(self.__dict__.items(), key=lambda x: x[0].lower()))
+    #     disp = "Particles( \n"
+    #     for key, value in sortedDict.items():
+    #         disp += "\t{} : {}\n".format(key, value)
+    #     disp += ")"
+    #     return disp
 
     def __copy__(self):
         """
@@ -268,10 +258,10 @@ class Particles:
         self.id = zeros(self.__dict__["total_num_ptcls"])
         self.names = zeros(self.__dict__["total_num_ptcls"])
         self.pbc_cntr = zeros((self.__dict__["total_num_ptcls"], 3))
-        self.rdf_hist = zeros((self.__dict__["rdf_nbins"], self.__dict__["num_species"], self.__dict__["num_species"]))
-        self.virial_species_tensor = zeros((3, 3, self.__dict__["num_species"], self.__dict__["num_species"]))
+        self.rdf_hist = zeros((self.__dict__["num_species"], self.__dict__["num_species"], self.__dict__["rdf_nbins"]))
+        self.virial_species_tensor = zeros((self.__dict__["num_species"], self.__dict__["num_species"], 3, 3))
         self.potential_energy = zeros((self.__dict__["total_num_ptcls"]))
-        self.heat_flux_species_tensor = zeros((3, self.__dict__["num_species"], self.__dict__["num_species"]))
+        self.heat_flux_species_tensor = zeros((self.__dict__["num_species"], self.__dict__["num_species"], 3))
 
     def copy_params(self, params):
         """
@@ -283,14 +273,21 @@ class Particles:
             Simulation's parameters.
 
         """
-        self.directory_tree = deepcopy(params.directory_tree)
+        
+        self.process_directory_tree = deepcopy(params.process_directory_tree)
         self.filenames_tree = deepcopy(params.filenames_tree)
+        self.h5md_filenames_tree = deepcopy(params.h5md_filenames_tree)
+        self.process_h5md_filepath_dict = deepcopy(params.process_h5md_filepath_dict)
+        
+        # Redundant info. Can be removed.
+        self.prod_dump_dir = params.process_directory_tree["production"]["dumps"]["path"]
+        self.eq_dump_dir = params.process_directory_tree["equilibration"]["dumps"]["path"]
+        self.mag_dump_dir = params.process_directory_tree["magnetization"]["dumps"]["path"]
 
         self.kB = params.kB
-        self.dt = params.dt
         self.fourpie0 = params.fourpie0
-        self.prod_dump_dir = params.directory_tree["simulation"]["production"]["dumps"]["path"]
-        self.eq_dump_dir = params.directory_tree["simulation"]["equilibration"]["dumps"]["path"]
+
+        
         self.box_lengths = params.box_lengths.copy()
         self.pbox_lengths = params.pbox_lengths.copy()
         self.total_num_ptcls = params.total_num_ptcls
@@ -315,14 +312,28 @@ class Particles:
             self.species_velocity_moments = zeros((self.num_species, self.max_velocity_distribution_moment, 3))
 
         self.restart_step = params.restart_step
+        # Needed for restarts
+        self.eq_dump_step = params.eq_dump_step
+        self.prod_dump_step = params.prod_dump_step
+        self.mag_dump_step = params.mag_dump_step 
+        self.job_id = params.job_id
         self.particles_input_file = params.particles_input_file
         self.load_perturb = params.load_perturb
         self.load_rejection_radius = params.load_rejection_radius
         self.load_halton_bases = params.load_halton_bases
 
-        if params.observables_list:
-            for obs in params.observables_list:
+        for obs in params.observables_list:
+            if obs not in self.observables_list:
                 self.observables_list.append(obs)
+        
+        for obs in params.thermodynamics_list:
+            if obs not in self.thermodynamics_list:
+                self.thermodynamics_list.append(obs)
+        
+        # These array_names are the key of the species_observables_method_map used to calculate the observables.
+        for array_name in params.observables_arrays_list:
+            if array_name not in self.observables_arrays_list:
+                self.observables_arrays_list.append(array_name) 
 
         if hasattr(params, "np_per_side"):
             self.np_per_side = params.np_per_side
@@ -333,7 +344,7 @@ class Particles:
         if hasattr(params, "load_gauss_sigma"):
             self.load_gauss_sigma = params.load_gauss_sigma.copy()
 
-        self.species_names = params.species_names
+        self.species_names = params.species_names.copy()
 
         if hasattr(params, "rdf_nbins"):
             self.rdf_nbins = params.rdf_nbins
@@ -545,38 +556,56 @@ class Particles:
 
         self.species_kinetic_energy = zeros(self.num_species)
         self.species_potential_energy = zeros(self.num_species)
-        self.species_temperatures = zeros(self.num_species)
+        self.species_temperature = zeros(self.num_species)
         self.species_thermostat_temperatures = zeros(self.num_species)
-        # No. of independent rdf
+        
         self.no_grs = int64(self.num_species * (self.num_species + 1) / 2)
-        self.rdf_hist = zeros((self.rdf_nbins, self.num_species, self.num_species))
+        if "Radial Distribution Function" in self.observables_list:
+            self.rdf_hist = zeros((self.num_species, self.num_species, self.rdf_nbins))
+            if 'rdf_hist' not in self.observables_arrays_list:
+                self.observables_arrays_list.append('rdf_hist')
 
         if "Momentum" in self.observables_list:
             self.momentum = zeros((self.total_num_ptcls, 3))
             self.species_momentum = zeros((self.num_species, 3))
-
+            if 'species_momentum' not in self.observables_arrays_list:
+                self.observables_arrays_list.append('species_momentum')
+                
         if "Electric Current" in self.observables_list:
             self.electric_current = zeros((self.total_num_ptcls, 3))
             self.species_electric_current = zeros((self.num_species, 3))
+            if 'species_electric_current' not in self.observables_arrays_list:
+                self.observables_arrays_list.append('species_electric_current')
 
         if "Pressure Tensor" in self.observables_list:
             self.pressure = zeros(self.total_num_ptcls)
             self.species_pressure = zeros(self.species_num)
-            self.species_pressure_kin_tensor = zeros((3, 3, self.num_species))
-            self.species_pressure_pot_tensor = zeros((3, 3, self.num_species))
-            self.species_pressure_tensor = zeros((3, 3, self.num_species))
-            self.virial_species_tensor = zeros((3, 3, self.num_species, self.num_species))
+            self.species_pressure_kin_tensor = zeros((self.num_species, 3, 3))
+            self.species_pressure_pot_tensor = zeros((self.num_species, 3, 3))
+            self.species_pressure_tensor = zeros((self.num_species, 3, 3))
+            self.virial_species_tensor = zeros((self.num_species, self.num_species, 3, 3))
 
-        if "Enthalpy":
+            if 'species_pressure_tensor' not in self.observables_arrays_list:
+                self.observables_arrays_list.append('species_pressure_tensor')
+            if 'species_pressure_kin_tensor' not in self.observables_arrays_list:
+                self.observables_arrays_list.append('species_pressure_kin_tensor')
+            if 'species_pressure_pot_tensor' not in self.observables_arrays_list:
+                self.observables_arrays_list.append('species_pressure_pot_tensor')
+
+        if "enthalpy" in self.thermodynamics_list:
             self.enthalpy = zeros(self.total_num_ptcls)
             self.species_enthalpy = zeros(self.num_species)
-
+            
         if "Heat Flux" in self.observables_list:
-            self.heat_flux_species_tensor = zeros((3, self.num_species, self.num_species))
+            self.heat_flux_species_tensor = zeros(( self.num_species, self.num_species, 3))
             self.species_heat_flux = zeros((self.num_species, 3))
+            if 'species_heat_flux' not in self.observables_arrays_list:
+                self.observables_arrays_list.append('species_heat_flux')
 
         if "Velocity Moments" in self.observables_list:
             self.species_velocity_moments = zeros((self.num_species, self.max_velocity_distribution_moment, 3))
+            if 'species_velocity_moments' not in self.observables_arrays_list:
+                self.observables_arrays_list.append('species_velocity_moments')
 
     def initialize_positions(self, species: list = None):
         """
@@ -886,7 +915,7 @@ class Particles:
         )
         self.calculate_species_kinetic_temperature()
 
-        return self.species_kinetic_energy, self.species_temperatures
+        return self.species_kinetic_energy, self.species_temperature
 
     def lattice(self, perturb: float = 0.05):
         """
@@ -1143,7 +1172,7 @@ class Particles:
         """
 
         warn(
-            "Deprecated feature. It will be removed in a future release. \n" "Use load_from_checkpoint. ",
+            "Deprecated feature. It will be removed in a future release.\nUse load_from_checkpoint. ",
             category=DeprecationWarning,
         )
 
@@ -1163,24 +1192,35 @@ class Particles:
 
         """
         if phase == "equilibration":
-            file_name = join(self.eq_dump_dir, f"checkpoint_{it}.npz")
-
+            file_name = self.process_h5md_filepath_dict["equilibration"]
+            dump_step = self.eq_dump_step
         elif phase == "production":
-            file_name = join(self.prod_dump_dir, f"checkpoint_{it}.npz")
-
+            file_name = self.process_h5md_filepath_dict["production"]
+            dump_step = self.prod_dump_step
         elif phase == "magnetization":
-            file_name = join(self.mag_dump_dir, f"checkpoint_{it}.npz")
+            file_name = self.process_h5md_filepath_dict["magnetization"]
+            dump_step = self.mag_dump_step
 
-        data = np_load(file_name, allow_pickle=True)
+        # Calculate the index of the time step
+        index = self.restart_step // dump_step
+        
 
-        self.pos = data["pos"]
-        self.vel = data["vel"]
-        # self.acc = data["acc"]
+        with h5py.File(file_name, "r") as file:
+            self.pos = file["particles/pos"][index]
+            self.vel = file["particles/vel"][index]
+            if 'rdf_hist' in file["observables"].keys():
+                self.rdf_hist = file["observables/rdf_hist/value"][index]
 
-        self.rdf_hist = data["rdf_hist"]
+        # data = np_load(file_name, allow_pickle=True)
 
-        if "cntr" in data.files:
-            self.pbc_cntr = data["cntr"]
+        # self.pos = data["pos"]
+        # self.vel = data["vel"]
+        # # self.acc = data["acc"]
+
+        # self.rdf_hist = data["rdf_hist"]
+
+        # if "cntr" in data.files:
+        #     self.pbc_cntr = data["cntr"]
 
     def calculate_electric_current(self):
         """Calculate the electric current of each particle and store it into :attr:`electric_current`."""
@@ -1199,9 +1239,9 @@ class Particles:
 
     def calculate_observables(self):
         """Calculate the observables in :attr:`observables_list`."""
-
-        for i in self.observables_list:
-            self.species_observables_calculator_dict[i]()
+        for key in self.species_observables_method_map.keys():
+            self.species_observables_method_map[key]()
+        
 
     def calculate_species_electric_current(self):
         """Calculate the electric current of each species from :attr:`vel` and stores it into :attr:`species_electric_current`."""
@@ -1217,6 +1257,17 @@ class Particles:
         self.enthalpy = energy + self.species_pressure * self.box_volume
 
         self.species_enthalpy = scalar_species_loop(self.enthalpy, self.species_num)
+
+    def calculate_species_kinetic_energy(self):
+        """Calculate the kinetic energy of each species and store it into :attr:`species_kinetic_energy`."""
+        self.calculate_kinetic_energy()
+        self.species_kinetic_energy = scalar_species_loop(self.kinetic_energy, self.species_num)
+    
+    def calculate_species_total_energy(self):
+        """Calculate the total energy of each species and store it into :attr:`species_total_energy`."""
+        self.calculate_species_kinetic_energy()
+        self.calculate_species_potential_energy()
+        self.species_total_energy = scalar_species_loop(self.kinetic_energy + self.potential_energy, self.species_num)
 
     def calculate_species_kinetic_temperature(self):
         """
@@ -1237,7 +1288,7 @@ class Particles:
         # kinetic = 0.5 * self.masses * (self.vel * self.vel).sum(axis = -1)
         self.calculate_kinetic_energy()
         self.species_kinetic_energy = scalar_species_loop(self.kinetic_energy, self.species_num)
-        self.species_temperatures = const * self.species_kinetic_energy
+        self.species_temperature = const * self.species_kinetic_energy
         # species_start = 0
         # species_end = 0
         # for i, num in enumerate(self.species_num):
@@ -1248,8 +1299,17 @@ class Particles:
 
         # return K, T
 
+    def calculate_species_temperature(self):
+        """Calculate the temperature of each species and store it into :attr:`species_temperature`.
+        
+        Note
+        ----
+        Redundant with :meth:`calculate_species_kinetic_temperature`.
+        """
+        self.calculate_species_kinetic_temperature()
+
     def calculate_species_momentum(self):
-        velocity = vector_species_loop(self.vel.transpose(), self.species_num)
+        velocity = vector_species_loop(self.vel, self.species_num)
         self.species_momentum = self.species_masses * velocity
 
     def calculate_species_velocity_moments(self):
@@ -1283,22 +1343,23 @@ class Particles:
         self.species_pressure, self.species_pressure_kin_tensor, self.species_pressure_pot_tensor = calc_pressure_tensor(
             self.vel, self.virial_species_tensor, self.species_masses, self.species_num, self.box_volume, self.dimensions
         )
-
-    # def calculate_thermodynamic_quantities(self):
-    #             for i in self.observables_list:
-    #             self.species_observables_calculator_dict[i]()
-
-    def calculate_thermodynamic_quantities_partial(self):
-        """Calculate the main thermodynamics quantities from particles data and return a dictionary with their values."""
-        self.calculate_total_kinetic_energy()
-        self.calculate_total_potential_energy()
-
-    def calculate_thermodynamic_quantities_full(self):
-        """Calculate thermodynamics quantities from particles data."""
-        self.calculate_total_kinetic_energy()
-        self.calculate_total_potential_energy()
-        self.calculate_total_pressure()
-        self.calculate_total_enthalpy()
+        self.species_pressure_tensor = self.species_pressure_kin_tensor + self.species_pressure_pot_tensor
+        
+    def calculate_species_pressure(self):
+        """
+        Calculate the pressure, the kinetic part of the pressure tensor, the potential part of the kinetic tensor of each species and store them into :attr:`species_pressure`, :attr:`species_pressure_kin_tensor`, :attr:`species_pressure_pot_tensor`.
+        Redundant with :meth:`calculate_species_pressure_tensor`.
+        """
+        self.species_pressure, self.species_pressure_kin_tensor, self.species_pressure_pot_tensor = calc_pressure_tensor(
+            self.vel, self.virial_species_tensor, self.species_masses, self.species_num, self.box_volume, self.dimensions
+        )
+        
+    # def calculate_thermodynamic_quantities_full(self):
+    #     """Calculate thermodynamics quantities from particles data."""
+    #     self.calculate_total_kinetic_energy()
+    #     self.calculate_total_potential_energy()
+    #     self.calculate_total_pressure()
+    #     self.calculate_total_enthalpy()
 
     def calculate_total_electric_current(self):
         """Calculate the total electric current of the system, by summing the electric current of each species and store it into :attr:`total_electric_current`."""
@@ -1329,7 +1390,23 @@ class Particles:
         self.calculate_species_pressure_tensor()
         self.total_pressure = self.species_pressure.sum()
 
-    def make_thermodynamics_dictionary_partial(self):
+    def make_species_observables_method_map(self, observables_list = None):
+        """Make a dictionary where each key is an element of observables_list and each value is a method of Particles."""
+        
+        if observables_list is None:
+            observables_list = self.observables_list
+        else:
+            for obs in observables_list:
+                if obs not in self.observables_list:
+                    self.observables_list.append(obs)
+            observables_list = self.observables_list
+        
+        key_list = list(self.species_observables_method_map.keys())
+        for key in key_list:
+            if key not in observables_list:
+                del self.species_observables_method_map[key]
+
+    def make_species_thermodynamics_dictionary(self, thermodynamics_list=None):
         """
         Put the main thermodynamic quantities into a dictionary. This is used for saving data while running.
 
@@ -1340,65 +1417,114 @@ class Particles:
             Thermodynamics data. In case of multiple species, it returns thermodynamics quantities per species.
             keys = [`Total Energy`, `Total Kinetic Energy`, `Total Potential Energy`, `Total Temperature`]
         """
-        # Save Energy data
-        data = {
-            "Total Energy": self.species_kinetic_energy.sum() + self.species_potential_energy.sum(),
-            "Total Kinetic Energy": self.species_kinetic_energy.sum(),
-            "Total Potential Energy": self.species_potential_energy.sum(),
-            "Total Temperature": self.species_num.transpose() @ self.species_temperatures / self.total_num_ptcls
-        }
+        # Check that tehrmodynamics_list is not None
+        if thermodynamics_list is None:
+            thermodynamics_list = self.thermodynamics_list # ['total_energy', 'kinetic_energy', 'potential_energy', 'temperature']
+        else:
+            for prop in thermodynamics_list:
+                if prop not in self.thermodynamics_list:
+                    self.thermodynamics_list.append(prop)
+            thermodynamics_list = self.thermodynamics_list
         
-        if self.num_species > 1:
-            for sp, (temp, kin, pot) in enumerate(
-                zip(self.species_temperatures, self.species_kinetic_energy, self.species_potential_energy)
-            ):
-                data[f"{self.species_names[sp]} Kinetic Energy"] = kin
-                data[f"{self.species_names[sp]} Potential Energy"] = pot
-                data[f"{self.species_names[sp]} Temperature"] = temp
+        # Create a dictionary where each key is an element of thermodynamics_list and each value is None
+        thermo_keys = {key: None for key in thermodynamics_list}
 
-        return data
-
-    def make_thermodynamics_dictionary_full(self):
-        """
-        Put all thermodynamic quantities into a dictionary. This is used for saving data while running.
-
-        Return
-        ------
-
-        data : dict
-            Thermodynamics data. In case of multiple species, it returns thermodynamics quantities per species.
-            keys = [`Total Energy`, `Total Kinetic Energy`, `Total Potential Energy`, `Total Temperature`, `Total Pressure`,
-            `Ideal Pressure`, `Excess Pressure, `Total Enthalpy`]
-        """
-        # Save Energy data
-        data = {
-            "Total Energy": self.species_kinetic_energy.sum() + self.species_potential_energy.sum(),
-            "Total Kinetic Energy": self.species_kinetic_energy.sum(),
-            "Total Potential Energy": self.species_potential_energy.sum(),
-            "Total Temperature": self.species_num.transpose() @ self.species_temperatures / self.total_num_ptcls,
-            "Total Pressure": self.species_pressure.sum(),
-            "Ideal Pressure": self.species_pressure_kin_tensor.sum(axis=-1).trace() / self.dimensions,
-            "Excess Pressure": self.species_pressure_pot_tensor.sum(axis=-1).trace() / self.dimensions,
-            "Total Enthalpy": self.species_enthalpy.sum()
+        # Create a new dictionary where each key is a species name and each value is a copy of thermodynamics_data
+        self.species_thermodynamics_data = {
+            species: thermo_keys.copy() for species in self.species_names
         }
 
-        if self.num_species > 1:
-            for sp, (temp, kin, pot) in enumerate(
-                zip(self.species_temperatures, self.species_kinetic_energy, self.species_potential_energy)
-            ):
-                data[f"{self.species_names[sp]} Kinetic Energy"] = kin
-                data[f"{self.species_names[sp]} Potential Energy"] = pot
-                data[f"{self.species_names[sp]} Temperature"] = temp
-                data[f"{self.species_names[sp]} Total Pressure"] = self.species_pressure[sp]
-                data[f"{self.species_names[sp]} Ideal Pressure"] = (
-                    self.species_pressure_kin_tensor[:, :, sp].trace() / self.dimensions
-                )
-                data[f"{self.species_names[sp]} Excess Pressure"] = (
-                    self.species_pressure_pot_tensor[:, :, sp].trace() / self.dimensions
-                )
-                data[f"{self.species_names[sp]} Enthalpy"] = self.species_enthalpy[sp]
+        self.make_species_thermodynamics_method_map(thermodynamics_list)
 
-        return data
+    def make_species_thermodynamics_method_map(self, thermodynamics_list):
+        """
+        Make the dictionary :attr:`species_thermodynamics_method_map` with the new thermodynamic quantities.
+        
+        Parameters
+        ----------
+        thermodynamics_list : list
+            List of thermodynamic quantities to calculate for each species.
+        
+        Notes
+        -----
+        This is used to make the dictionary :attr:`species_thermodynamics_method_map` with the new thermodynamic quantities. 
+        The dictionary is a map of the thermodynamic quantities to the method to calculate them.
+
+        """
+        if thermodynamics_list is None:
+            thermodynamics_list = self.thermodynamics_list
+
+        for property in thermodynamics_list:
+            if not hasattr(self, f"calculate_species_{property}"):
+                raise ParticlesError(f"Method calculate_species_{property} not found in Particles.")
+            else:
+                self.species_thermodynamics_method_map[property] = getattr(self, f"calculate_species_{property}")
+
+        # self.species_thermodynamics_method_map = {
+        #     prop: getattr(self, f"calculate_species_{prop}")
+        #     for prop in thermodynamics_list
+        #     if hasattr(self, f"calculate_species_{prop}")
+        # }
+
+    def calculate_species_thermodynamics(self):
+        # Fill the dictionary
+        for key in self.species_thermodynamics_method_map.keys():
+            # Call the method to calculate the thermodynamics quantity for the species
+            self.species_thermodynamics_method_map[key]()
+            # for isp, sp_name in enumerate(self.species_names):
+            #     # Store the value in the dictionary
+            #     self.species_thermodynamics_data[sp_name][key] = self.__getattribute__(f"species_{key}")[isp]
+
+    def calculate_species_observables(self):
+        """Calculate the observables for each species."""
+        for key in self.species_observables_method_map.keys():
+            self.species_observables_method_map[key]()
+
+    # def make_thermodynamics_dictionary_full(self):
+    #     """
+    #     Put all thermodynamic quantities into a dictionary. This is used for saving data while running.
+
+    #     Return
+    #     ------
+
+    #     data : dict
+    #         Thermodynamics data. In case of multiple species, it returns thermodynamics quantities per species.
+    #         keys = [`Total Energy`, `Total Kinetic Energy`, `Total Potential Energy`, `Total Temperature`, `Total Pressure`,
+    #         `Ideal Pressure`, `Excess Pressure, `Total Enthalpy`]
+    #     """
+    #     # Save Energy data
+    #     thermo_keys = {
+    #         'total_energy': None,
+    #         'kinetic_energy': None,
+    #         'potential_energy': None,
+    #         'temperature': None,
+    #         'pressure': None,
+    #         'ideal_pressure': None,
+    #         'excess_pressure': None,  # Ensure correct formatting and completeness in key names
+    #         'enthalpy': None
+    #     }
+
+    #     # Create a new dictionary where each key is a species name and each value is a copy of thermodynamics_data
+    #     species_data = {
+    #         species: thermo_keys.copy() for species in self.species_names
+    #     }
+    #     for sp, (temp, kin, pot) in enumerate(
+    #         zip(self.species_temperature, self.species_kinetic_energy, self.species_potential_energy)
+    #     ):  
+    #         species_data[f"{self.species_names[sp]}"]["total_energy"] = self.species_kinetic_energy[sp] + self.species_potential_energy[sp]
+    #         species_data[f"{self.species_names[sp]}"]["kinetic_energy"] = kin
+    #         species_data[f"{self.species_names[sp]}"]["potential_energy"] = pot
+    #         species_data[f"{self.species_names[sp]}"]["temperature"] = temp
+    #         species_data[f"{self.species_names[sp]}"]["pressure"] = self.species_pressure[sp]
+    #         species_data[f"{self.species_names[sp]}"]["ideal_pressure"] = (
+    #             self.species_pressure_kin_tensor[:, :, sp].trace() / self.dimensions)
+            
+    #         species_data[f"{self.species_names[sp]}"]["excess_pressure"] = (
+    #             self.species_pressure_pot_tensor[:, :, sp].trace() / self.dimensions)
+            
+    #         species_data[f"{self.species_names[sp]}"]["enthalpy"] = self.species_enthalpy[sp]
+    
+    #     return species_data
 
     def random_reject(self, r_reject):
         """
@@ -1543,6 +1669,10 @@ class Particles:
         self.copy_params(params)
         self.initialize_arrays()
         self.update_attributes(species)
+        
+        self.make_species_thermodynamics_dictionary(thermodynamics_list=self.thermodynamics_list)
+        self.make_species_thermodynamics_method_map(thermodynamics_list=self.thermodynamics_list)
+        self.make_species_observables_method_map(observables_list=self.observables_list)
         # Particles Position Initialization
         if self.load_method in [
             "equilibration_restart",
@@ -1579,13 +1709,6 @@ class Particles:
             self.initialize_positions(species=species)
             self.initialize_velocities(species=species)
             self.initialize_accelerations()
-
-        if len(self.observables_list) > 3:
-            self.calculate_thermodynamic_quantities = self.calculate_thermodynamic_quantities_full
-            self.make_thermodynamics_dictionary = self.make_thermodynamics_dictionary_full
-        else:
-            self.calculate_thermodynamic_quantities = self.calculate_thermodynamic_quantities_partial
-            self.make_thermodynamics_dictionary = self.make_thermodynamics_dictionary_partial
 
     def uniform_no_reject(self, mins, maxs):
         """
@@ -1683,8 +1806,8 @@ def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num
 
     # Rescale vel of each particle by their individual mass
     pressure = zeros(species_num.shape[0])
-    pressure_kin = zeros((3, 3, species_num.shape[0]))
-    pressure_pot = zeros((3, 3, species_num.shape[0]))
+    pressure_kin = zeros((species_num.shape[0], 3, 3 ))
+    pressure_pot = zeros((species_num.shape[0], 3, 3))
     temp_kin_tensor = zeros((3, 3, vel.shape[0]))
 
     # TODO: There must be a faster way to do this tensor product
@@ -1755,9 +1878,9 @@ def vector_species_loop(observable, species_num):
 
 @njit
 def vector_cross_species_loop(observable, species_num):
-    sp_obs = zeros((3, species_num.shape[0]))
+    sp_obs = zeros((species_num.shape[0], 3))
     for sp in range(species_num.shape[0]):
-        sp_obs[:, sp] = observable[:, sp, :].sum(axis=-1)
+        sp_obs[sp, :] = observable[sp, :, :].sum(axis=0)
 
     return sp_obs
 
@@ -1766,10 +1889,10 @@ def vector_cross_species_loop(observable, species_num):
 def tensor_species_loop(observable, species_num):
     sp_start = 0
     sp_end = 0
-    sp_obs = zeros((3, 3, species_num.shape[0]))
+    sp_obs = zeros(( species_num.shape[0], 3, 3))
     for sp, sp_num in enumerate(species_num):
         sp_end += sp_num
-        sp_obs[:, :, sp] = observable[:, :, sp_start:sp_end].sum(axis=-1)
+        sp_obs[sp, :, :] = observable[:, :, sp_start:sp_end].sum(axis=-1)
         sp_start += sp_num
 
     return sp_obs
@@ -1777,9 +1900,9 @@ def tensor_species_loop(observable, species_num):
 
 @njit
 def tensor_cross_species_loop(observable, species_num):
-    sp_obs = zeros((3, 3, species_num.shape[0]))
+    sp_obs = zeros(( species_num.shape[0], 3, 3))
     for sp in range(species_num.shape[0]):
-        sp_obs[:, :, sp] = observable[:, :, sp, :].sum(axis=-1)
+        sp_obs[sp, :, :] = observable[sp, :, :, :].sum(axis=1)
 
     return sp_obs
 
