@@ -3,6 +3,7 @@ Module for calculating physical quantities from Sarkas checkpoints.
 """
 import inspect
 from copy import deepcopy
+from typing import List
 from IPython import get_ipython
 
 if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
@@ -10,12 +11,10 @@ if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
 else:
     from tqdm import tqdm
 
-import datetime
 import matplotlib.pyplot as plt
-import pandas as pd
 import scipy.stats as scp_stats
-import sys
 import warnings
+from arch.unitroot import ADF, KPSS
 from matplotlib.gridspec import GridSpec
 from numba import njit
 from numpy import append as np_append
@@ -943,6 +942,13 @@ class Observable:
             self.simulation_dataframe = read_hdf(
                 self.observable_filenames["simulation_hdf"]["path"], mode="r", index_col=False
             )
+            if len(self.simulation_dataframe) != self.no_dumps:
+                print(
+                    f"\nData file {self.observable_filenames['simulation_hdf']['path']} has a different number of timesteps than the simulation. \n"
+                    f"Data will be reloaded from the snapshots."
+                )
+                self.read_data_from_dumps()
+                self.save_simulation_hdf()
         except FileNotFoundError:
             print(
                 f"\nData file not found! \n {self.observable_filenames['simulation_hdf']['path']}\nCollecting data from snapshots ..."
@@ -2594,8 +2600,10 @@ class ElectricCurrent(Observable):
             self.timesteps_shift // self.dump_step
         )  # rint(self.plasma_periods_shift * self.timesteps_per_plasma_period / self.dump_step).astype(int)
 
-        self.dataframe[f"{self.__long_name__}_Species_Axis_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
-        self.dataframe_slices[f"{self.__long_name__}_Species_Axis_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
+        # self.dataframe[f"{self.__long_name__}_Species_Axis_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
+        # self.dataframe_slices[f"{self.__long_name__}_Species_Axis_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
+        columns_list = [f"{self.__long_name__}_Species_Axis_Time"]
+        data_list = [self.simulation_dataframe.iloc[:end_index, 0].values]
 
         ## TODO: The following loops can be sped up by not using DataFrames.
         # Loop over the slices of each run
@@ -2614,13 +2622,15 @@ class ElectricCurrent(Observable):
                         .values
                     )
                     col_name = f"{self.__long_name__}_{sp1}_{ax}_slice {isl}"
-                    self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
+                    columns_list.append(col_name)
+                    data_list.append(col_data)
+                    # self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
 
             # Advance by only one slice at a time.
             start_index += step
             end_index += step
             # end of slice loop
-
+        self.dataframe_slices = DataFrame(dict(zip(columns_list, data_list)))
             ###OLD CODE
             # # Parse the particles from the dump files
             # species_current = zeros((self.num_species, self.dimensions, self.block_length))
@@ -2691,10 +2701,13 @@ class ElectricCurrent(Observable):
 
         step = int(self.timesteps_shift // self.dump_step)
 
-        self.dataframe_acf[f"{self.__long_name__} ACF_Species_Axis_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
-        self.dataframe_acf_slices[f"{self.__long_name__} ACF_Species_Axis_Time"] = self.simulation_dataframe.iloc[
-            :end_index, 0
-        ]
+        # self.dataframe_acf[f"{self.__long_name__} ACF_Species_Axis_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
+        # self.dataframe_acf_slices[f"{self.__long_name__} ACF_Species_Axis_Time"] = self.simulation_dataframe.iloc[
+        #     :end_index, 0
+        # ]
+        columns_list = [f"{self.__long_name__} ACF_Species_Axis_Time"]
+        data_list = [self.simulation_dataframe.iloc[:end_index, 0].values]
+
         ### Slices loop
         for isl in tqdm(
             range(self.no_slices),
@@ -2734,7 +2747,9 @@ class ElectricCurrent(Observable):
 
                         # Store in the dataframe
                         col_name = f"{self.__long_name__} ACF_{sp1}-{sp2}_{ax}_slice {isl}"
-                        self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, acf, col_name)
+                        columns_list.append(col_name)
+                        data_list.append(acf)
+                        # self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, acf, col_name)
                         # Add to the total ACF of each species pair.
                         total_electric_current[k] += const * acf
 
@@ -2746,33 +2761,45 @@ class ElectricCurrent(Observable):
 
                     col_name = f"{self.__long_name__} ACF_{sp1}-{sp2}_Total_slice {isl}"
                     col_data = total_electric_current[k, :]
-
-                    self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
+                    columns_list.append(col_name)
+                    data_list.append(col_data)
+                    # self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
 
             # Sum over the species to get the true hf of the system
             if self.num_species > 1:
                 col_name = f"{self.__long_name__} ACF_all-all_Total_slice {isl}"
-                self.dataframe_acf_slices = add_col_to_df(
-                    self.dataframe_acf_slices, total_electric_current.sum(axis=0), col_name
-                )
+                col_data = total_electric_current.sum(axis=0)
+                columns_list.append(col_name)
+                data_list.append(col_data)
+                # self.dataframe_acf_slices = add_col_to_df(
+                #     self.dataframe_acf_slices, total_electric_current.sum(axis=0), col_name
+                # )
             # Advance by plasma_periods_shift at a time.
             start_index += step
             end_index += step
             # end of slice loop
+        self.dataframe_acf_slices = DataFrame(dict(zip(columns_list, data_list)))
 
     @avg_slices_doc
     def average_slices_data(self):
+        columns_list = [f"{self.__long_name__}_Species_Axis_Time"]
+        data_list = [self.simulation_dataframe.iloc[: self.block_length, 0].values]
         for _, sp1 in enumerate(self.species_names):
             for _, ax in enumerate(self.dim_labels):
                 columns = [f"{self.__long_name__}_{sp1}_{ax}_slice {isl}" for isl in range(self.no_slices)]
                 col_data = self.dataframe_slices[columns].mean(axis=1)
                 col_name = f"{self.__long_name__}_{sp1}_{ax}_Mean"
-                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+                columns_list.append(col_name)
+                data_list.append(col_data)
+                # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
 
                 col_data = self.dataframe_slices[columns].std(axis=1)
                 col_name = f"{self.__long_name__}_{sp1}_{ax}_Std"
-                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-
+                columns_list.append(col_name)
+                data_list.append(col_data)
+                # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+        
+        self.dataframe = DataFrame(dict(zip(columns_list, data_list)))
     @avg_acf_slices_doc
     def average_acf_slices_data(self):
         # ACF data
@@ -2782,6 +2809,8 @@ class ElectricCurrent(Observable):
         else:
             species_list = self.species_names
 
+        columns_list = [f"{self.__long_name__} ACF_Species_Axis_Time"]
+        data_list = [self.simulation_dataframe.iloc[: self.block_length, 0].values]
         for isp, sp1 in enumerate(species_list):
             for isp2, sp2 in enumerate(species_list[isp:], isp):
                 for _, ax in enumerate(dim_labels):
@@ -2789,77 +2818,16 @@ class ElectricCurrent(Observable):
                     # Mean
                     col_data = self.dataframe_acf_slices[columns].mean(axis=1)
                     col_name = f"{self.__long_name__} ACF_{sp1}-{sp2}_{ax}_Mean"
-                    self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+                    columns_list.append(col_name)
+                    data_list.append(col_data)
+                    # self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
                     # Std
                     col_data = self.dataframe_acf_slices[columns].std(axis=1)
                     col_name = f"{self.__long_name__} ACF_{sp1}-{sp2}_{ax}_Std"
-                    self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
-
-    # def average_slices_data(self):
-    #     """Average and std over the slices."""
-
-    #     # Species data
-    #     for i, sp_name in enumerate(self.species_names):
-    #         col_str = f"{sp_name} {self.__long_name__}"
-    #         col_str_acf = f"{sp_name} {self.__long_name__} ACF"
-
-    #         for d in range(self.dimensions):
-    #             dl = self.dim_labels[d]
-    #             dim_col_str = [f"{col_str}_{dl}_slice {isl}" for isl in range(self.no_slices)]
-
-    #             col_data = self.dataframe_slices[dim_col_str].mean(axis=1).values
-    #             col_name = f"{col_str}_{dl}_Mean"
-    #             self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-
-    #             col_data = self.dataframe_slices[dim_col_str].std(axis=1).values
-    #             col_name = f"{col_str}_{dl}_Std"
-    #             self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-
-    #             # ACF averages
-    #             dim_col_str_acf = [f"{col_str_acf}_{dl}_slice {isl}" for isl in range(self.no_slices)]
-    #             col_data = self.dataframe_acf_slices[dim_col_str_acf].mean(axis=1).values
-    #             col_name = f"{col_str_acf}_{dl}_Mean"
-    #             self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
-
-    #             col_data = self.dataframe_acf_slices[dim_col_str_acf].std(axis=1).values
-    #             col_name = f"{col_str_acf}_{dl}_Std"
-    #             self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
-
-    #         tot_col_str = [f"{col_str_acf}_Total_slice {isl}" for isl in range(self.no_slices)]
-
-    #         col_data = self.dataframe_acf_slices[tot_col_str].mean(axis=1).values
-    #         col_name = f"{col_str}_Total_Mean"
-    #         self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
-
-    #         col_data = self.dataframe_acf_slices[tot_col_str].std(axis=1).values
-    #         col_name = f"{col_str}_Total_Std"
-    #         self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
-
-    #     # Average and std over the slices
-    #     # Total Current data
-    #     for d in range(self.dimensions):
-    #         dl = self.dim_labels[d]
-    #         dim_col_str = [f"{self.__long_name__}_{dl}_slice {isl}" for isl in range(self.no_slices)]
-    #         dim_col_str_acf = [f"{self.__long_name__} ACF_{dl}_slice {isl}" for isl in range(self.no_slices)]
-
-    #         self.dataframe[f"{self.__long_name__}_{dl}_Mean"] = self.dataframe_slices[dim_col_str].mean(axis=1)
-    #         self.dataframe[f"{self.__long_name__}_{dl}_Std"] = self.dataframe_slices[dim_col_str].std(axis=1)
-    #         # ACF
-    #         self.dataframe_acf[f"{self.__long_name__}_{dl}_Mean"] = self.dataframe_acf_slices[dim_col_str_acf].mean(
-    #             axis=1
-    #         )
-    #         self.dataframe_acf[f"{self.__long_name__}_{dl}_Std"] = self.dataframe_acf_slices[dim_col_str_acf].std(axis=1)
-
-    #     # Total ACF
-    #     tot_col_str = [f"{self.__long_name__} ACF_Total_slice {isl}" for isl in range(self.no_slices)]
-
-    #     col_data = self.dataframe_acf_slices[tot_col_str].mean(axis=1).values
-    #     col_name = self.__long_name__ + f" ACF_Total_Mean"
-    #     self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
-
-    #     col_data = self.dataframe_acf_slices[tot_col_str].std(axis=1).values
-    #     col_name = self.__long_name__ + f" ACF_Total_Std"
-    #     self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+                    columns_list.append(col_name)
+                    data_list.append(col_data)
+                    # self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+        self.dataframe_acf = DataFrame(dict(zip(columns_list, data_list)))
 
 
 class HeatFlux(Observable):
@@ -3010,8 +2978,11 @@ class HeatFlux(Observable):
             self.timesteps_shift // self.dump_step
         )  # rint(self.plasma_periods_shift * self.timesteps_per_plasma_period / self.dump_step).astype(int)
 
-        self.dataframe[f"{self.__long_name__}_Species_Axis_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
-        self.dataframe_slices[f"{self.__long_name__}_Species_Axis_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
+        # self.dataframe[f"{self.__long_name__}_Species_Axis_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
+        # self.dataframe_slices[f"{self.__long_name__}_Species_Axis_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
+        columns_list = [f"{self.__long_name__}_Species_Axis_Time"]
+        data_list = [self.simulation_dataframe.iloc[:end_index, 0].values]
+
         ### Slices loop
         for isl in tqdm(
             range(self.no_slices),
@@ -3028,12 +2999,15 @@ class HeatFlux(Observable):
                         .values
                     )
                     col_name = f"{self.__long_name__}_{sp1}_{ax}_slice {isl}"
-                    self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
+                    columns_list.append(col_name)
+                    data_list.append(col_data)
+                    # self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
 
             # Advance by only one slice at a time.
             start_index += step
             end_index += step
             # end of slice loop
+        self.dataframe_slices = DataFrame(dict(zip(columns_list, data_list)))
 
     @calc_acf_slices_doc
     def calc_acf_slices_data(self):
@@ -3045,10 +3019,13 @@ class HeatFlux(Observable):
 
         step = int(self.timesteps_shift // self.dump_step)
 
-        self.dataframe_acf[f"{self.__long_name__} ACF_Species_Axis_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
-        self.dataframe_acf_slices[f"{self.__long_name__} ACF_Species_Axis_Time"] = self.simulation_dataframe.iloc[
-            :end_index, 0
-        ]
+        # self.dataframe_acf[f"{self.__long_name__} ACF_Species_Axis_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
+        # self.dataframe_acf_slices[f"{self.__long_name__} ACF_Species_Axis_Time"] = self.simulation_dataframe.iloc[
+        #     :end_index, 0
+        # ]
+        columns_list = [f"{self.__long_name__}_Species_Axis_Time"]
+        data_list = [self.simulation_dataframe.iloc[:end_index, 0].values]
+
         ### Slices loop
         for isl in tqdm(
             range(self.no_slices),
@@ -3088,7 +3065,9 @@ class HeatFlux(Observable):
 
                         # Store in the dataframe
                         col_name = f"{self.__long_name__} ACF_{sp1}-{sp2}_{ax}_slice {isl}"
-                        self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, acf, col_name)
+                        columns_list.append(col_name)
+                        data_list.append(acf)
+                        # self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, acf, col_name)
                         # Add to the total ACF of each species pair.
                         total_heat_flux[k] += const * acf
 
@@ -3100,32 +3079,47 @@ class HeatFlux(Observable):
 
                     col_name = f"{self.__long_name__} ACF_{sp1}-{sp2}_Total_slice {isl}"
                     col_data = total_heat_flux[k, :]
-
-                    self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
+                    columns_list.append(col_name)
+                    data_list.append(col_data)
+                    # self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
 
             # Sum over the species to get the true hf of the system
             if self.num_species > 1:
                 col_name = f"{self.__long_name__} ACF_all-all_Total_slice {isl}"
-                self.dataframe_acf_slices = add_col_to_df(
-                    self.dataframe_acf_slices, total_heat_flux.sum(axis=0), col_name
-                )
+                col_data = total_heat_flux.sum(axis=0)
+                columns_list.append(col_name)
+                data_list.append(col_data)
+                # self.dataframe_acf_slices = add_col_to_df(
+                #     self.dataframe_acf_slices, total_heat_flux.sum(axis=0), col_name
+                # )
             # Advance by plasma_periods_shift at a time.
             start_index += step
             end_index += step
             # end of slice loop
+        
+        self.dataframe_acf_slices = DataFrame(dict(zip(columns_list, data_list)))
 
     @avg_slices_doc
     def average_slices_data(self):
+        columns_list = [f"{self.__long_name__}_Species_Axis_Time"]
+        data_list = [self.simulation_dataframe.iloc[:self.block_length, 0].values]
+
         for isp, sp1 in enumerate(self.species_names):
             for _, ax in enumerate(self.dim_labels):
                 columns = [f"{self.__long_name__}_{sp1}_{ax}_slice {isl}" for isl in range(self.no_slices)]
                 col_data = self.dataframe_slices[columns].mean(axis=1)
                 col_name = f"{self.__long_name__}_{sp1}_{ax}_Mean"
-                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+                # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+                columns_list.append(col_name)
+                data_list.append(col_data)
 
                 col_data = self.dataframe_slices[columns].std(axis=1)
                 col_name = f"{self.__long_name__}_{sp1}_{ax}_Std"
-                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+                columns_list.append(col_name)
+                data_list.append(col_data)
+                # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+
+        self.dataframe = DataFrame(dict(zip(columns_list, data_list)))
 
     @avg_acf_slices_doc
     def average_acf_slices_data(self):
@@ -3136,6 +3130,8 @@ class HeatFlux(Observable):
         else:
             species_list = self.species_names
 
+        columns_list = [f"{self.__long_name__}_Species_Axis_Time"]
+        data_list = [self.simulation_dataframe.iloc[:self.block_length, 0].values]
         for isp, sp1 in enumerate(species_list):
             for isp2, sp2 in enumerate(species_list[isp:], isp):
                 for _, ax in enumerate(dim_labels):
@@ -3143,12 +3139,17 @@ class HeatFlux(Observable):
                     # Mean
                     col_data = self.dataframe_acf_slices[columns].mean(axis=1)
                     col_name = f"{self.__long_name__} ACF_{sp1}-{sp2}_{ax}_Mean"
-                    self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+                    columns_list.append(col_name)
+                    data_list.append(col_data)
+                    # self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
                     # Std
                     col_data = self.dataframe_acf_slices[columns].std(axis=1)
                     col_name = f"{self.__long_name__} ACF_{sp1}-{sp2}_{ax}_Std"
-                    self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
-
+                    columns_list.append(col_name)
+                    data_list.append(col_data)
+                    # self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+        
+        self.dataframe_acf = DataFrame(dict(zip(columns_list, data_list)))
     def calc_better_acf_data(self, plasma_periods_shift: int = None):
         self.update_block_attributes(plasma_periods_shift=plasma_periods_shift)
 
@@ -3395,8 +3396,11 @@ class PressureTensor(Observable):
 
         step = rint(self.plasma_periods_shift * self.timesteps_per_plasma_period / self.dump_step).astype(int)
 
-        self.dataframe[f"Total_Quantity_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
-        self.dataframe_slices[f"Total_Quantity_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
+        # self.dataframe[f"Total_Quantity_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
+        
+        # Collect data into lists and then passing those to the DataFrame constructor is faster than adding columns one by one.
+        columns_list = [f"Total_Quantity_Time"]
+        data_list = [self.simulation_dataframe.iloc[:end_index, 0].values]
 
         ### Slices loop
         for isl in tqdm(
@@ -3409,17 +3413,20 @@ class PressureTensor(Observable):
             for _, col in enumerate(columns):
                 col_data = self.simulation_dataframe[col].iloc[start_index:end_index].values
                 col_name = f"{col[0]}_{col[1]}_slice {isl}"
-                self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
+                columns_list.append(col_name)
+                data_list.append(col_data)
+                # self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
 
             # Advance by only one slice at a time.
             start_index += step
             end_index += step
             # end of slice loop
-
+        # Make a dictionary and then pass it to the DataFrame constructor
+        final_data = dict(zip(columns_list, data_list))
+        self.dataframe_slices = DataFrame(final_data)
+    
     @calc_acf_slices_doc
     def calc_acf_slices_data(self):
-        self.dataframe_acf = DataFrame()
-        self.dataframe_acf_slices = DataFrame()
 
         columns = [
             (f"Total", f"Pressure Tensor {ax1}{ax2}")
@@ -3432,8 +3439,10 @@ class PressureTensor(Observable):
 
         step = rint(self.plasma_periods_shift * self.timesteps_per_plasma_period / self.dump_step).astype(int)
 
-        self.dataframe_acf[f"Quantity_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
-        self.dataframe_acf_slices[f"Quantity_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
+        # self.dataframe_acf[f"Quantity_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
+        # self.dataframe_acf_slices[] = 
+        columns_list = [f"Quantity_Time"]
+        data_list = [self.simulation_dataframe.iloc[:end_index, 0].values]
 
         ### Slices loop
         for isl in tqdm(
@@ -3451,7 +3460,9 @@ class PressureTensor(Observable):
             # Set column name
             col_name = f"Pressure Bulk ACF_slice {isl}"
             # Add to dataframe
-            self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, acf, col_name)
+            columns_list.append(col_name)
+            data_list.append(acf)
+            # self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, acf, col_name)
 
             for icol1, col1 in enumerate(columns):
                 # Get Total Pressure Tensor ax,ax from simulation data
@@ -3468,13 +3479,17 @@ class PressureTensor(Observable):
                     # Set column name
                     col_name = f"Pressure Tensor ACF {col1[1][-2:]}{col2[1][-2:]}_slice {isl}"
                     # Add to dataframe
-                    self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, acf, col_name)
+                    columns_list.append(col_name)
+                    data_list.append(acf)
+                    # self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, acf, col_name)
 
             # Advance by only one slice at a time.
             start_index += step
             end_index += step
             # end of slice loop
-
+        # final_data = column_stack(data_list)
+        final_data = dict(zip(columns_list, data_list))
+        self.dataframe_acf_slices = DataFrame(final_data)
         # # Need to update these attributes if inputs were not None
         # self.update_block_attributes(plasma_periods_per_slice=plasma_periods_per_slice, plasma_periods_shift=plasma_periods_shift)
 
@@ -3609,19 +3624,26 @@ class PressureTensor(Observable):
     @avg_slices_doc
     def average_slices_data(self):
         # Dataframes' columns names
-        pt_str_kin = "Pressure Tensor Kinetic"
-        pt_str_pot = "Pressure Tensor Potential"
-        pt_str = "Pressure Tensor"
+        # pt_str_kin = "Pressure Tensor Kinetic"
+        # pt_str_pot = "Pressure Tensor Potential"
+        # pt_str = "Pressure Tensor"
+
+        columns_list = [f"Total_Quantity_Time"]
+        data_list = [self.simulation_dataframe.iloc[:self.block_length, 0].values]
 
         col_str = [f"Total_Pressure_slice {isl}" for isl in range(self.no_slices)]
         # Mean
         col_name = "Total_Pressure_Mean"
         col_data = self.dataframe_slices[col_str].mean(axis=1).values
-        self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+        columns_list.append(col_name)
+        data_list.append(col_data)
+        # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
         # Std
         col_name = "Total_Pressure_Std"
         col_data = self.dataframe_slices[col_str].std(axis=1).values
-        self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+        columns_list.append(col_name)
+        data_list.append(col_data)
+        # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
 
         columns = [
             f"Total_Pressure Tensor {ax1}{ax2}"
@@ -3634,11 +3656,16 @@ class PressureTensor(Observable):
             # Mean
             col_name = f"{col}_Mean"
             col_data = self.dataframe_slices[cols].mean(axis=1).values
-            self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+            columns_list.append(col_name)
+            data_list.append(col_data)
+            # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
             # Std
             col_name = f"{col}_Std"
             col_data = self.dataframe_slices[cols].std(axis=1).values
-            self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+            columns_list.append(col_name)
+            data_list.append(col_data)
+            # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+        self.dataframe = DataFrame(dict(zip(columns_list, data_list)))
 
         # # Save data for each species to df
         # for _, sp_name in enumerate(self.species_names):
@@ -3723,16 +3750,22 @@ class PressureTensor(Observable):
 
         # These are the only calculated axes combination, the .................... indicates that those combination are not calculated.
 
+        columns_list = [f"Quantity_Time"]
+        data_list = [self.dataframe_acf_slices["Quantity_Time"].values]
         # Pressure ACF Mean and Std
         col_str = [f"Pressure Bulk ACF_slice {isl}" for isl in range(self.no_slices)]
         # Mean
         col_name = "Pressure Bulk ACF_Mean"
         col_data = self.dataframe_acf_slices[col_str].mean(axis=1).values
-        self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+        columns_list.append(col_name)
+        data_list.append(col_data)
+        # self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
         # Std
         col_name = "Pressure Bulk ACF_Std"
         col_data = self.dataframe_acf_slices[col_str].std(axis=1).values
-        self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+        columns_list.append(col_name)
+        data_list.append(col_data)
+        # self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
 
         columns = [
             (f"Total", f"Pressure Tensor {ax1}{ax2}")
@@ -3748,12 +3781,17 @@ class PressureTensor(Observable):
                 # Mean
                 col_name = f"Pressure Tensor ACF {col1[1][-2:]}{col2[1][-2:]}_Mean"
                 col_data = self.dataframe_acf_slices[col_names].mean(axis=1).values
-                self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+                columns_list.append(col_name)
+                data_list.append(col_data)
+                # self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
                 # Std
                 col_name = f"Pressure Tensor ACF {col1[1][-2:]}{col2[1][-2:]}_Std"
                 col_data = self.dataframe_acf_slices[col_names].std(axis=1).values
-                self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
-
+                columns_list.append(col_name)
+                data_list.append(col_data)
+                # self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+        
+        self.dataframe_acf = DataFrame(dict(zip(columns_list, data_list)))
         # # Note: C_{abcd} = < sigma_{ab} sigma_{cd} >
         # for i, ax1 in enumerate(self.dim_labels):
         #     for j, ax2 in enumerate(self.dim_labels[i:], i):
@@ -3948,14 +3986,15 @@ class PressureTensor(Observable):
 
         return sigma_zzzz, sigma_zzxx, sigma_xyxy
 
-    def calc_better_acf_data(self, plasma_periods_shift: int = None):
-        self.update_block_attributes(plasma_periods_shift=plasma_periods_shift)
-        step = self.plasma_periods_shift * self.timesteps_per_plasma_period // self.dump_step
+    def calc_better_acf_data(self, plasma_periods_shift: int = None, columns: List[str] = None):
+        # self.update_block_attributes(plasma_periods_shift=plasma_periods_shift)
+        
+        step = int(plasma_periods_shift * self.timesteps_per_plasma_period // self.dump_step)
 
-        no_blocks = len(self.simulation_dataframe) // step
+        no_blocks = int(len(self.simulation_dataframe) // step)
 
         # Actual length of data = length - remainder
-        actual_length = len(self.simulation_dataframe) - len(self.simulation_dataframe) % step
+        actual_length = int(len(self.simulation_dataframe) - len(self.simulation_dataframe) % step)
 
         all_acf = zeros((no_blocks, actual_length))
 
@@ -3964,11 +4003,17 @@ class PressureTensor(Observable):
         start_index = 0  # Dump number to start the acf calculation
         end_index = actual_length
 
-        columns = [
-            (f"Total", f"Pressure Tensor {ax1}{ax2}")
-            for iax1, ax1 in enumerate(self.dim_labels)
-            for _, ax2 in enumerate(self.dim_labels[iax1 + 1 :], iax1 + 1)
-        ]
+        if columns is None:
+            columns = [
+                (f"Total", f"Pressure Tensor {ax1}{ax2}")
+                for iax1, ax1 in enumerate(self.dim_labels)
+                for _, ax2 in enumerate(self.dim_labels[iax1 + 1 :], iax1 + 1)
+            ]
+            # >>> [('Total', 'Pressure Tensor XY'),
+                # ('Total', 'Pressure Tensor XZ'),
+                # ('Total', 'Pressure Tensor YZ')]
+        dof = len(columns)
+
         ### Slices loop
         for isl in tqdm(
             range(no_blocks),
@@ -3979,21 +4024,15 @@ class PressureTensor(Observable):
         ):
             # Calculate the ACF and store into dataframes
             total_acf = zeros(end_index)
-
             for icol1, col1 in enumerate(columns):
                 # Get Total Pressure Tensor ax,ax from simulation data
                 col_data_1 = self.simulation_dataframe[col1].iloc[start_index:actual_length].values
                 # Calculate fluctuations
                 delta_col1 = col_data_1 - col_data_1.mean()
-                for _, col2 in enumerate(columns[icol1:], icol1):
-                    # Get Total Pressure Tensor ax,ax from simulation data
-                    col_data_2 = self.simulation_dataframe[col2].iloc[start_index:actual_length].values
-                    # Calculate fluctuations
-                    delta_col2 = col_data_2 - col_data_2.mean()
-                    # Calculate ACF
-                    acf = correlationfunction(delta_col1, delta_col2)
+                # Calculate ACF
+                acf = correlationfunction(delta_col1, delta_col1)
 
-                    total_acf += acf / 3.0
+                total_acf += acf / dof
 
             all_acf[isl, :end_index] = total_acf
             normalization[isl * step : (isl + 1) * step] = no_blocks - isl
@@ -4001,15 +4040,20 @@ class PressureTensor(Observable):
             start_index += step
             end_index -= step
 
-        # mean = all_acf.sum(axis = 0)/normalization
-        # std = ((all_acf - mean)**2).sum(axis = 0)/normalization
-
-        self.no_blocks = no_blocks
-
-        columns = [f"Stress ACF {isl}" for isl in range(no_blocks)]
-        acf_df = DataFrame(all_acf.transpose(), columns=columns)
-        acf_df = add_col_to_df(acf_df, normalization, "Normalization")
-        self.save_dataframe_to_hdf(acf_df, "hdf_acf_data")
+        mean = all_acf.sum(axis = 0)/normalization
+        std = ((all_acf - mean)**2).sum(axis = 0)/normalization
+        std = sqrt(std)
+        # columns = [f"Stress ACF {isl}" for isl in range(no_blocks)]
+        # columns = ["Time", "Stress ACF Mean", "Stress ACF Std"]
+        acf_df = DataFrame(
+            {"Time": self.simulation_dataframe.iloc[:actual_length,0].values, 
+            "Stress ACF Mean": mean,
+            "Stress ACF Std": std,
+            "Normalization": normalization})
+        # acf_df = DataFrame(all_acf.transpose(), columns=columns)
+        # acf_df = add_col_to_df(acf_df, normalization, "Normalization")
+        # self.save_dataframe_to_hdf(acf_df, "hdf_acf_data")
+        return acf_df
 
 
 class RadialDistributionFunction(Observable):
@@ -4488,6 +4532,9 @@ class Thermodynamics(Observable):
 
         self.dataframe[f"Quantity_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
         self.dataframe_slices[f"Quantity_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
+
+        colums_list = []
+        data_list = []
         # Loop over the columns of the simulation_dataframe except the time column (0th column)
         for col_name, col_data in self.simulation_dataframe.iloc[:, 1:].items():
             start_index = 0  # Index of the simulation_dataframe to start the acf calculation
@@ -4501,13 +4548,18 @@ class Thermodynamics(Observable):
                 leave=False,
             ):
                 df_col_name = f"{col_name}_slice {isl}"
-                self.dataframe_slices = add_col_to_df(
-                    self.dataframe_slices, col_data[start_index:end_index].values, df_col_name
-                )
+                colums_list.append(df_col_name)
+                data_list.append(col_data[start_index:end_index].values)
+                # self.dataframe_slices = add_col_to_df(
+                #     self.dataframe_slices, col_data[start_index:end_index].values, df_col_name
+                # )
 
                 start_index += step
                 end_index += step
             # end of slice loop
+
+        data = dict(zip(colums_list, data_list))
+        self.dataframe_slices = DataFrame(data)
 
     @calc_acf_slices_doc
     def calc_acf_slices_data(self):
@@ -5224,12 +5276,15 @@ class VelocityAutoCorrelationFunction(Observable):
 
         step = int(self.timesteps_shift // self.dump_step)
 
-        self.dataframe_acf[f"{self.__name__.swapcase()}_Species_Axis_Time"] = self.simulation_dataframe.iloc[
-            :end_index, 0
-        ]
-        self.dataframe_acf_slices[f"{self.__name__.swapcase()}_Species_Axis_Time"] = self.simulation_dataframe.iloc[
-            :end_index, 0
-        ]
+        # self.dataframe_acf[f"{self.__name__.swapcase()}_Species_Axis_Time"] = self.simulation_dataframe.iloc[
+        #     :end_index, 0
+        # ]
+        # self.dataframe_acf_slices[f"{self.__name__.swapcase()}_Species_Axis_Time"] = self.simulation_dataframe.iloc[
+        #     :end_index, 0
+        # ]
+        columns_list = [f"{self.__name__.swapcase()}_Species_Axis_Time"]
+        data_list = [self.simulation_dataframe.iloc[:end_index, 0].values]
+
         ### Slices loop
         for isl in tqdm(
             range(self.no_slices),
@@ -5254,42 +5309,23 @@ class VelocityAutoCorrelationFunction(Observable):
 
                     # Store in the dataframe
                     col_name = f"{self.__name__.swapcase()}_{sp1}_{ax}_slice {isl}"
-                    self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, acf, col_name)
+                    columns_list.append(col_name)
+                    data_list.append(acf)
+                    # self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, acf, col_name)
 
                     # Add to the total ACF of each species pair.
                     total_vacf_per_species += acf / 3.0
 
                 col_name = f"{self.__name__.swapcase()}_{sp1}_Total_slice {isl}"
-                self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, total_vacf_per_species, col_name)
+                columns_list.append(col_name)
+                data_list.append(total_vacf_per_species)
+                
+                # self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, total_vacf_per_species, col_name)
 
             start_index += step
             end_index += step
 
-        # start_slice = 0
-        # end_slice = int(2 * self.block_length * self.dump_step)
-
-        # time = zeros(2 * self.block_length)
-        # vel = zeros((self.dimensions, sum(self.no_ptcls_per_species), 2 * self.block_length))
-
-        # for isl in tqdm(
-        #     range(self.no_slices),
-        #     desc=f"\nCalculating {self.__name__.swapcase()} for slice ",
-        #     disable=not self.verbose,
-        #     position=0,
-        # ):
-        #     self.grab_sim_data(start_slice, end_slice, vel, time)
-
-        #     if isl == 0:
-        #         self.dataframe_acf["Time"] = time[: self.block_length]
-        #         self.dataframe_acf_slices["Time"] = time[: self.block_length]
-
-        #     # Return an array of shape = ( num_species, dim + 1, slice_steps)
-        #     vacf = self.calculate_vacf(vel)
-
-        #     self.save_acf_slices_data_to_hdf(vacf, isl)
-
-        #     start_slice += self.block_length * self.dump_step
-        #     end_slice += self.block_length * self.dump_step
+        self.dataframe_acf_slices = DataFrame(dict(zip(columns_list, data_list)))
 
     def save_acf_slices_data_to_hdf(self, vacf, isl):
         """Store ACF data of slice `isl` into a hierarchical dataframe.
@@ -5407,27 +5443,39 @@ class VelocityAutoCorrelationFunction(Observable):
 
     @avg_acf_slices_doc
     def average_acf_slices_data(self):
+        columns_list = [f"{self.__name__.swapcase()}_Species_Axis_Time"]
+        data_list = [self.simulation_dataframe.iloc[: self.block_length, 0].values]
+
         for _, sp1 in enumerate(self.species_names):
             for _, ax in enumerate(self.dim_labels):
                 dcol_str = [f"{self.__name__.swapcase()}_{sp1}_{ax}_slice {isl}" for isl in range(self.no_slices)]
 
                 col_name = f"{self.__name__.swapcase()}_{sp1}_{ax}_Mean"
                 col_data = self.dataframe_acf_slices[dcol_str].mean(axis=1).values
-                self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+                columns_list.append(col_name)
+                data_list.append(col_data)
+                # self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
 
                 col_name = f"{self.__name__.swapcase()}_{sp1}_{ax}_Std"
                 col_data = self.dataframe_acf_slices[dcol_str].std(axis=1).values
-                self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+                columns_list.append(col_name)
+                data_list.append(col_data)
+                # self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
 
             tot_col_str = [f"{self.__name__.swapcase()}_{sp1}_Total_slice {isl}" for isl in range(self.no_slices)]
             col_name = f"{self.__name__.swapcase()}_{sp1}_Total_Mean"
             col_data = self.dataframe_acf_slices[tot_col_str].mean(axis=1).values
-            self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+            columns_list.append(col_name)
+            data_list.append(col_data)
+            # self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
 
             col_name = f"{self.__name__.swapcase()}_{sp1}_Total_Std"
             col_data = self.dataframe_acf_slices[tot_col_str].std(axis=1).values
-            self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
-
+            columns_list.append(col_name)
+            data_list.append(col_data)
+            # self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+        
+        self.dataframe_acf = DataFrame(dict(zip(columns_list, data_list)))
     # @jit Numba doesn't like Scipy
     def calculate_vacf(self, vel):
         """
@@ -7000,7 +7048,34 @@ def col_mapper(keys, vals):
     return dict(zip(keys, vals))
 
 
-def make_gaussian_plot(time, data, observable_name, units):
+def make_gaussian_plot(time, data, xlabel, ylabel):
+    """
+    Generate a figure with three subplots:
+    1. The main plot showing the data and its expanding window average.
+    2. A deviation plot showing the percentage deviation of the data from its mean.
+    3. A histogram plot showing the distribution of the data and fitting it to a Gaussian distribution.
+
+    Parameters
+    ----------
+    time : array_like
+        The time series data. This should be a 1D array of time points corresponding to the data points in `data`.
+    data : array_like
+        The observable data corresponding to the time series. This should be a 1D array of values for the observable at each time point.
+    observable_name : str
+        The name of the observable being plotted. This is used for labeling the y-axis of the main plot and the histogram.
+    xlabel : str
+        The label for the x-axis of the plot. This is used for labeling the x-axis of the main plot.
+    ylabel : str
+        The label for the y-axis of the plot. This is used for labeling the y-axis of the main plot and the histogram.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure object containing the plot. This figure contains all three subplots (main plot, deviation plot, and histogram).
+    ax_tuple : tuple
+        A tuple containing the axes objects for the deviation plot, main plot, and histogram plot, in that order. These can be used for further customization of the plots outside the function.
+
+    """
     fig = plt.figure(figsize=(19, 6))
     gs = GridSpec(4, 8)
 
@@ -7015,14 +7090,8 @@ def make_gaussian_plot(time, data, observable_name, units):
     # Grab the color line list from the plt cycler. I will use this in the hist plots
     color_from_cycler = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
-    # Calculate plot's labels and multipliers
-    time_mul, temp_mul, time_prefix, temp_prefix, time_lbl, temp_lbl = plot_labels(
-        time, data, "Time", observable_name, units
-    )
-
     # Rescale quantities
-    time = time_mul * time
-    data_plot = temp_mul * data
+    data_plot = data
 
     data_mean = data_plot.mean()
     data_std = data_plot.std()
@@ -7036,10 +7105,11 @@ def make_gaussian_plot(time, data, observable_name, units):
 
     # Temperature Main plot
     main_plot.plot(time, data_plot, alpha=0.7)
-    main_plot.plot(time, data_cumavg, label="Moving Average")
+    main_plot.plot(time, data_cumavg, label="Cumulative Average")
     main_plot.axhline(data_mean, ls="--", c="r", alpha=0.7, label="Mean")
     main_plot.legend(loc="best")
-    main_plot.set(ylabel=f"{observable_name} {temp_lbl}", xlabel=f"Time {time_lbl}")
+    if ylabel is not None and xlabel is not None:
+        main_plot.set(ylabel=ylabel, xlabel=xlabel)
 
     # Temperature Deviation plot
     delta_plot.plot(time, delta_data, alpha=0.5)
@@ -7056,3 +7126,31 @@ def make_gaussian_plot(time, data, observable_name, units):
     hist_plot.legend()
 
     return fig, (delta_plot, main_plot, hist_plot)
+
+
+def check_stationarity(data):
+    """
+    Check if the given time series data is stationary.
+
+    Parameters
+    ----------
+    data : array_like
+        The time series data to be tested for stationarity.
+
+    Returns
+    -------
+    result : dict
+        A dictionary containing the test statistic, p-value, critical values, and a message indicating stationarity.
+    """
+
+    # Perform ADF test
+    adf_test = ADF(data)
+    adf_summary = adf_test.summary().as_text()
+    print("ADF Test Summary:")
+    print(adf_summary)
+
+    # Perform KPSS test
+    kpss_test = KPSS(data)
+    kpss_summary = kpss_test.summary().as_text()
+    print("\nKPSS Test Summary:")
+    print(kpss_summary)

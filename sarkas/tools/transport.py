@@ -167,8 +167,8 @@ class TransportCoefficients:
 
         self.dataframe = DataFrame()
         self.dataframe_slices = DataFrame()
-        self.dataframe["Integration_Interval"] = self.time_array.copy()
-        self.dataframe_slices["Integration_Interval"] = self.time_array.copy()
+        # self.dataframe["Integration_Interval"] = self.time_array.copy()
+        # self.dataframe_slices["Integration_Interval"] = self.time_array.copy()
 
     def create_df_filenames(self):
         """
@@ -1054,6 +1054,9 @@ class Viscosity(TransportCoefficients):
         start_steps = 0
         end_steps = 0
         time_steps = len(self.time_array)
+        columns_list = ["Integration_Interval"]
+        data_list = [self.time_array]
+
         for isl in tqdm(range(self.no_slices), disable=not observable.verbose):
             end_steps += time_steps
 
@@ -1064,7 +1067,9 @@ class Viscosity(TransportCoefficients):
 
             col_name = f"Bulk Viscosity_slice {isl}"
             col_data = const * cumulative_trapezoid(integrand, x=self.time_array, initial=0.0)
-            self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
+            columns_list.append(col_name)
+            data_list.append(col_data)
+            # self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
 
             # Calculate the Shear Viscosity Elements
             for iax, ax1 in enumerate(observable.dim_labels):
@@ -1076,20 +1081,31 @@ class Viscosity(TransportCoefficients):
                         col_data = const * cumulative_trapezoid(
                             integrand, x=self.time_array, initial=0.0
                         )  # fast_integral_loop(self.time_array, integrand)
-                        self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
+                        columns_list.append(col_name)
+                        data_list.append(col_data)
+                        # self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
 
             start_steps += time_steps
 
-        # Now average the slices
+        self.dataframe_slices = DataFrame(dict(zip(columns_list, data_list)))
+
+        # Now average the slices and add to the main dataframe
         col_str = [f"Bulk Viscosity_slice {isl}" for isl in range(observable.no_slices)]
 
+        columns_list = ["Integration_Interval"]
+        data_list = [self.time_array]
+        
         col_name = "Bulk Viscosity_Mean"
         col_data = self.dataframe_slices[col_str].mean(axis=1).values
-        self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+        columns_list.append(col_name)
+        data_list.append(col_data)
+        # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
 
         col_name = "Bulk Viscosity_Std"
         col_data = self.dataframe_slices[col_str].std(axis=1).values
-        self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+        columns_list.append(col_name)
+        data_list.append(col_data)
+        # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
 
         for iax, ax1 in enumerate(observable.dim_labels):
             for _, ax2 in enumerate(observable.dim_labels[iax + 1 :], iax + 1):
@@ -1097,21 +1113,30 @@ class Viscosity(TransportCoefficients):
                     col_str = [eta_str + f" {ax1}{ax2}_slice {isl}" for isl in range(observable.no_slices)]
                     col_name = eta_str + f" {ax1}{ax2}_Mean"
                     col_data = self.dataframe_slices[col_str].mean(axis=1).values
-                    self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+                    columns_list.append(col_name)
+                    data_list.append(col_data)
+                    # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
 
                     col_name = eta_str + f" {ax1}{ax2}_Std"
                     col_data = self.dataframe_slices[col_str].std(axis=1).values
-                    self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+                    columns_list.append(col_name)
+                    data_list.append(col_data)
+                    # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
 
+        self.dataframe = DataFrame(dict(zip(columns_list, data_list)))
         list_coord = ["XY", "XZ", "YZ"]
         col_str = [eta_str + f" {coord}_Mean" for coord in list_coord]
         # Mean
         col_data = self.dataframe[col_str].mean(axis=1).values
-        self.dataframe = add_col_to_df(self.dataframe, col_data, "Shear Viscosity_Mean")
+        columns_list.append("Shear Viscosity_Mean")
+        data_list.append(col_data)
+        # self.dataframe = add_col_to_df(self.dataframe, col_data, "Shear Viscosity_Mean")
         # Std
         col_data = self.dataframe[col_str].std(axis=1).values
-        self.dataframe = add_col_to_df(self.dataframe, col_data, "Shear Viscosity_Std")
-
+        columns_list.append("Shear Viscosity_Std")
+        data_list.append(col_data)
+        # self.dataframe = add_col_to_df(self.dataframe, col_data, "Shear Viscosity_Std")
+        self.dataframe = DataFrame(dict(zip(columns_list, data_list)))
         # Time stamp
         tend = self.timer.current()
         self.time_stamp("Viscosities Calculation", self.timer.time_division(tend - t0))

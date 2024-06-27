@@ -1774,8 +1774,8 @@ def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num
         Particles' velocities.
 
     virial_species_tensor : numpy.ndarray
-        Virial tensor of each particle. Shape= (3, 3, :attr:`total_num_ptcls`).
-        Note that the size of the first two axis is 3 even if the system is 2D.
+        Virial tensor of each particle. Shape= (:attr:`num_species`, :attr:`num_species`, 3, 3).
+        Note that the size of the last two axis is 3 even if the system is 2D.
 
     species_masses : numpy.ndarray
         Mass of each species. Shape = (:attr:`num_species`)
@@ -1817,7 +1817,10 @@ def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num
     pressure_kin = species_masses * tensor_species_loop(temp_kin_tensor, species_num) / box_volume
     pressure_pot = tensor_cross_species_loop(virial_species_tensor, species_num) / box_volume
     pressure_tensor = pressure_kin + pressure_pot
-    pressure = (pressure_tensor[0, 0] + pressure_tensor[1, 1] + pressure_tensor[2, 2]) / dimensions
+    for isp in range(species_num.shape[0]):
+        pressure[isp] += (pressure_tensor[isp, 0, 0] + pressure_tensor[isp, 1, 1] + pressure_tensor[isp, 2, 2]) / dimensions
+
+    # pressure = (pressure_tensor[0, 0] + pressure_tensor[1, 1] + pressure_tensor[2, 2]) / dimensions
 
     # for sp, num in enumerate(species_num):
     #     sp_end += num
@@ -1902,7 +1905,7 @@ def tensor_species_loop(observable, species_num):
 def tensor_cross_species_loop(observable, species_num):
     sp_obs = zeros(( species_num.shape[0], 3, 3))
     for sp in range(species_num.shape[0]):
-        sp_obs[sp, :, :] = observable[sp, :, :, :].sum(axis=1)
+        sp_obs[sp, :, :] = observable[sp, :, :, :].sum(axis=0)
 
     return sp_obs
 

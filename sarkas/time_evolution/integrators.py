@@ -993,8 +993,8 @@ class Integrator:
         t_wp = 2.0 * pi / wp_tot
 
         if self.thermalization:
-            N = int(-log(0.01) / (self.thermalization_rate) ) # Number of timesteps to decay to 0.01
-            Np = int( N / (t_wp / self.dt) )# Number of plasma cycles to decay to 0.01
+            N = (-log(0.01) / (self.thermalization_rate) ) # Number of timesteps to decay to 0.01
+            Np = ( N / (t_wp / self.dt) )# Number of plasma cycles to decay to 0.01
             msg = (
                 f"\nTHERMOSTAT:\n"
                 f"Type: {self.thermostat_type}\n"

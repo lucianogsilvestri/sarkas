@@ -6,32 +6,33 @@ Particles:
     mass: 4.513068464544e-23
     Z: 3.0
     temperature_eV: 1.0
-    num: 5000
+    num: 4096
 
 Potential:
   type: Yukawa
   method: PP
-  rc: 6.365069073519096e-08
+  rc: 9.478644e-08
   screening_length_type: thomas-fermi
   electron_temperature_eV: 1.0
   
 Integrator:
   type: verlet
-  dt: 1.6825574201906373e-16
+  dt: 1.6790565e-15
   thermostat_type: Berendsen                         # thermostat type
-  thermalization_timestep: 300
-  berendsen_tau: 45.0
+  thermalization_timestep: 40
+  berendsen_tau: 11
   
 Parameters:
-  rand_seed: 1565578347
+  rand_seed: 3576516958
   units: cgs
   boundary_conditions: periodic
-  load_method: random_no_reject
-  # restart_step: 3_000
-  equilibration_steps: 2000
-  production_steps: 200_000
-  eq_dump_step: 20
-  prod_dump_step: 20
+  load_method: qmc
+  # restart_step: 50_000
+  qmc_sequence: sobol
+  equilibration_steps: 1000
+  production_steps: 100_000
+  eq_dump_step: 4
+  prod_dump_step: 2
   # (OPTIONAL) This is a list of observable that you want to calculate during the simulation.
   observables_list: ["Pressure Tensor", "Heat Flux"]
   # (OPTIONAL) The observables_arrays_list is a list of Particles arrays that will be saved during the simulation
