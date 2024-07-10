@@ -5210,7 +5210,10 @@ class VelocityAutoCorrelationFunction(Observable):
 
     @compute_acf_doc
     def compute_acf(self):
-        self.load_simulation_dataframe()
+        # self.load_simulation_dataframe()
+        self.read_data_from_dumps()
+        self.save_simulation_hdf()
+
         t0 = self.timer.current()
         self.calc_acf_slices_data()
         self.average_acf_slices_data()
@@ -5304,7 +5307,7 @@ class VelocityAutoCorrelationFunction(Observable):
                         # Auto-correlation function
                         vel = self.simulation_dataframe[(f"{sp1}", f"{ip}", f"{ax}")].iloc[start_index:end_index].values
 
-                        delta_v = vel - vel.mean()
+                        delta_v = vel  ## - vel.mean()
                         acf += correlationfunction(delta_v, delta_v) / self.no_ptcls_per_species[isp]
 
                     # Store in the dataframe
@@ -5314,7 +5317,7 @@ class VelocityAutoCorrelationFunction(Observable):
                     # self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, acf, col_name)
 
                     # Add to the total ACF of each species pair.
-                    total_vacf_per_species += acf / 3.0
+                    total_vacf_per_species += acf / self.dimensions
 
                 col_name = f"{self.__name__.swapcase()}_{sp1}_Total_slice {isl}"
                 columns_list.append(col_name)

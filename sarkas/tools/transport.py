@@ -634,6 +634,10 @@ class Diffusion(TransportCoefficients):
         vacf_str = "VACF"
         const = 1.0 / self.dimensions
         t0 = self.timer.current()
+        columns_list = []
+        data_list = []
+        columns_list.append("Integration_Interval")
+        data_list.append(self.time_array)
 
         if not observable.magnetized:
             # Loop over time slices
@@ -644,7 +648,15 @@ class Diffusion(TransportCoefficients):
                     # Grab vacf data of each slice
                     integrand = observable.dataframe_acf_slices[(vacf_str, sp, "Total", f"slice {isl}")].values
                     df_str = f"{sp} Diffusion_slice {isl}"
-                    self.dataframe_slices[df_str] = const * fast_integral_loop(time=self.time_array, integrand=integrand)
+                    data = const * fast_integral_loop(time=self.time_array, integrand=integrand)
+                    columns_list.append(df_str)
+                    data_list.append(data)
+            
+            self.dataframe_slices = DataFrame( {col: data for col, data in zip(columns_list, data_list)})
+            columns_list = []
+            data_list = []
+            columns_list.append("Integration_Interval")
+            data_list.append(self.time_array)
 
             # Average and std of each diffusion coefficient.
             for isp, sp in enumerate(observable.species_names):
@@ -652,11 +664,17 @@ class Diffusion(TransportCoefficients):
                 # Mean
                 col_data = self.dataframe_slices[col_str].mean(axis=1).values
                 col_name = f"{sp} Diffusion_Mean"
-                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+                columns_list.append(col_name)
+                data_list.append(col_data)
+                # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
                 # Std
                 col_data = self.dataframe_slices[col_str].std(axis=1).values
                 col_name = f"{sp} Diffusion_Std"
-                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+                columns_list.append(col_name)
+                data_list.append(col_data)
+                # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+            
+            self.dataframe = DataFrame( {col: data for col, data in zip(columns_list, data_list)})
 
         else:
             # Loop over time slices

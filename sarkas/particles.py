@@ -1801,9 +1801,6 @@ def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num
         Potential energy part of the Pressure tensor. Shape(:attr:`dimensions`,:attr:`dimensions`, `num_species`)
 
     """
-    # sp_start = 0
-    # sp_end = 0
-
     # Rescale vel of each particle by their individual mass
     pressure = zeros(species_num.shape[0])
     pressure_kin = zeros((species_num.shape[0], 3, 3 ))
@@ -1820,26 +1817,27 @@ def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num
     for isp in range(species_num.shape[0]):
         pressure[isp] += (pressure_tensor[isp, 0, 0] + pressure_tensor[isp, 1, 1] + pressure_tensor[isp, 2, 2]) / dimensions
 
-    # pressure = (pressure_tensor[0, 0] + pressure_tensor[1, 1] + pressure_tensor[2, 2]) / dimensions
-
-    # for sp, num in enumerate(species_num):
-    #     sp_end += num
-    #     pressure_kin[:,:,sp] = species_masses[sp] * temp_kin_tensor[:, :, sp_start:sp_end].sum() / box_volume
-    #     pressure_pot[:,:,sp] = virial_species_tensor[:,:,sp_start:sp_end].sum(axis = -1) / box_volume
-    #     # .trace is not supported by numba (at the time of this writing), hence the addition of the three terms
-    #     # Pressure of each species
-    #     pressure[sp] = (pressure_kin[0,0, sp] + pressure_pot[0,0, sp] + pressure_kin[1,1, sp] + pressure_pot[1,1, sp] + pressure_kin[2,2, sp] + pressure_pot[2,2, sp] ) / dimensions
-    #     sp_start += num
-
-    # Calculate the total pressure tensor
-    # pressure_tensor = (pressure_kin + pressure_pot).sum(axis = -1)
-
     return pressure, pressure_kin, pressure_pot
 
 
 # Dev note: Because I want to use numba I need to separate between a scalar and a vector quantity. Numba compiles the function to return either a scalar or a vector. not all.
 @njit
 def scalar_species_loop(observable, species_num):
+    """
+    Calculate the sum over species of the given observable.
+
+    Parameters
+    ----------
+    observable : numpy.ndarray
+        The observable array of shape (N,), where N is the total number of particles.
+    species_num : numpy.ndarray
+        The array of shape (num_species,) containing the number of particles for each species.
+
+    Returns
+    -------
+    numpy.ndarray
+        An array of shape (num_species,) with the sum over species of the observable.
+    """
     sp_start = 0
     sp_end = 0
     sp_obs = zeros(species_num.shape[0])
@@ -1890,6 +1888,21 @@ def vector_cross_species_loop(observable, species_num):
 
 @njit
 def tensor_species_loop(observable, species_num):
+    """
+    Calculate the sum over species of the given observable tensor.
+
+    Parameters
+    ----------
+    observable : numpy.ndarray
+        The observable tensor array of shape (N, 3, 3), where N is the total number of particles.
+    species_num : numpy.ndarray
+        The array of shape (num_species,) containing the number of particles for each species.
+
+    Returns
+    -------
+    numpy.ndarray
+        An array of shape (num_species, 3, 3) with the sum over species of the observable tensor.
+    """
     sp_start = 0
     sp_end = 0
     sp_obs = zeros(( species_num.shape[0], 3, 3))
@@ -1903,6 +1916,21 @@ def tensor_species_loop(observable, species_num):
 
 @njit
 def tensor_cross_species_loop(observable, species_num):
+    """
+    Calculate the sum over species of the given observable tensor.
+
+    Parameters
+    ----------
+    observable : numpy.ndarray
+        The observable tensor array of shape (`num_species`, 3, 3).
+    species_num : numpy.ndarray
+        The array of shape (`num_species`,) containing the number of particles for each species.
+
+    Returns
+    -------
+    sp_obs: numpy.ndarray
+        An array of shape (`num_species`, 3, 3) with the sum over species of the observable tensor.
+    """
     sp_obs = zeros(( species_num.shape[0], 3, 3))
     for sp in range(species_num.shape[0]):
         sp_obs[sp, :, :] = observable[sp, :, :, :].sum(axis=0)
