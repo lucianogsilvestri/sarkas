@@ -1286,7 +1286,8 @@ class Observable:
             The dataframe to process.
         """
         if not isinstance(dataframe.columns, MultiIndex):
-            dataframe.columns = MultiIndex.from_tuples([tuple(c.split("_")) for c in dataframe.columns])
+            if all("_" in c for c in dataframe.columns):
+                dataframe.columns = MultiIndex.from_tuples([tuple(c.split("_")) for c in dataframe.columns])
 
     def save_dataframe_to_hdf(self, dataframe, filename_key):
         """
@@ -4467,7 +4468,7 @@ class Thermodynamics(Observable):
             self.restart_sim = False
 
         self.update_args(**kwargs)
-        self.grab_sim_data(phase)
+        # self.grab_sim_data(phase)
 
     @arg_update_doc
     def update_args(self, **kwargs):
@@ -4615,6 +4616,7 @@ class Thermodynamics(Observable):
 
     @compute_doc
     def compute(self, calculate_acf: bool = False):
+        self.load_simulation_dataframe()
         t0 = self.timer.current()
         self.calc_slices_data()
         self.average_slices_data()
@@ -4633,7 +4635,7 @@ class Thermodynamics(Observable):
 
     @compute_acf_doc
     def compute_acf(self):
-        self.grab_sim_data()
+        self.load_simulation_dataframe()
         t0 = self.timer.current()
         self.calc_acf_slices_data()
         self.average_acf_slices_data()
@@ -4718,7 +4720,7 @@ class Thermodynamics(Observable):
         
         return {key: capitalize_words(key) if key.lower() != 'temperature' else 'Temperature' for key in self.thermodynamics_list}
 
-    def grab_sim_data(self, phase=None):
+    def read_data_from_dumps(self, phase=None):
         """
         Grab the simulation data and store it in a pandas DataFrame.
 
@@ -4774,12 +4776,12 @@ class Thermodynamics(Observable):
         cols = self.simulation_dataframe.columns.tolist()
         cols.insert(0, cols.pop(cols.index('Time')))
         self.simulation_dataframe = self.simulation_dataframe[cols]
+        self.save_simulation_hdf()
 
     def temp_energy_plot(
         self,
         process,
         info_list: list = None,
-        phase: str = None,
         show: bool = False,
         publication: bool = False,
         figname: str = None,
@@ -4795,9 +4797,6 @@ class Thermodynamics(Observable):
         info_list: list, optional
             List of strings to print next to the plots.
 
-        phase: str, optional
-            Phase to plot. "equilibration" or "production".
-
         show: bool, optional
             Flag for displaying the figure.
 
@@ -4809,43 +4808,45 @@ class Thermodynamics(Observable):
 
         """
 
-        if phase:
-            phase = phase.lower()
-            self.phase = phase
-            if self.phase == "equilibration":
-                self.no_dumps = 1 +  self.eq_no_dumps # Add 1 to include the initial dump
-                self.dump_dir = self.eq_dump_dir
-                self.dump_step = self.eq_dump_step
-                # self.saving_dir = self.equilibration_dir
-                self.no_steps = self.equilibration_steps
-                self.grab_sim_data(self.phase)
-                # self.simulation_dataframe = self.simulation_dataframe.iloc[1:, :]
+        # if phase:
+        #     phase = phase.lower()
+        #     self.phase = phase
+        #     if self.phase == "equilibration":
+        #         self.no_dumps = 1 +  self.eq_no_dumps # Add 1 to include the initial dump
+        #         self.dump_dir = self.eq_dump_dir
+        #         self.dump_step = self.eq_dump_step
+        #         # self.saving_dir = self.equilibration_dir
+        #         self.no_steps = self.equilibration_steps
+        #         self.grab_sim_data(self.phase)
+        #         # self.simulation_dataframe = self.simulation_dataframe.iloc[1:, :]
 
-            elif self.phase == "production":
-                self.no_dumps = 1 +  self.prod_no_dumps # Add 1 to include the initial dump
-                self.dump_dir = self.prod_dump_dir
-                self.dump_step = self.prod_dump_step
-                # self.saving_dir = self.production_dir
-                self.no_steps = self.production_steps
-                self.grab_sim_data(self.phase)
+        #     elif self.phase == "production":
+        #         self.no_dumps = 1 +  self.prod_no_dumps # Add 1 to include the initial dump
+        #         self.dump_dir = self.prod_dump_dir
+        #         self.dump_step = self.prod_dump_step
+        #         # self.saving_dir = self.production_dir
+        #         self.no_steps = self.production_steps
+        #         self.grab_sim_data(self.phase)
 
-            elif self.phase == "magnetization":
-                self.no_dumps = 1 +  self.mag_no_dumps # Add 1 to include the initial dump
-                self.dump_dir = self.mag_dump_dir
-                self.dump_step = self.mag_dump_step
-                # self.saving_dir = self.magnetization_dir
-                self.no_steps = self.magnetization_steps
-                self.grab_sim_data(self.phase)
+        #     elif self.phase == "magnetization":
+        #         self.no_dumps = 1 +  self.mag_no_dumps # Add 1 to include the initial dump
+        #         self.dump_dir = self.mag_dump_dir
+        #         self.dump_step = self.mag_dump_step
+        #         # self.saving_dir = self.magnetization_dir
+        #         self.no_steps = self.magnetization_steps
+        #         self.grab_sim_data(self.phase)
 
-        else:
-            self.grab_sim_data()
+        # else:
+        #     self.grab_sim_data()
+        if self.simulation_dataframe is None:
+            self.load_simulation_dataframe()
 
         if self.phase == "production":
             self.calculate_beta_simulation(ensemble="NVE")
         else:
             self.calculate_beta_simulation(ensemble="NVT")
 
-        completed_steps = self.dump_step * (self.no_dumps - 1)
+        completed_steps = self.dump_step * (len(self.simulation_dataframe) - 1)
         fig = plt.figure(figsize=(20, 8))
         fsz = 16
         if publication:
@@ -4915,7 +4916,7 @@ class Thermodynamics(Observable):
         T_delta_plot.plot(time, Delta_T_cum_avg, alpha=0.8)
         T_delta_plot.set(xticks=[], ylabel=r"Deviation [%]")
 
-        if phase == "production":
+        if self.phase == "production":
             # The Temperature fluctuations in an NVE ensemble are
             # < delta T^2> = T_desired^2 * ( 2 /(Np * Dims) ) *( 1 -  Np * Dims/2 * k_B/Cv)
             # where Cv is the heat capacity at constant volume.
@@ -4981,7 +4982,7 @@ class Thermodynamics(Observable):
         # In an NVT ensemble Energy fluctuation are given by sigma(E) = sqrt( k_B T^2 C_v)
         # where C_v is the isothermal heat capacity
         # Since this requires a lot of prior calculation I skip it and just make a Gaussian
-        if phase == "production":
+        if self.phase == "production":
             self.calculate_heat_capacity_simulation(ensemble="NVE")
             NkB = self.total_num_ptcls * self.kB
             beta_desired = 1.0 / (self.kB * self.T_desired)
