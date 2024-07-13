@@ -17,6 +17,7 @@ from numpy import (
     savetxt,
     savez,
     sqrt,
+    sum,
     triu_indices,
     zeros,
 )
@@ -1245,12 +1246,12 @@ class Particles:
 
     def calculate_species_electric_current(self):
         """Calculate the electric current of each species from :attr:`vel` and stores it into :attr:`species_electric_current`."""
-        self.species_electric_current = self.species_charges * vector_species_loop(self.vel, self.species_num)
+        self.species_electric_current = self.species_charges * vector_species_loop(self.vel)
 
     def calculate_species_heat_flux(self):
         """Calculate the energy current of each species from :attr:`heat_flux_species_tensor` and stores it into :attr:`species_heat_flux`.\n
         Note that :attr:`heat_flux_species_tensor` is calculated in the force loop if requested."""
-        self.species_heat_flux = vector_cross_species_loop(self.heat_flux_species_tensor, self.species_num)
+        self.species_heat_flux = self.heat_flux_species_tensor.sum(axis=0) # vector_cross_species_loop(self.heat_flux_species_tensor)
 
     def calculate_species_enthalpy(self):
         energy = scalar_species_loop(self.kinetic_energy + self.potential_energy, self.species_num)
@@ -1795,10 +1796,10 @@ def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num
         Scalar Pressure i.e. trace of the pressure tensor
 
     pressure_kin : numpy.ndarray
-        Kinetic part of the Pressure tensor. Shape(:attr:`dimensions`,:attr:`dimensions`, :attr:`num_species`)
+        Kinetic part of the Pressure tensor. Shape(:attr:`num_species`, :attr:`dimensions`,:attr:`dimensions`)
 
     pressure_pot : numpy.ndarray
-        Potential energy part of the Pressure tensor. Shape(:attr:`dimensions`,:attr:`dimensions`, `num_species`)
+        Potential energy part of the Pressure tensor. Shape(attr:`num_species`, :attr:`dimensions`,:attr:`dimensions`)
 
     """
     # Rescale vel of each particle by their individual mass
@@ -1808,11 +1809,17 @@ def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num
     temp_kin_tensor = zeros((3, 3, vel.shape[0]))
 
     # TODO: There must be a faster way to do this tensor product
-    for ip in range(vel.shape[0]):
-        temp_kin_tensor[:, :, ip] = outer(vel[ip, :], vel[ip, :])
+    # for ip in range(vel.shape[0]):
+    #     temp_kin_tensor[:, :, ip] = outer(vel[ip, :], vel[ip, :])
+
+    # The following appears to be 9 times faster than the outer product
+    for i in range(3):
+        for j in range(3):
+            temp_kin_tensor[i, j, :] = vel[:, i] * vel[:, j]
 
     pressure_kin = species_masses * tensor_species_loop(temp_kin_tensor, species_num) / box_volume
-    pressure_pot = tensor_cross_species_loop(virial_species_tensor, species_num) / box_volume
+    # Sum over the species
+    pressure_pot =  virial_species_tensor.sum(axis = 0)/box_volume # tensor_cross_species_loop(virial_species_tensor, species_num) / box_volume
     pressure_tensor = pressure_kin + pressure_pot
     for isp in range(species_num.shape[0]):
         pressure[isp] += (pressure_tensor[isp, 0, 0] + pressure_tensor[isp, 1, 1] + pressure_tensor[isp, 2, 2]) / dimensions
@@ -1878,12 +1885,8 @@ def vector_species_loop(observable, species_num):
 
 
 @njit
-def vector_cross_species_loop(observable, species_num):
-    sp_obs = zeros((species_num.shape[0], 3))
-    for sp in range(species_num.shape[0]):
-        sp_obs[sp, :] = observable[sp, :, :].sum(axis=0)
-
-    return sp_obs
+def vector_cross_species_loop(observable):
+    return sum(observable, axis=1)
 
 
 @njit
@@ -1931,11 +1934,11 @@ def tensor_cross_species_loop(observable, species_num):
     sp_obs: numpy.ndarray
         An array of shape (`num_species`, 3, 3) with the sum over species of the observable tensor.
     """
-    sp_obs = zeros(( species_num.shape[0], 3, 3))
-    for sp in range(species_num.shape[0]):
-        sp_obs[sp, :, :] = observable[sp, :, :, :].sum(axis=0)
+    # sp_obs = zeros(( species_num.shape[0], 3, 3))
+    # for sp in range(species_num.shape[0]):
+    #     sp_obs[sp, :, :] = observable[sp, :, :, :].sum(axis=0)
 
-    return sp_obs
+    return sum(observable, axis = 0)
 
 
 @njit
