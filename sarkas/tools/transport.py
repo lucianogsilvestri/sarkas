@@ -358,7 +358,7 @@ class TransportCoefficients:
         ax4 = ax2.twiny()
 
         # Calculate axis multipliers and labels
-        xmul, ymul, _, _, xlbl, ylbl = plot_labels(time, tc_data[:, 0], "Time", self.__long_name__, self.units)
+        xmul, ymul, _, _, xlbl, ylbl = plot_labels(time, tc_data[:, 0], "Time", self.__name__, self.units)
 
         # ACF
         ax1.plot(xmul * time, acf_data[:, 0] / acf_data[0, 0])
