@@ -279,53 +279,60 @@ class Process:
     def directory_sizes(self):
         """Calculate the size of the dumps directories and print them to logger."""
         # Estimate size of dump folder
-        # Grab one file from the dump directory and get the size of it.
-        if self.parameters.equilibration_phase:
-            if not listdir(self.io.eq_dump_dir):
-                raise FileNotFoundError(
-                    "Could not estimate the size of the equilibration phase dumps"
-                    " because there are no dumps in the equilibration directory."
-                    "Re-run .time_n_space_estimate(loops) with loops > eq_dump_step"
-                )
+        if self.__name__ == "preprocessing":
+            
+            if self.parameters.equilibration_phase:
+                eq_dump_size = self.io.estimate_existing_file_size("equilibration")
             else:
-                eq_dump_size = os_stat(join(self.io.eq_dump_dir, listdir(self.io.eq_dump_dir)[0])).st_size
-                eq_dump_fldr_size = eq_dump_size * (self.parameters.equilibration_steps / self.parameters.eq_dump_step)
+                eq_dump_size = 0
+                
+            prod_dump_size = self.io.estimate_existing_file_size("production")
+            
+            sizes = array([eq_dump_size, prod_dump_size])
+
+            if self.parameters.magnetized and self.parameters.electrostatic_equilibration:
+                mag_dump_size = self.io.estimate_existing_file_size("magnetization")
+                sizes = array([eq_dump_size, prod_dump_size, mag_dump_size])
         else:
-            eq_dump_size = 0
-            eq_dump_fldr_size = 0
+            # Grab one file from the dump directory and get the size of it.
+            if self.parameters.equilibration_phase:
+                if not listdir(self.io.eq_dump_dir):
+                    raise FileNotFoundError(
+                        "Could not estimate the size of the equilibration phase dumps"
+                        " because there are no dumps in the equilibration directory."
+                        "Re-run .time_n_space_estimate(loops) with loops > eq_dump_step"
+                    )
+                else:
+                    eq_dump_size = os_stat(join(self.io.eq_dump_dir, listdir(self.io.eq_dump_dir)[0])).st_size
+                    # eq_dump_fldr_size = eq_dump_size # * (self.parameters.equilibration_steps / self.parameters.eq_dump_step)
+            else:
+                eq_dump_size = 0
+                
 
-        if not listdir(self.io.prod_dump_dir):
-            raise FileNotFoundError(
-                "Could not estimate the size of the production phase dumps because"
-                " there are no dumps in the production directory."
-                "Re-run .time_n_space_estimate(loops) with loops > prod_dump_step"
-            )
-
-        # Grab one file from the dump directory and get the size of it.
-        prod_dump_size = os_stat(join(self.io.prod_dump_dir, listdir(self.io.prod_dump_dir)[0])).st_size
-        prod_dump_fldr_size = prod_dump_size * (self.parameters.production_steps / self.parameters.prod_dump_step)
-        # Prepare arguments to pass for print out
-        sizes = array([[eq_dump_size, eq_dump_fldr_size], [prod_dump_size, prod_dump_fldr_size]])
-        # Check for electrostatic equilibration
-        if self.parameters.magnetized and self.parameters.electrostatic_equilibration:
-            if not listdir(self.io.mag_dump_dir):
+            if not listdir(self.io.directory_tree[self.__name__]["production"]["path"]):
                 raise FileNotFoundError(
-                    "Could not estimate the size of the magnetization phase dumps because"
-                    " there are no dumps in the production directory."
-                    "Re-run .time_n_space_estimate(loops) with loops > mag_dump_step"
+                    "Could not estimate the size of the production phase because there are no files in the production directory."
+                    "Re-run .time_n_space_estimate(loops) with loops > prod_dump_step"
                 )
-            dump = self.parameters.mag_dump_step
-            mag_dump_size = os_stat(join(self.io.mag_dump_dir, "checkpoint_" + str(dump) + ".npz")).st_size
-            mag_dump_fldr_size = mag_dump_size * (self.parameters.magnetization_steps / self.parameters.mag_dump_step)
-            sizes = array(
-                [
-                    [eq_dump_size, eq_dump_fldr_size],
-                    [prod_dump_size, prod_dump_fldr_size],
-                    [mag_dump_size, mag_dump_fldr_size],
-                ]
-            )
 
+            # Grab one file from the dump directory and get the size of it.
+            prod_dump_size = os_stat(join(self.io.prod_dump_dir, listdir(self.io.prod_dump_dir)[0])).st_size
+            
+            # Prepare arguments to pass for print out
+            sizes = array([eq_dump_size, prod_dump_size])
+            # Check for electrostatic equilibration
+            if self.parameters.magnetized and self.parameters.electrostatic_equilibration:
+                if not listdir(self.io.mag_dump_dir):
+                    raise FileNotFoundError(
+                        "Could not estimate the size of the magnetization phase dumps because"
+                        " there are no dumps in the production directory."
+                        "Re-run .time_n_space_estimate(loops) with loops > mag_dump_step"
+                    )
+                # dump = self.parameters.mag_dump_step
+                mag_dump_size = os_stat(join(self.io.mag_dump_dir,  listdir(self.io.mag_dump_dir)[0])).st_size
+                sizes = array([eq_dump_size, prod_dump_size, mag_dump_size])            
         self.io.directory_size_report(sizes, process=self.__name__)
+        
 
     def evolve(self, phase, thermalization, it_start, it_end, dump_step):
         """
@@ -358,66 +365,68 @@ class Process:
 
             if (it + 1) % dump_step == 0:
                 self.particles.calculate_observables()
-                self.io.dump(phase, self.particles, it + 1)
+                # self.io.dump(phase, self.particles, it + 1)
+                time = self.integrator.dt * (it + 1)
+                self.io.save_timestep_data(it + 1, dump_step, time, self.particles)
 
             if thermalization and (it + 1 >= self.integrator.thermalization_timestep):
                 self.particles.calculate_species_kinetic_temperature()
                 self.integrator.thermostate(self.particles)
 
-    def evolve_loop_threading(self, phase, thermalization, it_start, it_end, dump_step):
-        """
-        Evolve the system forward in time. This method is similar to :meth:`sarkas.processes.Process.evolve_loop` with
-        the only difference that it uses `threading` for saving data, it starts a new thread to save the data.
-        In the case of small number of particles this can slow down the simulation, therefore it must be chosen by setting
-        the parameters `threading = True` in the input file or in the :class:`sarkas.core.Parameters` class.
+    # def evolve_loop_threading(self, phase, thermalization, it_start, it_end, dump_step):
+    #     """
+    #     Evolve the system forward in time. This method is similar to :meth:`sarkas.processes.Process.evolve_loop` with
+    #     the only difference that it uses `threading` for saving data, it starts a new thread to save the data.
+    #     In the case of small number of particles this can slow down the simulation, therefore it must be chosen by setting
+    #     the parameters `threading = True` in the input file or in the :class:`sarkas.core.Parameters` class.
 
-        Parameters
-        ----------
-        phase: str
-            Indicates the stage of the simulation used for saving dumps in the right directory. \n
-            Choices = ("equilibration", "production", "magnetization")
+    #     Parameters
+    #     ----------
+    #     phase: str
+    #         Indicates the stage of the simulation used for saving dumps in the right directory. \n
+    #         Choices = ("equilibration", "production", "magnetization")
 
-        thermalization : bool
-            Indicates whether to apply the thermostat or not.
+    #     thermalization : bool
+    #         Indicates whether to apply the thermostat or not.
 
-        it_start: int
-            Initial timestep of the loop.
+    #     it_start: int
+    #         Initial timestep of the loop.
 
-        it_end: int
-            Final timestep of the loop.
+    #     it_end: int
+    #         Final timestep of the loop.
 
-        dump_step: int
-            Interval for dumping data.
+    #     dump_step: int
+    #         Interval for dumping data.
 
-        """
-        for it in trange(it_start, it_end, disable=not self.parameters.verbose):
-            # Calculate the Potential energy and update particles' data
+    #     """
+    #     for it in trange(it_start, it_end, disable=not self.parameters.verbose):
+    #         # Calculate the Potential energy and update particles' data
 
-            self.integrator.update(self.particles)
+    #         self.integrator.update(self.particles)
 
-            if (it + 1) % dump_step == 0:
-                th = Thread(
-                    target=self.io.dump,
-                    name=f"Sarkas_{phase.capitalize()}_Thread - {it + 1}",
-                    args=(
-                        phase,
-                        self.particles.__deepcopy__(),
-                        it + 1,
-                    ),
-                )
+    #         if (it + 1) % dump_step == 0:
+    #             th = Thread(
+    #                 target=self.io.dump,
+    #                 name=f"Sarkas_{phase.capitalize()}_Thread - {it + 1}",
+    #                 args=(
+    #                     phase,
+    #                     self.particles.__deepcopy__(),
+    #                     it + 1,
+    #                 ),
+    #             )
 
-                self.threads_ls.append(th)
+    #             self.threads_ls.append(th)
 
-                th.start()
+    #             th.start()
 
-            if thermalization and (it + 1 >= self.integrator.thermalization_timestep):
-                self.integrator.thermostate(self.particles)
+    #         if thermalization and (it + 1 >= self.integrator.thermalization_timestep):
+    #             self.integrator.thermostate(self.particles)
 
-        # Wait for all the threads to finish
-        for x in self.threads_ls:
-            x.join()
+    #     # Wait for all the threads to finish
+    #     for x in self.threads_ls:
+    #         x.join()
 
-        self.threads_ls.clear()
+    #     self.threads_ls.clear()
 
     def initialization(self):
         """Initialize all classes."""
@@ -431,12 +440,13 @@ class Process:
 
         self.parameters.potential_type = self.potential.type.lower()
         self.parameters.setup(self.species)
-        self.parameters.dt = self.integrator.dt
+
         # Initialize particles
         t0 = self.timer.current()
         self.particles.setup(self.parameters, self.species)
         time_ptcls = self.timer.current()
-
+        self.parameters.particles_initialization_time = time_ptcls - t0
+        
         # Initialize potential and calculate initial potential
         self.potential.setup(self.parameters, self.species)
         self.potential.calc_acc_pot(self.particles)
@@ -445,7 +455,6 @@ class Process:
 
         # Initialize Integrator
         self.integrator.setup(self.parameters, self.potential)
-
         # Copy needed parameters for pretty print
         self.parameters.dt = self.integrator.dt
         self.parameters.equilibration_integrator = self.integrator.equilibration_type
@@ -456,7 +465,11 @@ class Process:
         # Copy some parameters needed for saving data
         self.io.copy_params(self.parameters)
         # For restart and backups.
-        self.io.setup_checkpoint(self.parameters)
+        self.io.setup_checkpoint(self.parameters, self.particles, phase = "equilibration")
+        if self.parameters.magnetized and self.parameters.electrostatic_equilibration:
+            self.io.setup_checkpoint(self.parameters, self.particles, phase = "magnetization")
+        self.io.setup_checkpoint(self.parameters, self.particles, phase = "production")
+
         self.io.save_pickle(self)
 
         # Print Process summary to file and screen
@@ -486,7 +499,7 @@ class Process:
         for sp, kp, tp, pot_sp in zip(
             self.species,
             self.particles.species_kinetic_energy,
-            self.particles.species_temperatures,
+            self.particles.species_temperature,
             self.particles.species_potential_energy,
         ):
             sp_msg = (
@@ -1221,9 +1234,6 @@ class PreProcess(Process):
         self.io.write_to_logger(msg)
 
     def remove_preproc_dumps(self):
-        # Delete the energy files created during the estimation runs
-        os_remove(self.io.eq_energy_filename)
-        os_remove(self.io.prod_energy_filename)
 
         # Delete dumps created during the estimation runs
         for npz in listdir(self.io.eq_dump_dir):
@@ -1356,24 +1366,31 @@ class PreProcess(Process):
         # Run few equilibration steps to estimate the equilibration time
         if self.parameters.equilibration_phase and self.parameters.electrostatic_equilibration:
             self.integrator.update = self.integrator.type_setup(self.integrator.equilibration_type)
+            self.io.open_h5md_file(phase="equilibration")
             self.timer.start()
             self.evolve("equilibration", self.integrator.thermalization, 0, loops, self.parameters.eq_dump_step)
-            self.eq_mean_time = self.timer.stop() / loops
+            self.io.close_h5md_file()
             # Print the average equilibration & production times
+            self.eq_mean_time = self.timer.stop() / loops
             self.io.preprocess_timing("Equilibration", self.timer.time_division(self.eq_mean_time), loops)
 
         if self.parameters.magnetized and self.parameters.electrostatic_equilibration:
             self.integrator.update = self.integrator.type_setup(self.integrator.magnetization_type)
+            self.io.open_h5md_file(phase = 'magnetization')
             self.timer.start()
             self.evolve("magnetization", self.integrator.thermalization, 0, loops, self.parameters.mag_dump_step)
+            self.io.close_h5md_file()
             self.mag_mean_time = self.timer.stop() / loops
             # Print the average equilibration & production times
             self.io.preprocess_timing("Magnetization", self.timer.time_division(self.mag_mean_time), loops)
 
         # Run few production steps to estimate the equilibration time
         self.integrator.update = self.integrator.type_setup(self.integrator.production_type)
+        self.potential_measure = True
+        self.io.open_h5md_file(phase="production")
         self.timer.start()
         self.evolve("production", False, 0, loops, self.parameters.prod_dump_step)
+        self.io.close_h5md_file()
         self.prod_mean_time = self.timer.stop() / loops
         self.io.preprocess_timing("Production", self.timer.time_division(self.prod_mean_time), loops)
 
@@ -1460,6 +1477,9 @@ class PreProcess(Process):
                 self.potential.pppm_cao = cao * array([1, 1, 1], dtype=int)
 
                 # Update the potential matrix since alpha has changed
+                # if self.potential.type == "qsp":
+                #     self.potential.pot_update_params(self.potential, self.species)
+                # else:
                 self.potential.pot_update_params(self.potential, self.species)
                 # The Green's function depends on alpha, Mesh and cao. It also updates the pppm_pm_err
                 green_time = self.green_function_timer()
@@ -1716,7 +1736,8 @@ class Simulation(Process):
             it_start = self.parameters.restart_step
         else:
             it_start = 0
-            self.io.dump(phase, self.particles, 0)
+            dump_step = self.parameters.eq_dump_step if phase == "equilibration" else self.parameters.prod_dump_step
+            self.io.save_timestep_data(it_start, dump_step, self.integrator.dt * it_start, self.particles)
         return it_start
 
     def equilibrate(self):
@@ -1724,6 +1745,7 @@ class Simulation(Process):
         Run the time integrator with the thermostat to evolve the system to its thermodynamics equilibrium state.
         """
 
+        self.io.open_h5md_file(phase="equilibration")
         it_start = self.check_restart(phase="equilibration")
         self.integrator.update = self.integrator.type_setup(self.integrator.equilibration_type)
         # Start timer, equilibrate, and print run time.
@@ -1736,25 +1758,11 @@ class Simulation(Process):
             self.parameters.eq_dump_step,
         )
         time_eq = self.timer.stop()
+        self.io.close_h5md_file()
         self.io.time_stamp("Equilibration", self.timer.time_division(time_eq))
-
-    # def check_equil_dist(self):
-    #
-    #     vel_dist = VelocityDistribution()
-    #     vel_dist.setup(
-    #         params=self.parameters,
-    #         phase="equilibration",
-    #         no_slices=1,
-    #         max_no_moment=6,
-    #         multi_run_average=False,
-    #         dimensional_average=False,
-    #         runs=1,
-    #     )
-    #     vel_dist.compute()
-    #
-    #     pass
-
+        
     def magnetize(self):
+        self.io.open_h5md_file(phase="magnetization")
         # Check for magnetization phase
         it_start = self.check_restart(phase="magnetization")
         # Update integrator
@@ -1769,17 +1777,20 @@ class Simulation(Process):
             self.parameters.mag_dump_step,
         )
         time_eq = self.timer.stop()
+        self.io.close_h5md_file()
         self.io.time_stamp("Magnetization", self.timer.time_division(time_eq))
 
     def produce(self):
+        
+        self.io.open_h5md_file(phase="production")
         it_start = self.check_restart(phase="production")
-
         self.integrator.update = self.integrator.type_setup(self.integrator.production_type)
         # Update measurement flag for rdf.
         self.potential.measure = True
         self.timer.start()
         self.evolve("production", False, it_start, self.parameters.production_steps, self.parameters.prod_dump_step)
         time_eq = self.timer.stop()
+        self.io.close_h5md_file()
         self.io.time_stamp("Production", self.timer.time_division(time_eq))
 
     def run(self):

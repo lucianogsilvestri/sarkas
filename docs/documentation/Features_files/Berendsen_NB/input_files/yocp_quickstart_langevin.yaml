@@ -1,0 +1,42 @@
+# keywords: YOCP, Yukawa, PP, mks, random_no_reject
+Particles:
+    - Species:
+        name: C
+        number_density: 1.13666931822e+23   # N/cc
+        mass: 2.0089e-23                    # g
+        num: 1000                            # total number of particles
+        Z: 1.976599                         # degree of ionization
+        temperature_eV: 0.5                # T = 0.5 eV
+
+Potential:
+    type: Yukawa                            # potential type
+    method: PP
+    rc: 6.0e-8                              # cm, cut-off radius
+
+Integrator:
+    equilibration_type: langevin
+    production_type: verlet
+    dt: 5.0e-17                             # sec
+    boundary_conditions: periodic       # REQUIRED
+    thermalization: no                # OPTIONAL. Default = yes
+    langevin_type: BBK
+    langevin_gamma: 9.2774e+13          # [Hertz]
+
+Parameters:
+    units: cgs                              # units
+    load_method: random_no_reject
+    equilibration_steps: 1500           # REQUIRED
+    production_steps: 2500              # REQUIRED
+    eq_dump_step: 2                     # REQUIRED
+    prod_dump_step: 10                  # REQUIRED
+
+IO:
+    verbose: False
+    job_dir: langevin_test
+
+Observables:
+  - Thermodynamics:
+      phase: production
+
+  - RadialDistributionFunction:
+      no_bins: 250

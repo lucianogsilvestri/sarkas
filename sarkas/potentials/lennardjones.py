@@ -175,7 +175,7 @@ def pretty_print_info(potential):
     print(f"r_cut = {potential.rc/potential.sigma_avg:.6e} sigma = {potential.rc/potential.a_ws:.6e} a_ws = {potential.rc:6e} {potential.units_dict['length']}")
 
 
-def update_params(potential):
+def update_params(potential, species):
     """
     Assign potential dependent simulation's parameters.
 
