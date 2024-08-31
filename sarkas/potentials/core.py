@@ -375,10 +375,11 @@ class Potential:
             inv_halpha = (1.0 / halpha).astype(int)
 
             pppm_msg = (
+                f"Ewald parameter alpha = {self.pppm_alpha_ewald * self.a_ws:.4f} / a_ws = {self.pppm_alpha_ewald:.6e} {self.units_dict['inverse length']}\n"
+                f"rc * alpha = {self.rc * self.pppm_alpha_ewald:.4f}\n"
                 f"Charge assignment orders: {self.pppm_cao}\n"
                 f"FFT aliases: {self.pppm_aliases}\n"
                 f"Mesh: {self.pppm_mesh}\n"
-                f"Ewald parameter alpha = {self.pppm_alpha_ewald * self.a_ws:.4f} / a_ws = {self.pppm_alpha_ewald:.6e} {self.units_dict['inverse length']}\n"
                 f"Mesh width = {h_a[0]:.4f}, {h_a[1]:.4f}, {h_a[2]:.4f} a_ws\n"
                 f"           = {self.pppm_h_array[0]:.4e}, {self.pppm_h_array[1]:.4e}, {self.pppm_h_array[2]:.4e} {self.units_dict['length']}\n"
                 f"Mesh size * Ewald_parameter (h * alpha) = {halpha[0]:.4f}, {halpha[1]:.4f}, {halpha[2]:.4f}\n"

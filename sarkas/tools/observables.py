@@ -17,8 +17,9 @@ import warnings
 from arch.unitroot import ADF, KPSS
 from matplotlib.gridspec import GridSpec
 from numba import njit
-from numpy import append as np_append
+from numpy import append as np_append, mean
 from numpy import (
+    allclose,
     argsort,
     array,
     complex128,
@@ -26,10 +27,7 @@ from numpy import (
     exp,
     format_float_scientific,
     histogram,
-    interp,
-    isfinite,
     load,
-    log,
     ndarray,
     ones,
     ones_like,
@@ -37,7 +35,6 @@ from numpy import (
     real,
     repeat,
     rint,
-    roll,
     savez,
     sort,
     sqrt,
@@ -461,49 +458,243 @@ class Observable:
             max_k_harmonics=self.max_k_harmonics,
             max_aa_harmonics=self.max_aa_harmonics,
         )
+        
+    def _is_valid_nkt_file(self):
+        """
+        Check if the nkt_hdf_file exists and contains valid k_list data.
+        """
+        if not hasattr(self, 'nkt_hdf_file') or not os_path_exists(self.nkt_hdf_file):
+            return False
 
-    def calc_nkt_slices_data(self):
-        """Calculate n(k,t) for each slice."""
-        start_slice = 0
-        end_slice = self.block_length * self.dump_step
-        self.nkt_dataframe_slices = DataFrame()
+        try:
+            with h5py.File(self.nkt_hdf_file, 'r') as f:
+                if 'k_list' not in f:
+                    return False
+                
+                stored_k_list = f['k_list'][:]
+                
+                # Check if the shapes match
+                if stored_k_list.shape != self.k_list.shape:
+                    return False
+                
+                # Check if all elements are equal within a small tolerance
+                if not allclose(stored_k_list, self.k_list, rtol=1e-5, atol=1e-8):
+                    return False
 
-        for isl in tqdm(
-            range(self.no_slices),
-            desc="Calculating n(k,t) for slice ",
-            position=0,
-            disable=not self.verbose,
-            leave=True,
-        ):
-            nkt = calc_nkt(
-                self.dump_dir,
-                (start_slice, end_slice, self.block_length),
-                self.dump_step,
-                self.species_num,
-                self.k_list,
-                self.verbose,
-            )
-            start_slice += self.block_length * self.dump_step
-            end_slice += self.block_length * self.dump_step
-            # n(k,t).shape = [no_species, time, k vectors]
+            return True
+        except Exception as e:
+            print(f"Error checking nkt_hdf_file: {e}")
+            return False
+        
+    def calc_nkt_data(self):
+        """
+        Calculate and store n(k,t) for all time steps and species using time chunking and HDF5 storage.
 
-            slc_column = "slice {}".format(isl + 1)
-            for isp, sp_name in enumerate(self.species_names):
-                df_columns = [
-                    slc_column + "_{}_k = [{}, {}, {}]".format(sp_name, *self.k_harmonics[ik, :-2].astype(int))
-                    for ik in range(len(self.k_harmonics))
-                ]
-                # df_columns = [time_column, *k_columns]
-                self.nkt_dataframe_slices = concat(
-                    [self.nkt_dataframe_slices, DataFrame(nkt[isp, :, :], columns=df_columns)], axis=1
-                )
+        This method computes the microscopic density n(k,t) for each species and wave vector k
+        across all time steps of the simulation. The calculation is performed in chunks to
+        manage memory usage efficiently, and the results are stored in an HDF5 file.
 
-        # Example nkt_dataframe
-        # slices slice 1
-        # species H
-        # harmonics k = [0, 0, 1] | k = [0, 1, 0] | ...
-        tuples = [tuple(c.split("_")) for c in self.nkt_dataframe_slices.columns]
-        self.nkt_dataframe_slices.columns = MultiIndex.from_tuples(tuples, names=["slices", "species", "harmonics"])
+        The n(k,t) is calculated as:
+        n(k,t) = Σ_j exp(-i k · r_j(t))
+        where j runs over all particles of a given species, k is the wave vector, and r_j(t) is
+        the position of particle j at time t.
+
+        Process:
+        1. Initializes an HDF5 file for output.
+        2. Processes the simulation data in time chunks.
+        3. For each chunk, calculates n(k,t) for all species and k-values.
+        4. Stores the results in the HDF5 file, using compression for efficiency.
+        5. Adds metadata to the HDF5 file for future reference.
+
+        Output:
+        - Creates an HDF5 file containing:
+          * A dataset 'nkt' with shape (n_species, n_k_values, n_timesteps)
+          * A dataset 'k_list' containing the list of k-vectors
+          * Attributes with metadata (number of species, number of dumps, dump step, chunk size)
+
+        Note:
+        - The chunk size is adaptively set to min(1000, self.no_dumps) for optimal performance.
+        - Progress is displayed using a tqdm progress bar if self.verbose is True.
+        - After calculation, a DataFrame representation of the data is created for compatibility.
+
+        Raises:
+        - IOError: If there are issues reading the input file or writing to the output file.
+        - ValueError: If essential attributes (e.g., k_list, species_names) are not properly set.
+
+        See Also:
+        - calc_nkt_chunk: Method for calculating n(k,t) for a specific time chunk.
+        """
+        output_file = self.nkt_hdf_file
+
+        # Set a maximum chunk size (in number of time steps)
+        max_chunk_size = 1000
+
+        total_steps = self.no_dumps
+        n_k_values = len(self.k_list)
+        
+        # Calculate the number of full chunks and the size of the last chunk
+        n_full_chunks = total_steps // max_chunk_size
+        last_chunk_size = total_steps % max_chunk_size
+
+        # If there's a remainder, we'll have one more chunk
+        n_chunks = n_full_chunks + (1 if last_chunk_size > 0 else 0)
+
+        # Define chunk shape for each species dataset
+        chunk_shape = (n_k_values, max_chunk_size)
+        
+        with h5py.File(output_file, 'w') as f_out:
+            # Create datasets for each species
+            datasets = {}
+            for sp_name in self.species_names:
+                dset = f_out.create_dataset(f'nkt_{sp_name}', 
+                                            shape=(n_k_values, total_steps),
+                                            maxshape=(n_k_values, None),  # Allow expansion along time axis
+                                            dtype=complex128,  
+                                            chunks=chunk_shape)
+                datasets[sp_name] = dset
+            
+            # Process chunks
+            for chunk_index in tqdm(range(n_chunks), desc="Calculating n(k,t) in chunks", disable=not self.verbose):
+                chunk_start = chunk_index * max_chunk_size * self.dump_step
+                if chunk_index < n_full_chunks:
+                    chunk_end = (chunk_index + 1) * max_chunk_size * self.dump_step
+                else:
+                    chunk_end = total_steps * self.dump_step
+
+                nkt_chunks = self.calc_nkt_chunk(chunk_start, chunk_end)
+                
+                # Write chunk to datasets
+                chunk_start_idx = chunk_start // self.dump_step
+                chunk_end_idx = chunk_end // self.dump_step
+                for sp_idx, sp_name in enumerate(self.species_names):
+                    datasets[sp_name][:, chunk_start_idx:chunk_end_idx] = nkt_chunks[sp_idx]
+            
+            # Store k_list
+            f_out.create_dataset('k_list', data=self.k_list)
+            
+            # Store general metadata
+            f_out.attrs['no_species'] = len(self.species_names)
+            f_out.attrs['species_names'] = self.species_names
+            f_out.attrs['no_dumps'] = self.no_dumps
+            f_out.attrs['dump_step'] = self.dump_step
+            f_out.attrs['max_chunk_size'] = max_chunk_size
+            f_out.attrs["max_k_harmonics"] = self.max_k_harmonics
+            f_out.attrs["angle_averaging"] = self.angle_averaging
+        
+        msg = f"n(k,t) stored in {output_file}"
+        print_to_logger(msg, self.log_file, self.verbose)
+
+    @staticmethod
+    @njit
+    def calc_nk(pos_data, k_list, species_np):
+        """Calculate n(k) for a given species.
+        
+        Parameters
+        ----------
+        pos_data : numpy.ndarray
+            Array of shape (n_particles, 3) containing the positions of the particles.
+            
+        k_list : numpy.ndarray
+            Array of shape (n_k_vectors, 3) containing the k vectors.
+        
+        species_np : numpy.ndarray
+            Array of shape (n_species,) containing the number of particles of each species.
+        
+        Returns
+        -------
+        nk : numpy.ndarray
+            Array of shape (n_species, n_k_vectors) containing n(k) for each species.
+        
+        """
+        n_species = len(species_np)
+        nk = zeros((n_species, len(k_list)), dtype=complex128)
+        sp_start = 0
+        for i, sp in enumerate(species_np):
+            sp_end = sp_start + sp
+            for ik, k_vec in enumerate(k_list):
+                kr_i = 2.0 * pi * (k_vec[0] * pos_data[sp_start:sp_end, 0] + 
+                                      k_vec[1] * pos_data[sp_start:sp_end, 1] + 
+                                      k_vec[2] * pos_data[sp_start:sp_end, 2])
+                nk[i, ik] = exp(-1j * kr_i).sum()
+            sp_start = sp_end
+        return nk
+
+    def calc_nkt_chunk(self, chunk_start, chunk_end):
+        """Calculate n(k,t) for a chunk of time steps.
+        
+        Parameters
+        ----------
+        chunk_start : int
+            Start of the time chunk.
+        
+        chunk_end : int
+            End of the time chunk.
+        
+        Returns
+        -------
+        nkt_chunks : numpy.ndarray
+            Array of shape (n_species, len(k_list), chunk_size) containing n(k,t) for each species.
+        
+        """
+        chunk_size = (chunk_end - chunk_start) // self.dump_step
+        n_species = len(self.species_num)
+        nkt_chunks = zeros((n_species, len(self.k_list), chunk_size), dtype=complex128)
+        
+        with h5py.File(self.h5md_filepath, "r") as h5md_file:
+            for it, dump in enumerate(range(chunk_start, chunk_end, self.dump_step)):
+                indx = dump // self.dump_step
+                pos_data = h5md_file["particles/pos"][indx, :, :]
+                nkt_chunks[:, :, it] = self.calc_nk(pos_data, self.k_list, self.species_num)
+        
+        return nkt_chunks
+
+    def get_nkt_slice(self, hdf5_file, species_name, slice_start, slice_end):
+        """Retrieve a slice of nkt data for a specific species from the HDF5 file."""
+        with h5py.File(hdf5_file, 'r') as f:
+            return f[f'{species_name}'][:, slice_start:slice_end]
+    
+    # def calc_nkt_slices_data(self):
+    #     """Calculate n(k,t) for each slice."""
+    #     start_slice = 0
+    #     end_slice = self.block_length * self.dump_step
+    #     self.nkt_dataframe_slices = DataFrame()
+
+    #     for isl in tqdm(
+    #         range(self.no_slices),
+    #         desc="Calculating n(k,t) for slice ",
+    #         position=0,
+    #         disable=not self.verbose,
+    #         leave=True,
+    #     ):
+    #         nkt = calc_nkt(
+    #             self.h5md_filepath,
+    #             (start_slice, end_slice, self.block_length),
+    #             self.dump_step,
+    #             self.species_num,
+    #             self.k_list,
+    #             self.verbose,
+    #         )
+    #         start_slice += self.block_length * self.dump_step
+    #         end_slice += self.block_length * self.dump_step
+    #         # n(k,t).shape = [no_species, time, k vectors]
+
+    #         slc_column = "slice {}".format(isl + 1)
+    #         for isp, sp_name in enumerate(self.species_names):
+    #             df_columns = [
+    #                 slc_column + "_{}_k = [{}, {}, {}]".format(sp_name, *self.k_harmonics[ik, :-2].astype(int))
+    #                 for ik in range(len(self.k_harmonics))
+    #             ]
+    #             # df_columns = [time_column, *k_columns]
+    #             self.nkt_dataframe_slices = concat(
+    #                 [self.nkt_dataframe_slices, DataFrame(nkt[isp, :, :], columns=df_columns)], axis=1
+    #             )
+
+    #     # Example nkt_dataframe
+    #     # slices slice 1
+    #     # species H
+    #     # harmonics k = [0, 0, 1] | k = [0, 1, 0] | ...
+    #     tuples = [tuple(c.split("_")) for c in self.nkt_dataframe_slices.columns]
+    #     self.nkt_dataframe_slices.columns = MultiIndex.from_tuples(tuples, names=["slices", "species", "harmonics"])
 
     def calc_vkt_slices_data(self):
         """Calculate v(k,t) for each slice."""
@@ -673,8 +864,8 @@ class Observable:
         """
         if nkt_flag:
             tinit = self.timer.current()
-            self.calc_nkt_slices_data()
-            self.save_kt_hdf(nkt_flag=True)
+            self.calc_nkt_data()
+            # self.save_kt_hdf(nkt_flag=True)
             tend = self.timer.current()
             time_stamp(self.log_file, "n(k,t) Calculation", self.timer.time_division(tend - tinit), self.verbose)
 
@@ -1027,35 +1218,39 @@ class Observable:
 
         """
         if nkt_flag:
+            if not hasattr(self, 'nkt_hdf_file') or not os.path.exists(self.nkt_hdf_file):
+                return False
+
             try:
-                # Check that what was already calculated is correct
-                with HDFStore(self.nkt_hdf_file, mode="r") as nkt_hfile:
-                    metadata = nkt_hfile.get_storer("nkt").attrs.metadata
+                with h5py.File(self.nkt_hdf_file, 'r') as f:
+                    # Check for k_list
+                    if 'k_list' not in f:
+                        return False
+                    
+                    stored_k_list = f['k_list'][:]
+                    
+                    # Check if the shapes match
+                    if stored_k_list.shape != self.k_list.shape:
+                        return False
+                    
+                    # Check if all elements are equal within a small tolerance
+                    if not np.allclose(stored_k_list, self.k_list, rtol=1e-5, atol=1e-8):
+                        return False
 
-                if metadata["no_slices"] == self.no_slices:
-                    # Check for the correct number of k values
-                    if metadata["angle_averaging"] == self.angle_averaging:
-                        # Check for the correct max harmonics
-                        comp = self.max_k_harmonics == metadata["max_k_harmonics"]
-                        if not comp.all():
-                            self.compute_kt_data(nkt_flag=True)
-                    else:
-                        self.compute_kt_data(nkt_flag=True)
-                else:
-                    self.compute_kt_data(nkt_flag=True)
+                    # Check for angle_averaging attribute
+                    if 'angle_averaging' not in f.attrs:
+                        return False
+                    
+                    stored_angle_averaging = f.attrs['angle_averaging']
+                    
+                    # Compare angle_averaging
+                    if stored_angle_averaging != self.angle_averaging:
+                        return False
 
-                # elif metadata['max_k_harmonics']
-                #
-                # if self.angle_averaging == nkt_data["angle_averaging"]:
-                #
-                #     comp = self.max_k_harmonics == nkt_data["max_harmonics"]
-                #     if not comp.all():
-                #         self.compute_kt_data(nkt_flag=True)
-                # else:
-                #     self.compute_kt_data(nkt_flag=True)
-
-            except OSError:
-                self.compute_kt_data(nkt_flag=True)
+                return True
+            except Exception as e:
+                print(f"Error checking nkt_hdf_file: {e}")
+                return False
 
         if vkt_flag:
             try:
@@ -2396,9 +2591,30 @@ class DynamicStructureFactor(Observable):
         self.k_observable = True
 
     @setup_doc
-    def setup(self, params, phase: str = None, no_slices: int = 1, **kwargs):
-        super().setup_init(params, phase, no_slices)
+    def setup(self,
+              params,
+        phase: str = None,
+        independent_slices: bool = None,
+        no_slices: int = None,
+        timesteps_per_slice: int = None,
+        timesteps_shift: int = None,
+        plasma_periods_per_slice: int = None,
+        plasma_periods_shift: int = None,
+        **kwargs,
+    ):
+        super().setup_init(
+            params,
+            phase=phase,
+            independent_slices=independent_slices,
+            no_slices=no_slices,
+            timesteps_per_slice=timesteps_per_slice,
+            timesteps_shift=timesteps_shift,
+            plasma_periods_per_slice=plasma_periods_per_slice,
+            plasma_periods_shift=plasma_periods_shift,
+            **kwargs,
+        )
         self.update_args(**kwargs)
+
 
     @arg_update_doc
     def update_args(self, **kwargs):
@@ -2417,46 +2633,119 @@ class DynamicStructureFactor(Observable):
         tend = self.timer.current()
         time_stamp(self.log_file, self.__long_name__ + " Calculation", self.timer.time_division(tend - t0), self.verbose)
 
+
     @calc_slices_doc
     def calc_slices_data(self):
-        # Parse nkt otherwise calculate it
-        self.parse_kt_data(nkt_flag=True)
+        if not self.parse_kt_data(nkt_flag=True):
+            self.compute_kt_data(nkt_flag=True)
 
-        nkt_df = read_hdf(self.nkt_hdf_file, mode="r", key="nkt")
-        for isl in tqdm(range(self.no_slices), desc="Calculating DSF for slice", disable=not self.verbose):
-            # Initialize container
-            nkt = zeros((self.num_species, self.block_length, len(self.k_list)), dtype=complex128)
-            for sp, sp_name in enumerate(self.species_names):
-                nkt[sp] = array(nkt_df["slice {}".format(isl + 1)][sp_name])
-
-            # Calculate Skw
-            Skw_all = calc_Skw(nkt, self.k_list, self.species_num, self.block_length, self.dt, self.dump_step)
-
-            # Create the dataframe's column names
+        # Pre-calculate all column names for the dataset
+        all_columns = []
+        for isl in range(self.no_slices):
             slc_column = f"slice {isl + 1}"
-            ka_columns = [f"ka = {ka:.8f}" for ik, ka in enumerate(self.ka_values)]
-            # Save the full Skw into a Dataframe
-            sp_indx = 0
+            ka_columns = [f"ka = {ka:.8f}" for ka in self.ka_values]
             for i, sp1 in enumerate(self.species_names):
                 for j, sp2 in enumerate(self.species_names[i:]):
                     columns = [
-                        "{}-{}_".format(sp1, sp2)
-                        + slc_column
-                        + "_{}_k = [{}, {}, {}]".format(
-                            ka_columns[int(self.k_harmonics[ik, -1])], *self.k_harmonics[ik, :-2].astype(int)
-                        )
+                        f"{sp1}-{sp2}_{slc_column}_{ka_columns[int(self.k_harmonics[ik, -1])]}_k = [{', '.join(map(str, self.k_harmonics[ik, :-2].astype(int)))}]"
                         for ik in range(len(self.k_harmonics))
                     ]
-                    self.dataframe_slices = concat(
-                        [self.dataframe_slices, DataFrame(Skw_all[sp_indx, :, :].T, columns=columns)], axis=1
-                    )
+                    all_columns.extend(columns)
+
+        # Pre-allocate the DataFrame
+        n_rows = len(self.frequencies)
+        n_cols = len(all_columns)
+        self.dataframe_slices = DataFrame(zeros((n_rows, n_cols)), columns=all_columns)
+
+        # Fill the DataFrame
+        col_idx = 0
+        for isl in tqdm(range(self.no_slices), desc="Calculating DSF for slice", disable=not self.verbose):
+            slice_start = isl * self.block_length
+            slice_end = (isl + 1) * self.block_length
+
+            nkt = zeros((self.num_species, len(self.k_list), self.block_length), dtype=complex128)
+
+            for sp, sp_name in enumerate(self.species_names):
+                nkt[sp] = self.get_nkt_slice(self.nkt_hdf_file, sp_name, slice_start, slice_end)
+
+            Skw_all = self.calc_Skw(nkt, self.k_list, self.species_num, self.block_length, self.dt, self.dump_step)
+
+            sp_indx = 0
+            for i, sp1 in enumerate(self.species_names):
+                for j, sp2 in enumerate(self.species_names[i:]):
+                    for ik in range(len(self.k_harmonics)):
+                        self.dataframe_slices.iloc[:, col_idx] = Skw_all[sp_indx, ik, :]
+                        col_idx += 1
                     sp_indx += 1
 
+        # self.data_manager.store_skw_data(self.skw_data, self.k_list, self.frequencies)
+        
         # Create the MultiIndex
         tuples = [tuple(c.split("_")) for c in self.dataframe_slices.columns]
         self.dataframe_slices.columns = MultiIndex.from_tuples(
             tuples, names=["species", "slices", "k_index", "k_harmonics"]
         )
+
+    @staticmethod
+    def calc_Skw(nkt, ka_list, species_np, no_dumps, dt, dump_step):
+        """Calculate S(k,w) from n(k,t) data"""
+        norm = dt / sqrt(no_dumps * dt * dump_step)
+        no_skw = int(len(species_np) * (len(species_np) + 1) / 2)
+        Skw_all = zeros((no_skw, len(ka_list), no_dumps))
+
+        pair_indx = 0
+        for ip, si in enumerate(species_np):
+            for jp in range(ip, len(species_np)):
+                sj = species_np[jp]
+                dens_const = 1.0 / sqrt(si * sj)
+                for ik, ka in enumerate(ka_list):
+                    nkw_i = fft(nkt[ip, ik, :]) * norm  # Note the change in indexing here
+                    nkw_j = fft(nkt[jp, ik, :]) * norm  # And here
+                    Skw_all[pair_indx, ik, :] = fftshift(real(nkw_i.conjugate() * nkw_j) * dens_const)
+                pair_indx += 1
+
+        return Skw_all
+    
+    # @calc_slices_doc
+    # def calc_slices_data(self):
+    #     # Parse nkt otherwise calculate it
+    #     self.parse_kt_data(nkt_flag=True)
+
+    #     nkt_df = read_hdf(self.nkt_hdf_file, mode="r", key="nkt")
+    #     for isl in tqdm(range(self.no_slices), desc="Calculating DSF for slice", disable=not self.verbose):
+    #         # Initialize container
+    #         nkt = zeros((self.num_species, self.block_length, len(self.k_list)), dtype=complex128)
+    #         for sp, sp_name in enumerate(self.species_names):
+    #             nkt[sp] = array(nkt_df["slice {}".format(isl + 1)][sp_name])
+
+    #         # Calculate Skw
+    #         Skw_all = calc_Skw(nkt, self.k_list, self.species_num, self.block_length, self.dt, self.dump_step)
+
+    #         # Create the dataframe's column names
+    #         slc_column = f"slice {isl + 1}"
+    #         ka_columns = [f"ka = {ka:.8f}" for ik, ka in enumerate(self.ka_values)]
+    #         # Save the full Skw into a Dataframe
+    #         sp_indx = 0
+    #         for i, sp1 in enumerate(self.species_names):
+    #             for j, sp2 in enumerate(self.species_names[i:]):
+    #                 columns = [
+    #                     "{}-{}_".format(sp1, sp2)
+    #                     + slc_column
+    #                     + "_{}_k = [{}, {}, {}]".format(
+    #                         ka_columns[int(self.k_harmonics[ik, -1])], *self.k_harmonics[ik, :-2].astype(int)
+    #                     )
+    #                     for ik in range(len(self.k_harmonics))
+    #                 ]
+    #                 self.dataframe_slices = concat(
+    #                     [self.dataframe_slices, DataFrame(Skw_all[sp_indx, :, :].T, columns=columns)], axis=1
+    #                 )
+    #                 sp_indx += 1
+
+    #     # Create the MultiIndex
+    #     tuples = [tuple(c.split("_")) for c in self.dataframe_slices.columns]
+    #     self.dataframe_slices.columns = MultiIndex.from_tuples(
+    #         tuples, names=["species", "slices", "k_index", "k_harmonics"]
+    #     )
 
     @avg_slices_doc
     def average_slices_data(self):
@@ -2470,14 +2759,13 @@ class DynamicStructureFactor(Observable):
                 # Rename the columns with values of ka
                 ka_columns = [skw_name + f"_Mean_ka{ik + 1} = {ka:.4f}" for ik, ka in enumerate(self.ka_values)]
                 # Mean: level = 1 corresponds to averaging all the k harmonics with the same magnitude
-                df_mean = self.dataframe_slices[skw_name].groupby(level=1, axis=1).mean()
-                df_mean = df_mean.rename(col_mapper(df_mean.columns, ka_columns), axis=1)
+                df_mean = self.dataframe_slices[skw_name].T.groupby(level=1).mean().T
+                df_mean = df_mean.rename(dict(zip(df_mean.columns, ka_columns)), axis=1)
                 # Std
                 ka_columns = [skw_name + f"_Std_ka{ik + 1} = {ka:.4f}" for ik, ka in enumerate(self.ka_values)]
-                df_std = self.dataframe_slices[skw_name].groupby(level=1, axis=1).std()
-                df_std = df_std.rename(col_mapper(df_std.columns, ka_columns), axis=1)
+                df_std = self.dataframe_slices[skw_name].T.groupby(level=1).std().T
+                df_std = df_std.rename(dict(zip(df_std.columns, ka_columns)), axis=1)
                 self.dataframe = concat([self.dataframe, df_mean, df_std], axis=1)
-
 
 class ElectricCurrent(Observable):
     """Electric Current Auto-correlation function."""
@@ -4750,7 +5038,7 @@ class Thermodynamics(Observable):
                     try:
                         obs_data = species_group[obs_name]
                         # Assuming 'value' dataset exists and is indexed by step
-                        const = 1.0 if obs_name == 'temperature' else species_group.attrs['particle_number']/self.total_num_ptcls
+                        const = species_group.attrs['particle_number']/self.total_num_ptcls
                         total_thermodynamics_data[obs_name] += obs_data['value'][:] * const
 
                         if obs_name == 'temperature': 
@@ -6203,7 +6491,7 @@ def calc_Sk(nkt, k_list, k_counts, species_np, no_dumps):
     return Sk_raw
 
 
-def calc_Skw(nkt, ka_list, species_np, no_dumps, dt, dump_step):
+# def calc_Skw(nkt, ka_list, species_np, no_dumps, dt, dump_step):
     """
     Calculate the Fourier transform of the correlation function of ``nkt``.
 
@@ -6359,86 +6647,87 @@ def calc_moments(dist, max_moment, species_index_start):
     return moments, ratios
 
 
-@njit
-def calc_nk(pos_data, k_list):
-    """
-    Calculate the instantaneous microscopic density :math:`n(k)` defined as
+# @njit
+# def calc_nk(pos_data, k_list):
+#     """
+#     Calculate the instantaneous microscopic density :math:`n(k)` defined as
 
-    .. math::
-        n_{A} ( k ) = \\sum_i^{N_A} \\exp [ -i \\mathbf k \\cdot \\mathbf r_{i} ]
+#     .. math::
+#         n_{A} ( k ) = \\sum_i^{N_A} \\exp [ -i \\mathbf k \\cdot \\mathbf r_{i} ]
 
-    Parameters
-    ----------
-    pos_data : numpy.ndarray
-        Particles' position scaled by the box lengths.
-        Shape = ( ``no_dumps``, ``no_dim``, ``tot_no_ptcls``)
+#     Parameters
+#     ----------
+#     pos_data : numpy.ndarray
+#         Particles' position scaled by the box lengths.
+#         Shape = ( ``no_dumps``, ``no_dim``, ``tot_no_ptcls``)
 
-    k_list : list
-        List of :math:`k` indices in each direction with corresponding magnitude and index of ``ka_counts``.
-        Shape=(``no_ka_values``, 5)
+#     k_list : list
+#         List of :math:`k` indices in each direction with corresponding magnitude and index of ``ka_counts``.
+#         Shape=(``no_ka_values``, 5)
 
-    Returns
-    -------
-    nk : numpy.ndarray
-        Array containing :math:`n(k)`.
-    """
+#     Returns
+#     -------
+#     nk : numpy.ndarray
+#         Array containing :math:`n(k)`.
+#     """
 
-    nk = zeros(len(k_list), dtype=complex128)
+#     nk = zeros(len(k_list), dtype=complex128)
 
-    for ik, k_vec in enumerate(k_list):
-        kr_i = 2.0 * pi * (k_vec[0] * pos_data[:, 0] + k_vec[1] * pos_data[:, 1] + k_vec[2] * pos_data[:, 2])
-        nk[ik] = (exp(-1j * kr_i)).sum()
+#     for ik, k_vec in enumerate(k_list):
+#         kr_i = 2.0 * pi * (k_vec[0] * pos_data[:, 0] + k_vec[1] * pos_data[:, 1] + k_vec[2] * pos_data[:, 2])
+#         nk[ik] = (exp(-1j * kr_i)).sum()
 
-    return nk
+#     return nk
 
 
-def calc_nkt(fldr, slices, dump_step, species_np, k_list, verbose):
-    """
-    Calculate density fluctuations :math:`n(k,t)` of all species.
+# def calc_nkt(h5md_filepath, slices, dump_step, species_np, k_list, verbose):
+#     """
+#     Calculate density fluctuations :math:`n(k,t)` of all species.
 
-    .. math::
-        n_{A} ( k, t ) = \\sum_i^{N_A} \\exp [ -i \\mathbf k \\cdot \\mathbf r_{i}(t) ]
+#     .. math::
+#         n_{A} ( k, t ) = \\sum_i^{N_A} \\exp [ -i \\mathbf k \\cdot \\mathbf r_{i}(t) ]
 
-    where :math:`N_A` is the number of particles of species :math:`A`.
+#     where :math:`N_A` is the number of particles of species :math:`A`.
 
-    Parameters
-    ----------
-    fldr : str
-        Name of folder containing particles data.
+#     Parameters
+#     ----------
+#     fldr : str
+#         Name of folder containing particles data.
 
-    slices : tuple, int
-        Initial, final step number of the slice, total number of slice steps.
+#     slices : tuple, int
+#         Initial, final step number of the slice, total number of slice steps.
 
-    dump_step : int
-        Snapshot interval.
+#     dump_step : int
+#         Snapshot interval.
 
-    species_np : numpy.ndarray
-        Number of particles of each species.
+#     species_np : numpy.ndarray
+#         Number of particles of each species.
 
-    k_list : list
-        List of :math: `k` vectors.
+#     k_list : list
+#         List of :math: `k` vectors.
 
-    Return
-    ------
-    nkt : numpy.ndarray, complex
-        Density fluctuations.  Shape = ( ``no_species``, ``no_dumps``, ``no_ka_values``)
-    """
+#     Return
+#     ------
+#     nkt : numpy.ndarray, complex
+#         Density fluctuations.  Shape = ( ``no_species``, ``no_dumps``, ``no_ka_values``)
+#     """
+ 
+#     nkt = zeros((len(species_np), slices[2], len(k_list)), dtype=complex128)
+ 
+#     with h5py.File(h5md_filepath, "r") as h5md_file:
+#         for it, dump in enumerate(
+#         tqdm(range(slices[0], slices[1], dump_step), desc="Timestep", position=1, disable=not verbose, leave=False)
+#     ):
+#             indx = dump // dump_step
+#             pos_data = h5md_file["particles/pos"][indx, :, :]
+#             sp_start = 0
+#             sp_end = 0
+#             for i, sp in enumerate(species_np):
+#                 sp_end += sp
+#                 nkt[i, it, :] = calc_nk(pos_data[sp_start:sp_end, :], k_list)
+#                 sp_start += sp
 
-    # Read particles' position for times in the slice
-    nkt = zeros((len(species_np), slices[2], len(k_list)), dtype=complex128)
-    for it, dump in enumerate(
-        tqdm(range(slices[0], slices[1], dump_step), desc="Timestep", position=1, disable=not verbose, leave=False)
-    ):
-        data = load_from_restart(fldr, dump)
-        pos = data["pos"]
-        sp_start = 0
-        sp_end = 0
-        for i, sp in enumerate(species_np):
-            sp_end += sp
-            nkt[i, it, :] = calc_nk(pos[sp_start:sp_end, :], k_list)
-            sp_start += sp
-
-    return nkt
+#     return nkt
 
 
 @njit
