@@ -392,6 +392,7 @@ class Observable:
         self.dataframe_slices = None
         self.dataframe_acf = None
         self.dataframe_acf_slices = None
+        self.simulation_dataframe = None
 
     def __repr__(self):
         sortedDict = dict(sorted(self.__dict__.items(), key=lambda x: x[0].lower()))

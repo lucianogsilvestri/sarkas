@@ -1246,8 +1246,7 @@ class Particles:
     def calculate_observables(self):
         """Calculate the observables in :attr:`observables_list`."""
         for key in self.species_observables_method_map.keys():
-            self.species_observables_method_map[key]()
-        
+            self.species_observables_method_map[key]()      
 
     def calculate_species_electric_current(self):
         """Calculate the electric current of each species from :attr:`vel` and stores it into :attr:`species_electric_current`."""
