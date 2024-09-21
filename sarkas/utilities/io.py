@@ -1441,11 +1441,11 @@ class InputOutput:
         self.particles_group['time'].attrs['units'] = params.units_dict['time']
         # Units
         if 'pos' in self.particles_group:
-            self.particles_group['position'].attrs['units'] = params.units_dict['length']
+            self.particles_group['pos'].attrs['units'] = params.units_dict['length']
         if 'vel' in self.particles_group:
-            self.particles_group['velocity'].attrs['units'] = params.units_dict['velocity']
+            self.particles_group['vel'].attrs['units'] = params.units_dict['velocity']
         if 'acc' in self.particles_group:
-            self.particles_group['acceleration'].attrs['units'] = params.units_dict['acceleration']
+            self.particles_group['acc'].attrs['units'] = params.units_dict['acceleration']
 
         # Initialize static properties only if they don't exist to avoid overwriting existing data
         static_properties = {
