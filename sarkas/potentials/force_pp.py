@@ -315,7 +315,7 @@ def particles_interaction_loop(
     rshift = zeros(3)  # Shifts for array flattening
     acc_s_r = zeros_like(pos)
     # energy current
-    j_e = zeros((3, potential_matrix.shape[0], potential_matrix.shape[0]))
+    j_e = zeros((potential_matrix.shape[0], potential_matrix.shape[0], 3))
     # Virial term for the viscosity calculation
     virial_species_tensor = zeros((potential_matrix.shape[0], potential_matrix.shape[0], 3, 3))
     # Initialize

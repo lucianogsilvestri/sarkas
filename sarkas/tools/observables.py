@@ -389,6 +389,7 @@ class Observable:
         self.dataframe_slices = None
         self.dataframe_acf = None
         self.dataframe_acf_slices = None
+        self.simulation_dataframe = None
 
     def __repr__(self):
         sortedDict = dict(sorted(self.__dict__.items(), key=lambda x: x[0].lower()))
@@ -2451,121 +2452,263 @@ class DiffusionFlux(Observable):
         self.update_finish()
 
     @compute_doc
-    def compute(self):
+    def compute(self, calculate_acf: bool = False):
         t0 = self.timer.current()
-        # for run_idx, run_id in enumerate(self.runs):
-        #     self.dump_dir = self.dump_dirs_list[run_idx]
+        self.load_simulation_dataframe()
         self.calc_slices_data()
         self.average_slices_data()
         self.save_hdf()
         tend = self.timer.current()
-        time_stamp(self.log_file, self.__long_name__ + " Calculation", self.timer.time_division(tend - t0), self.verbose)
+        time_stamp(
+            self.log_file,
+            self.__long_name__ + " calculation",
+            self.timer.time_division(tend - t0),
+            self.verbose,
+        )
+        if calculate_acf:
+            self.compute_acf()
+
+    @compute_acf_doc
+    def compute_acf(self):
+        self.load_simulation_dataframe()
+        t0 = self.timer.current()
+        self.calc_acf_slices_data()
+        self.average_acf_slices_data()
+        self.save_acf_hdf()
+        tend = self.timer.current()
+        time_stamp(
+            self.log_file,
+            self.__long_name__ + " ACF calculation",
+            self.timer.time_division(tend - t0),
+            self.verbose,
+        )
 
     @calc_slices_doc
     def calc_slices_data(self):
-        start_slice = 0
-        end_slice = self.block_length * self.dump_step
-        time = zeros(self.block_length)
 
-        df_str = "Diffusion Flux"
-        df_acf_str = "Diffusion Flux ACF"
+        # Prepare columns names
+        flux_cols = [ (f"Diffusion Flux {i}", f"{dim}") for i in range(self.no_fluxes) for dim in ["X", "Y", "Z"]]
+        
+        start_index = 0  # Index to start the slicing
+        end_index = self.block_length  # Last index  the acf calculation
 
+        step = rint(self.plasma_periods_shift * self.timesteps_per_plasma_period / self.dump_step).astype(int)      
+        # Collect data into lists and then passing those to the DataFrame constructor is faster than adding columns one by one.
+        columns_list = [f"Total_Quantity_Time"]
+        data_list = [self.simulation_dataframe.iloc[:end_index, 0].values]
+
+        ### Slices loop
         for isl in tqdm(
             range(self.no_slices),
-            desc=f"\nCalculating {df_str} for slice ",
+            desc=f"\nCalculating {self.__long_name__} for slice ",
             disable=not self.verbose,
             position=0,
         ):
-            # Parse the particles from the dump files
-            vel = zeros((self.dimensions, self.block_length, self.total_num_ptcls))
-            #
-            for it, dump in enumerate(
-                tqdm(
-                    range(start_slice, end_slice, self.dump_step),
-                    desc="Reading data",
-                    disable=not self.verbose,
-                    position=1,
-                    leave=False,
-                )
-            ):
-                datap = load_from_restart(self.dump_dir, dump)
-                time[it] = datap["time"]
-                vel[0, it, :] = datap["vel"][:, 0]
-                vel[1, it, :] = datap["vel"][:, 1]
-                vel[2, it, :] = datap["vel"][:, 2]
-            #
-            if isl == 0:
-                self.dataframe["Time"] = time
-                self.dataframe_slices["Time"] = time
-                self.dataframe_acf["Time"] = time
-                self.dataframe_acf_slices["Time"] = time
+            # Store data into dataframes
+            for _, col in enumerate(flux_cols):
+                col_data = self.simulation_dataframe[col].iloc[start_index:end_index].values
+                col_name = f"{col[0]}_{col[1]}_slice {isl}"
+                columns_list.append(col_name)
+                data_list.append(col_data)
 
-            # This returns two arrays
-            # diff_fluxes = array of shape (no_fluxes, no_dim, no_dumps_per_slice)
-            # df_acf = array of shape (no_fluxes_acf, no_dim + 1, no_dumps_per_slice)
-            diff_fluxes, df_acf = calc_diff_flux_acf(
-                vel, self.species_num, self.species_concentrations, self.species_masses
-            )
+            # Advance by only one slice at a time.
+            start_index += step
+            end_index += step
+            # end of slice loop
+        # Make a dictionary and then pass it to the DataFrame constructor
+        final_data = dict(zip(columns_list, data_list))
+        self.dataframe_slices = DataFrame(final_data)
 
-            # # Store the data
-            for i, flux in enumerate(diff_fluxes):
-                for d, dim in zip(range(self.dimensions), ["X", "Y", "Z"]):
-                    col_name = df_str + f" {i}_{dim}_slice {isl}"
-                    col_data = flux[d, :]
-                    self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
+    @calc_acf_slices_doc
+    def calc_acf_slices_data(self):
 
-            for i, flux_acf in enumerate(df_acf):
-                for d, dim in zip(range(self.dimensions), ["X", "Y", "Z"]):
-                    col_name = df_acf_str + f" {i}_{dim}_slice {isl}"
-                    col_data = flux_acf[d, :]
-                    self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
+        start_index = 0  # Dump number to start the acf calculation
+        end_index = self.block_length  # Dump number to end the acf calculation
 
-                col_name = df_acf_str + f" {i}_Total_slice {isl}"
-                col_data = flux_acf[-1, :]
-                self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
+        step = int(self.timesteps_shift // self.dump_step)
 
-            start_slice += self.block_length * self.dump_step
-            end_slice += self.block_length * self.dump_step
+        columns_list = [f"{self.__long_name__}_Axis_Time"]
+        data_list = [self.simulation_dataframe.iloc[:end_index, 0].values]
+
+        ### Slices loop     
+        for isl in tqdm(
+            range(self.no_slices),
+            desc=f"\nCalculating {self.__long_name__} ACF for slice ",
+            disable=not self.verbose,
+            position=0,
+        ):
+            
+            for i in enumerate(self.no_fluxes):
+
+                total_acf = zeros(self.block_length)
+                for iax, ax in zip(range(self.dimensions), self.dim_labels):
+                        
+                    # Auto-correlation function
+                    df1 = (
+                        self.simulation_dataframe[(f"Diffusion Flux {i}", f"{ax}")]
+                        .iloc[start_index:end_index]
+                        .values
+                    )
+
+                    acf = correlationfunction(df1, df1)
+                    # Store in the dataframe
+                    col_name = f"{self.__long_name__} {i} ACF_{ax}_slice {isl}"
+                    columns_list.append(col_name)
+                    data_list.append(acf)
+                    
+                    total_acf += acf
+
+                # Store in the dataframe
+                col_name = f"{self.__long_name__} {i} ACF_Total_slice {isl}"
+                columns_list.append(col_name)
+                data_list.append(total_acf)
+
+            # Advance by plasma_periods_shift at a time.
+            start_index += step
+            end_index += step
+            # end of slice loop
+        
+        self.dataframe_acf_slices = DataFrame(dict(zip(columns_list, data_list)))
+
+        # start_slice = 0
+        # end_slice = self.block_length * self.dump_step
+        # time = zeros(self.block_length)
+
+        # df_str = "Diffusion Flux"
+        # df_acf_str = "Diffusion Flux ACF"
+
+        # for isl in tqdm(
+        #     range(self.no_slices),
+        #     desc=f"\nCalculating {df_str} for slice ",
+        #     disable=not self.verbose,
+        #     position=0,
+        # ):
+        #     # Parse the particles from the dump files
+        #     vel = zeros((self.dimensions, self.block_length, self.total_num_ptcls))
+        #     #
+        #     for it, dump in enumerate(
+        #         tqdm(
+        #             range(start_slice, end_slice, self.dump_step),
+        #             desc="Reading data",
+        #             disable=not self.verbose,
+        #             position=1,
+        #             leave=False,
+        #         )
+        #     ):
+        #         datap = load_from_restart(self.dump_dir, dump)
+        #         time[it] = datap["time"]
+        #         vel[0, it, :] = datap["vel"][:, 0]
+        #         vel[1, it, :] = datap["vel"][:, 1]
+        #         vel[2, it, :] = datap["vel"][:, 2]
+        #     #
+        #     if isl == 0:
+        #         self.dataframe["Time"] = time
+        #         self.dataframe_slices["Time"] = time
+        #         self.dataframe_acf["Time"] = time
+        #         self.dataframe_acf_slices["Time"] = time
+
+        #     # This returns two arrays
+        #     # diff_fluxes = array of shape (no_fluxes, no_dim, no_dumps_per_slice)
+        #     # df_acf = array of shape (no_fluxes_acf, no_dim + 1, no_dumps_per_slice)
+        #     diff_fluxes, df_acf = calc_diff_flux_acf(
+        #         vel, self.species_num, self.species_concentrations, self.species_masses
+        #     )
+
+        #     # # Store the data
+        #     for i, flux in enumerate(diff_fluxes):
+        #         for d, dim in zip(range(self.dimensions), ["X", "Y", "Z"]):
+        #             col_name = df_str + f" {i}_{dim}_slice {isl}"
+        #             col_data = flux[d, :]
+        #             self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
+
+        #     for i, flux_acf in enumerate(df_acf):
+        #         for d, dim in zip(range(self.dimensions), ["X", "Y", "Z"]):
+        #             col_name = df_acf_str + f" {i}_{dim}_slice {isl}"
+        #             col_data = flux_acf[d, :]
+        #             self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
+
+        #         col_name = df_acf_str + f" {i}_Total_slice {isl}"
+        #         col_data = flux_acf[-1, :]
+        #         self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
+
+        #     start_slice += self.block_length * self.dump_step
+        #     end_slice += self.block_length * self.dump_step
 
     @avg_slices_doc
     def average_slices_date(self):
         df_str = "Diffusion Flux"
-        df_acf_str = "Diffusion Flux ACF"
         # Average and std over the slices
+        cols = ["Quantity_Time"]
+        data = [self.dataframe_slices.iloc[:,0].values]
+
         for i in range(self.no_fluxes):
             for d, dim in zip(range(self.dimensions), ["X", "Y", "Z"]):
                 dim_col_str = [df_str + f" {i}_{dim}_slice {isl}" for isl in range(self.no_slices)]
 
                 col_name = df_str + f" {i}_{dim}_Mean"
                 col_data = self.dataframe_slices[dim_col_str].mean(axis=1).values
-                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+                data.append(col_data)
+                cols.append(col_name)
 
                 col_name = df_str + f" {i}_{dim}_Std"
                 col_data = self.dataframe_slices[dim_col_str].std(axis=1).values
-                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+                data.append(col_data)
+                cols.append(col_name)
+
+
+        self.dataframe = DataFrame(data, columns=cols)
+
+    @avg_acf_slices_doc
+    def average_acf_slices_data(self):
+        df_acf_str = "Diffusion Flux"
+
+        columns_list = [f"{self.__long_name__}_Axis_Time"]
+        data_list = [self.simulation_dataframe.iloc[:self.block_length, 0].values]
 
         # Average and std over the slices
         for i in range(self.no_fluxes_acf):
             for d, dim in zip(range(self.dimensions), ["X", "Y", "Z"]):
-                dim_col_str = [df_acf_str + f" {i}_{dim}_slice {isl}" for isl in range(self.no_slices)]
+                dim_col_str = [df_acf_str + f" {i} ACF_{dim}_slice {isl}" for isl in range(self.no_slices)]
+                
                 col_name = df_acf_str + f" {i}_{dim}_Mean"
                 col_data = self.dataframe_acf_slices[dim_col_str].mean(axis=1).values
-                self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+                columns_list.append(col_name)
+                data_list.append(col_data)
 
                 col_name = df_acf_str + f" {i}_{dim}_Std"
                 col_data = self.dataframe_acf_slices[dim_col_str].std(axis=1).values
-                self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+                columns_list.append(col_name)
+                data_list.append(col_data)
 
-            tot_col_str = [df_acf_str + f" {i}_Total_slice {isl}" for isl in range(self.no_slices)]
+            tot_col_str = [df_acf_str + f" {i} ACF_Total_slice {isl}" for isl in range(self.no_slices)]
             # Average
             col_name = df_acf_str + f" {i}_Total_Mean"
             col_data = self.dataframe_acf_slices[tot_col_str].mean(axis=1).values
-            self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+            columns_list.append(col_name)
+            data_list.append(col_data)
             # STD
             col_name = df_acf_str + f" {i}_Total_Std"
             col_data = self.dataframe_acf_slices[tot_col_str].std(axis=1).values
-            self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+            columns_list.append(col_name)
+            data_list.append(col_data)
 
+        self.dataframe_acf = DataFrame(dict(zip(columns_list, data_list)))
+
+    def read_data_from_dumps(self):
+
+        cols = ["Quantity_Time"]
+        flux_cols = [ f"Diffusion Flux {i}_{dim}" for i in range(self.no_fluxes) for dim in ["X", "Y", "Z"]]
+        cols.extend(flux_cols)
+        
+        data = zeros((self.no_dumps, len(cols)))
+
+        with h5py.File(self.h5md_filepath, 'r') as h5file:
+            data_ = h5file["observables/species_diffusion_flux"]["value"][:, :, :]  # shape = (no_dumps, no_fluxes, no_dim)
+            data[:,0] = h5file["observables/species_diffusion_flux"]["time"][:]
+        
+        data[:,1:] = data_.reshape((self.no_dumps, self.no_fluxes * self.dimensions))
+
+        self.simulation_dataframe = DataFrame(data, columns=cols)
 
 class DynamicStructureFactor(Observable):
     """Dynamic Structure factor.
@@ -2867,15 +3010,16 @@ class ElectricCurrent(Observable):
                 leave=False,
             )
         ):
-            datap = load_from_restart(self.dump_dir, dump)
-            time_ = datap["time"]
-            species_current = datap["species_electric_current"]
+            with h5py.File(self.h5md_filepath) as h5file:
+                species_current = h5file["observables/species_electric_current"]["value"]
+                time_ = h5file["observables/species_electric_current"]["time"]
+
             # Store the data into list for fast conversion to DataFrame
             data[it, 0] = time_
             data[it, 1:] = [
-                species_current[iax, isp]
-                for isp, sp in enumerate(self.species_names)
-                for iax, axis in enumerate(self.dim_labels)
+                species_current[:, isp, iax]
+                for isp, _ in enumerate(self.species_names)
+                for iax, _ in enumerate(self.dim_labels)
             ]
 
         self.simulation_dataframe = DataFrame(data, columns=columns)
@@ -2885,9 +3029,7 @@ class ElectricCurrent(Observable):
         start_index = 0  # Index of the simulation_dataframe to start the acf calculation
         end_index = self.block_length  # final index
 
-        step = int(
-            self.timesteps_shift // self.dump_step
-        )  # rint(self.plasma_periods_shift * self.timesteps_per_plasma_period / self.dump_step).astype(int)
+        step = int(self.timesteps_shift // self.dump_step)
 
         # self.dataframe[f"{self.__long_name__}_Species_Axis_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
         # self.dataframe_slices[f"{self.__long_name__}_Species_Axis_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
@@ -3089,6 +3231,7 @@ class ElectricCurrent(Observable):
                 # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
         
         self.dataframe = DataFrame(dict(zip(columns_list, data_list)))
+    
     @avg_acf_slices_doc
     def average_acf_slices_data(self):
         # ACF data
@@ -3300,8 +3443,6 @@ class HeatFlux(Observable):
 
     @calc_acf_slices_doc
     def calc_acf_slices_data(self):
-        self.dataframe_acf = DataFrame()
-        self.dataframe_acf_slices = DataFrame()
 
         start_index = 0  # Dump number to start the acf calculation
         end_index = self.block_length  # Dump number to end the acf calculation
@@ -3439,6 +3580,7 @@ class HeatFlux(Observable):
                     # self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
         
         self.dataframe_acf = DataFrame(dict(zip(columns_list, data_list)))
+    
     def calc_better_acf_data(self, plasma_periods_shift: int = None):
         self.update_block_attributes(plasma_periods_shift=plasma_periods_shift)
 
@@ -3757,12 +3899,12 @@ class PressureTensor(Observable):
                 # Get Total Pressure Tensor ax,ax from simulation data
                 col_data_1 = self.simulation_dataframe[col1].iloc[start_index:end_index].values
                 # Calculate fluctuations
-                delta_col1 = col_data_1 - col_data_1.mean()
+                delta_col1 = col_data_1 #- col_data_1.mean()
                 for _, col2 in enumerate(columns[icol1:], icol1):
                     # Get Total Pressure Tensor ax,ax from simulation data
                     col_data_2 = self.simulation_dataframe[col2].iloc[start_index:end_index].values
                     # Calculate fluctuations
-                    delta_col2 = col_data_2 - col_data_2.mean()
+                    delta_col2 = col_data_2 # - col_data_2.mean()
                     # Calculate ACF
                     acf = correlationfunction(delta_col1, delta_col2)
                     # Set column name
@@ -6824,7 +6966,7 @@ def calc_diff_flux_acf(vel, sp_num, sp_conc, sp_mass):
     jr_acf = zeros((no_jc_acf, no_dim + 1, no_dumps))
 
     m_bar = sp_mass @ sp_conc
-    # the diffusion fluxes from eq.(3.5) in Zhou J Phs Chem
+    # the diffusion fluxes from eq.(3.5) in Zhou J Phys Chem 100 5516 (1996)
     for i, m_alpha in enumerate(sp_mass[:-1]):
         # Flux
         for j, m_beta in enumerate(sp_mass):

@@ -250,7 +250,6 @@ class InputOutput:
         self.total_num_ptcls = params.total_num_ptcls
         self.total_plasma_frequency = params.total_plasma_frequency
         self.species_names = params.species_names.copy()
-        self.coupling = params.coupling_constant * params.T_desired
 
         self.equilibration_phase = params.equilibration_phase
 
@@ -423,26 +422,14 @@ class InputOutput:
         vscale = 1.0 / (params.a_ws * params.total_plasma_frequency)
         ascale = 1.0 / (params.a_ws * params.total_plasma_frequency**2)
 
-        f_xyz = open(self.xyz_filename, "w+")
-
-        # Read the list of dumps and sort them in the correct (natural) order
-        dumps = listdir(dump_dir)
-        dumps.sort(key=num_sort)
-        dumps_dict = {}
-        for i in dumps:
-            _, key = i.split("_")
-            key_num, _ = key.split(".")
-            dumps_dict[int(key_num)] = i
+        with  h5py.File(self.h5md_filenames_tree[self.process][phase]) as f:
+            data = f["particles"]["pos"]
+            dumps = data.shape[0]
 
         if not dump_end:
-            dump_end = len(dumps) * dump_step
+            dump_end = dumps
 
-        dump_skip *= dump_step
-        if ptcls_list is None:
-            ptcls_slice = s_[:]
-        else:
-            ptcls_slice = s_[ptcls_list]
-
+        # dump_skip *= dump_step
         names = full(params.total_num_ptcls, "", dtype=params.species_names.dtype)
         ids = full(params.total_num_ptcls, 0, dtype=int64)
 
@@ -454,35 +441,30 @@ class InputOutput:
             ids[species_start:species_end] = i
             species_start += n
 
-        for i in trange(dump_start, dump_end, dump_skip, disable=not self.verbose):
-            dump = dumps_dict[i]
+        with open(self.xyz_filename, "w+") as f_xyz:
+            with h5py.File(self.h5md_filenames_tree[self.process][phase]) as f:
+                for i in trange(dump_start, dump_end, dump_skip, disable=not self.verbose):
+                    data = f["particles"]
+                    timestep_data = zeros((params.total_num_ptcls, 10), dtype=object)
+                    timestep_data[:, 0] = names
+                    timestep_data[:, 1] = data['pos'][i,:,0] * pscale
+                    timestep_data[:, 2] = data['pos'][i,:,1] * pscale
+                    timestep_data[:, 3] = data['pos'][i,:,2] * pscale
+                    timestep_data[:, 4] = data['vel'][i,:,0] * vscale
+                    timestep_data[:, 5] = data['vel'][i,:,1] * vscale
+                    timestep_data[:, 6] = data['vel'][i,:,2] * vscale
+                    timestep_data[:, 7] = data['acc'][i,:,0] * ascale
+                    timestep_data[:, 8] = data['acc'][i,:,1] * ascale
+                    timestep_data[:, 9] = data['acc'][i,:,2] * ascale
 
-            # TODO: Do we really need to use read_particles_npz ? Can we find a way to save the .xyz file in a different way?
-            # I need a structured array for np.c_[],
-            data = self.read_particles_npz(dump_dir, dump, ptcls_list)
-            data["names"] = names[ptcls_slice]  # [[0, 50, 100, 500, 1023, 1024, 1074, 1124,1524, 2047]]
-            data["pos_x"] *= pscale
-            data["pos_y"] *= pscale
-            data["pos_z"] *= pscale
+                    f_xyz.write(f"{self.total_num_ptcls}\n")
+                    f_xyz.write("name x y z vx vy vz ax ay az\n")
+                    savetxt(
+                        f_xyz,
+                        timestep_data,
+                        fmt="%s %.6e %.6e %.6e %.6e %.6e %.6e %.6e %.6e %.6e",
+                    )
 
-            data["vel_x"] *= vscale
-            data["vel_y"] *= vscale
-            data["vel_z"] *= vscale
-            # TODO: This rescale the acceleration. However, OVITO prefers the Force.
-            # Find a way to generalize the force rescaling and save the forces instead of the accelerations
-            data["acc_x"] *= ascale
-            data["acc_y"] *= ascale
-            data["acc_z"] *= ascale
-
-            f_xyz.writelines("{0:d}\n".format(data["pos_x"].shape[0]))
-            f_xyz.writelines("name x y z vx vy vz ax ay az\n")
-            savetxt(
-                f_xyz,
-                data[["names", "pos_x", "pos_y", "pos_z", "vel_x", "vel_y", "vel_z", "acc_x", "acc_y", "acc_z"]],
-                fmt="%s %.6e %.6e %.6e %.6e %.6e %.6e %.6e %.6e %.6e",
-            )
-
-        f_xyz.close()
 
     def dump_potfit_config(
         self, phase: str = "production", dump_start: int = 0, dump_end: int = None, dump_skip: int = 1

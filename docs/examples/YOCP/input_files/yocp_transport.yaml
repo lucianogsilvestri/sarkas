@@ -27,7 +27,6 @@ Parameters:
   units: cgs
   boundary_conditions: periodic
   load_method: qmc
-  # restart_step: 50_000
   qmc_sequence: sobol
   equilibration_steps: 1000
   production_steps: 100_000

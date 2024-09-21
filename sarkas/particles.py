@@ -17,6 +17,7 @@ from numpy import (
     savetxt,
     savez,
     sqrt,
+    sum,
     triu_indices,
     zeros,
 )
@@ -29,7 +30,6 @@ from scipy.stats import moment, qmc
 from warnings import warn
 
 from .utilities.exceptions import ParticlesError, ParticlesWarning
-
 
 class Particles:
     """
@@ -178,6 +178,7 @@ class Particles:
             "Electric Current": self.calculate_species_electric_current,
             "Pressure Tensor": self.calculate_species_pressure_tensor,
             "Heat Flux": self.calculate_species_heat_flux,
+            "Diffusion Flux": self.calculate_species_diffusion_flux,
         }
         self.qmc_sequence = None
         self.available_qmc_sequences = ["halton", "sobol", "poissondisk", "latinhypercube"]
@@ -607,6 +608,11 @@ class Particles:
             if 'species_velocity_moments' not in self.observables_arrays_list:
                 self.observables_arrays_list.append('species_velocity_moments')
 
+        if "Diffusion Flux" in self.observables_list:
+            self.species_diffusion_flux = zeros((self.num_species - 1, 3))
+            if 'species_diffusion_flux' not in self.observables_arrays_list:
+                self.observables_arrays_list.append('species_diffusion_flux')
+                
     def initialize_positions(self, species: list = None):
         """
         Initialize particles' positions based on the load method.
@@ -1240,8 +1246,7 @@ class Particles:
     def calculate_observables(self):
         """Calculate the observables in :attr:`observables_list`."""
         for key in self.species_observables_method_map.keys():
-            self.species_observables_method_map[key]()
-        
+            self.species_observables_method_map[key]()      
 
     def calculate_species_electric_current(self):
         """Calculate the electric current of each species from :attr:`vel` and stores it into :attr:`species_electric_current`."""
@@ -1250,8 +1255,12 @@ class Particles:
     def calculate_species_heat_flux(self):
         """Calculate the energy current of each species from :attr:`heat_flux_species_tensor` and stores it into :attr:`species_heat_flux`.\n
         Note that :attr:`heat_flux_species_tensor` is calculated in the force loop if requested."""
-        self.species_heat_flux = vector_cross_species_loop(self.heat_flux_species_tensor, self.species_num)
+        self.species_heat_flux = self.heat_flux_species_tensor.sum(axis=0) # vector_cross_species_loop(self.heat_flux_species_tensor)
 
+    def calculate_species_diffusion_flux(self):
+        """Calculate the diffusion fluxes."""
+        self.species_diffusion_flux = calc_species_diffusion_flux(self.vel, self.species_masses, self.species_num)
+        
     def calculate_species_enthalpy(self):
         energy = scalar_species_loop(self.kinetic_energy + self.potential_energy, self.species_num)
         self.enthalpy = energy + self.species_pressure * self.box_volume
@@ -1795,10 +1804,10 @@ def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num
         Scalar Pressure i.e. trace of the pressure tensor
 
     pressure_kin : numpy.ndarray
-        Kinetic part of the Pressure tensor. Shape(:attr:`dimensions`,:attr:`dimensions`, :attr:`num_species`)
+        Kinetic part of the Pressure tensor. Shape(:attr:`num_species`, :attr:`dimensions`,:attr:`dimensions`)
 
     pressure_pot : numpy.ndarray
-        Potential energy part of the Pressure tensor. Shape(:attr:`dimensions`,:attr:`dimensions`, `num_species`)
+        Potential energy part of the Pressure tensor. Shape(attr:`num_species`, :attr:`dimensions`,:attr:`dimensions`)
 
     """
     # Rescale vel of each particle by their individual mass
@@ -1808,11 +1817,17 @@ def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num
     temp_kin_tensor = zeros((3, 3, vel.shape[0]))
 
     # TODO: There must be a faster way to do this tensor product
-    for ip in range(vel.shape[0]):
-        temp_kin_tensor[:, :, ip] = outer(vel[ip, :], vel[ip, :])
+    # for ip in range(vel.shape[0]):
+    #     temp_kin_tensor[:, :, ip] = outer(vel[ip, :], vel[ip, :])
+
+    # The following appears to be 9 times faster than the outer product
+    for i in range(3):
+        for j in range(3):
+            temp_kin_tensor[i, j, :] = vel[:, i] * vel[:, j]
 
     pressure_kin = species_masses * tensor_species_loop(temp_kin_tensor, species_num) / box_volume
-    pressure_pot = tensor_cross_species_loop(virial_species_tensor, species_num) / box_volume
+    # Sum over the species
+    pressure_pot =  virial_species_tensor.sum(axis = 0)/box_volume # tensor_cross_species_loop(virial_species_tensor, species_num) / box_volume
     pressure_tensor = pressure_kin + pressure_pot
     for isp in range(species_num.shape[0]):
         pressure[isp] += (pressure_tensor[isp, 0, 0] + pressure_tensor[isp, 1, 1] + pressure_tensor[isp, 2, 2]) / dimensions
@@ -1878,12 +1893,8 @@ def vector_species_loop(observable, species_num):
 
 
 @njit
-def vector_cross_species_loop(observable, species_num):
-    sp_obs = zeros((species_num.shape[0], 3))
-    for sp in range(species_num.shape[0]):
-        sp_obs[sp, :] = observable[sp, :, :].sum(axis=0)
-
-    return sp_obs
+def vector_cross_species_loop(observable):
+    return sum(observable, axis=1)
 
 
 @njit
@@ -1931,11 +1942,11 @@ def tensor_cross_species_loop(observable, species_num):
     sp_obs: numpy.ndarray
         An array of shape (`num_species`, 3, 3) with the sum over species of the observable tensor.
     """
-    sp_obs = zeros(( species_num.shape[0], 3, 3))
-    for sp in range(species_num.shape[0]):
-        sp_obs[sp, :, :] = observable[sp, :, :, :].sum(axis=0)
+    # sp_obs = zeros(( species_num.shape[0], 3, 3))
+    # for sp in range(species_num.shape[0]):
+    #     sp_obs[sp, :, :] = observable[sp, :, :, :].sum(axis=0)
 
-    return sp_obs
+    return sum(observable, axis = 0)
 
 
 @njit
@@ -1963,3 +1974,44 @@ def remove_drift_nb(vel, nums):
         species_end += sp_num
         vel[species_start:species_end, :] -= vel[species_start:species_end, :].sum(axis=0) / sp_num
         species_start += sp_num
+
+@njit   
+def calc_species_diffusion_flux(vel, species_masses, species_num):
+    """
+    Calculates the diffusion flux for each species based on their velocities, masses, and concentrations.
+
+    Parameters
+    ----------
+    vel : numpy.ndarray
+        Array of shape (N, 3) representing the velocities of N particles.
+    species_masses : numpy.ndarray
+        Array of shape (M,) representing the masses of M species.
+
+    species_num : int
+        Number of species.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of shape (M-1, 3) representing the diffusion flux for each species.
+
+    Notes
+    -----
+    - The diffusion flux is calculated using the formula from eq.(3.5) in Zhou J Phys Chem 100 5516 (1996).
+    - The shape of the arrays are as follows:
+        - vel: (N, 3)
+        - species_masses: (M,)
+        - species_concentrations: (M,)
+        - species_diffusion_flux: (M-1, 3)
+    """
+    species_net_velocity = vector_species_loop(vel, species_num)
+    species_concentrations = species_num / species_num.sum()
+    m_bar = species_masses @ species_concentrations
+    species_diffusion_flux = zeros((len(species_num) - 1, 3))
+    for i, m_alpha in enumerate(species_masses[:-1]):
+        for j, m_beta in enumerate(species_masses):
+            delta_ab = 1 * (m_alpha == m_beta)
+            species_diffusion_flux[i, :] += (m_bar * delta_ab - species_concentrations[i] * m_beta) * species_net_velocity[j, :]
+        species_diffusion_flux[i, :] *= m_alpha / m_bar
+
+    return species_diffusion_flux
