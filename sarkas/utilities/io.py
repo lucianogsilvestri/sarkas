@@ -441,23 +441,29 @@ class InputOutput:
             ids[species_start:species_end] = i
             species_start += n
 
+        if ptcls_list is None:
+            ptcls_list = list(range(params.total_num_ptcls))
+        
+        np_ptcls_list = s_[ptcls_list]
+        
         with open(self.xyz_filename, "w+") as f_xyz:
             with h5py.File(self.h5md_filenames_tree[self.process][phase]) as f:
                 for i in trange(dump_start, dump_end, dump_skip, disable=not self.verbose):
                     data = f["particles"]
-                    timestep_data = zeros((params.total_num_ptcls, 10), dtype=object)
-                    timestep_data[:, 0] = names
-                    timestep_data[:, 1] = data['pos'][i,:,0] * pscale
-                    timestep_data[:, 2] = data['pos'][i,:,1] * pscale
-                    timestep_data[:, 3] = data['pos'][i,:,2] * pscale
-                    timestep_data[:, 4] = data['vel'][i,:,0] * vscale
-                    timestep_data[:, 5] = data['vel'][i,:,1] * vscale
-                    timestep_data[:, 6] = data['vel'][i,:,2] * vscale
-                    timestep_data[:, 7] = data['acc'][i,:,0] * ascale
-                    timestep_data[:, 8] = data['acc'][i,:,1] * ascale
-                    timestep_data[:, 9] = data['acc'][i,:,2] * ascale
+                    timestep_data = zeros((len(ptcls_list), 10), dtype=object)
 
-                    f_xyz.write(f"{self.total_num_ptcls}\n")
+                    timestep_data[:, 0] = names[np_ptcls_list]
+                    timestep_data[:, 1] = data['pos'][i,np_ptcls_list,0] * pscale
+                    timestep_data[:, 2] = data['pos'][i,np_ptcls_list,1] * pscale
+                    timestep_data[:, 3] = data['pos'][i,np_ptcls_list,2] * pscale
+                    timestep_data[:, 4] = data['vel'][i,np_ptcls_list,0] * vscale
+                    timestep_data[:, 5] = data['vel'][i,np_ptcls_list,1] * vscale
+                    timestep_data[:, 6] = data['vel'][i,np_ptcls_list,2] * vscale
+                    timestep_data[:, 7] = data['acc'][i,np_ptcls_list,0] * ascale
+                    timestep_data[:, 8] = data['acc'][i,np_ptcls_list,1] * ascale
+                    timestep_data[:, 9] = data['acc'][i,np_ptcls_list,2] * ascale
+
+                    f_xyz.write(f"{len(ptcls_list)}\n")
                     f_xyz.write("name x y z vx vy vz ax ay az\n")
                     savetxt(
                         f_xyz,
