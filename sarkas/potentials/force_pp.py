@@ -455,8 +455,8 @@ def particles_interaction_loop(
                                             pot, fr = force(r, p_matrix)
                                             fr /= r
                                             # Need to add the same pot to each particle pair.
-                                            ptcl_pot_energy[i] += 0.5 * pot
-                                            ptcl_pot_energy[j] += 0.5 * pot
+                                            ptcl_pot_energy[i] += ( 0.25 * (id_i == id_j) + 0.5* (id_i != id_j) )* pot
+                                            ptcl_pot_energy[j] += ( 0.25 * (id_i == id_j) + 0.5* (id_i != id_j) )* pot
 
                                             # Update the acceleration for i particles in each dimension
 

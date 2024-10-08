@@ -5176,15 +5176,14 @@ class Thermodynamics(Observable):
                 species_group = observables_group[sp_name]
                 
                 for obs_name in self.thermodynamics_list:
-                    
+                    const = 1.0
                     try:
                         obs_data = species_group[obs_name]
-                        # Assuming 'value' dataset exists and is indexed by step
-                        const = species_group.attrs['particle_number']/self.total_num_ptcls
-                        total_thermodynamics_data[obs_name] += obs_data['value'][:] * const
-
                         if obs_name == 'temperature': 
+                            # If multi-component species, the temperature is the average of the components
+                            const = species_group.attrs['particle_number']/self.total_num_ptcls
                             time_data = obs_data['time'][:]
+                        total_thermodynamics_data[obs_name] += obs_data['value'][:] * const
 
                     except KeyError:
                         print(f"Observable '{obs_name}' not found for species '{sp_name}'")

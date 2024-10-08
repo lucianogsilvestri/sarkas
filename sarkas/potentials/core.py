@@ -424,8 +424,8 @@ class Potential:
                 self.linked_list_on = False  # linked list off
                 self.calc_acc_pot = self.update_linked_list
 
-            if self.a_rs != 0.0:
-                warn("\nShort-range cut-off enabled. Use this feature with care!", category=AlgorithmWarning)
+            # if self.a_rs != 0.0:
+            #     warn("\nShort-range cut-off enabled. Use this feature with care!", category=AlgorithmWarning)
 
             # renaming
             if self.method == "p3m":
@@ -723,7 +723,7 @@ class Potential:
         )
 
         # Ewald Self-energy
-        U_long += self.QFactor * self.pppm_alpha_ewald / sqrt(pi)
+        U_long -= self.QFactor * self.pppm_alpha_ewald / sqrt(pi) / self.total_num_ptcls
 
         # Neutrality condition
         # U_long += -pi * self.total_net_charge**2.0 / (2.0 * self.box_volume * self.pppm_alpha_ewald**2)

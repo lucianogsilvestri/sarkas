@@ -252,11 +252,28 @@ def kelbg_force(r_in, pot_matrix):
     force : float
         Force between two particles.
 
+    Notes
+    -----
+    The Kelbg potential is defined as
+
+    .. math::
+        U_{\rm kelbg}(r) = - \frac{q_aq_b}{4\pi \epsilon_0} \frac{1}{r} \left [  e^{- 2 \pi r^2/\Lambda_{ab}^2 }
+        - \sqrt{2} \pi \dfrac{r}{\Lambda_{ab}} \textrm{erfc} \left ( \sqrt{ 2\pi}  r/ \Lambda_{ab} \right )
+        \right ].
+
+    where :math:`\Lambda_{ab}` is the thermal de Broglie wavelength between the two charges. The `pot_matrix` should have the following elements
+    
+    pot_matrix[0] = qi*qj/4*pi*eps0
+    pot_matrix[1] = sqrt(2pi)/deBroglie
+    pot_matrix[2] = e-e Pauli term factor (O or 1)
+    pot_matrix[3] = e-e Pauli term exponent term
+    pot_matrix[4] = Ewald parameter
+    pot_matrix[5] = Short-range cutoff
     """
 
-    A = pot_matrix[0]
-    C = pot_matrix[1]
-    D = pot_matrix[2]
+    A = pot_matrix[0]  # qi*qj/4*pi*eps0
+    C = pot_matrix[1]  # sqrt(2pi)/deBroglie
+    D = pot_matrix[2]  # e-e Pauli term factor
     F = pot_matrix[3]
     alpha = pot_matrix[4]
     rs = pot_matrix[5]
@@ -270,15 +287,16 @@ def kelbg_force(r_in, pot_matrix):
 
     # Ewald short-range potential and force terms
     U_ewald = A * erfc(alpha * r) / r
-    f_ewald = U_ewald / r2  # 1/r derivative
-    f_ewald += A * (2.0 * alpha / sqrt(pi) / r2) * exp(-a2 * r2)  # erfc derivative
+    f_ewald = U_ewald / r  # 1/r derivative
+    f_ewald += A * (2.0 * alpha / sqrt(pi) / r) * exp(-a2 * r2)  # erfc derivative
 
     # potential
-    u_r_diff = A * C * sqrt(pi) * erfc(C * r / sqrt(pi))
-    u_r_diff_1 = -A * exp(-C2 * r2 / pi) / r
+    erfc_argument = C * r 
+    u_r_diff = A * C * sqrt(pi) * erfc(erfc_argument)  # C = sqrt(2pi)/deBroglie hence C * sqrt(pi) = sqrt(2)/deBroglie * pi 
+    u_r_diff_1 = -A * exp(-C2 * r2) / r
     # Force
-    dvdr_diff = A * C * sqrt(pi) * (2.0 * C2 * exp(-C2 * r2 / pi) / pi)  # erfc derivative
-    dvdr_diff_1 = u_r_diff_1 * (1.0 / r + 2.0 * C2 * r / pi)  # exp(r)/r derivative
+    dvdr_diff = A * 2.0 * C2 * exp(-C2 * r2)   # erfc derivative
+    dvdr_diff_1 = u_r_diff_1 * (1.0 / r + 2.0 * C2 * r)  # exp(r^2)/r derivative
 
     # Pauli Term
     U_pauli, f_pauli = pauli_force(r, pot_matrix)
@@ -577,7 +595,7 @@ def update_params(potential, species):
                 lambda_deB = sqrt(deBroglie_const / (reduced * total_ion_temperature))
 
             potential.matrix[i, j, 0] = q1 * q2 / potential.fourpie0
-            potential.matrix[i, j, 1] = TWOPI / lambda_deB
+            potential.matrix[i, j, 1] = sqrt(TWOPI) / lambda_deB if potential.qsp_type == "kelbg" else TWOPI/lambda_deB
 
     if not potential.qsp_pauli:
         potential.matrix[:, :, 2] = 0.0
@@ -614,5 +632,9 @@ def update_params(potential, species):
         # TODO: Calculate the PP Force error from the e-e diffraction term only.
         # the following is a placeholder
         potential.pppm_pp_err = force_error_analytic_pp(
-            potential.type, potential.rc, potential.matrix, sqrt(3.0 * potential.a_ws / (4.0 * pi))
+            potential.type,
+            potential.rc,
+            0.0,
+            potential.pppm_alpha_ewald,
+            sqrt(3.0 * potential.a_ws / (4.0 * pi)),
         )

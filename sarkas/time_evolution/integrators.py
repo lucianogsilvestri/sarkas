@@ -697,8 +697,9 @@ class Integrator:
         ptcls.pos += ptcls.vel * self.dt
 
         # Periodic boundary condition
-        enforce_pbc(ptcls.pos, ptcls.pbc_cntr, self.box_lengths)
-
+        # enforce_pbc(ptcls.pos, ptcls.pbc_cntr, self.box_lengths)
+        self.enforce_bc(ptcls)
+        
         # Compute total potential energy and acceleration for second half step velocity update
         self.update_accelerations(ptcls)
 
