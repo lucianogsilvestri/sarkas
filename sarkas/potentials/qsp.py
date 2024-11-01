@@ -167,7 +167,7 @@ def pauli_force(r, pot_matrix):
 
     # Pauli Term
     u_r = D * log(1.0 - 0.5 * exp(-F * r2))
-    f_r = -D * (2.0 * r * F * exp(-F * r2)) / (1.0 - 0.5 * exp(-F * r2))
+    f_r = - D * ( r * F * exp(-F * r2)) / (1.0 - 0.5 * exp(-F * r2))
 
     return u_r, f_r
 
