@@ -697,8 +697,9 @@ class Integrator:
         ptcls.pos += ptcls.vel * self.dt
 
         # Periodic boundary condition
-        enforce_pbc(ptcls.pos, ptcls.pbc_cntr, self.box_lengths)
-
+        # enforce_pbc(ptcls.pos, ptcls.pbc_cntr, self.box_lengths)
+        self.enforce_bc(ptcls)
+        
         # Compute total potential energy and acceleration for second half step velocity update
         self.update_accelerations(ptcls)
 
@@ -1135,13 +1136,13 @@ def enforce_pbc(pos, cntr, box_vector):
     Parameters
     ----------
     pos : numpy.ndarray
-        Particles' positions.
+        Particles' positions. Shape (N,3)
 
     cntr : numpy.ndarray
-        Counter for the number of times each particle get folded back into the main simulation box
+        Counter for the number of times each particle get folded back into the main simulation box. Shape (N, 3)
 
     box_vector : numpy.ndarray
-        Box Dimensions.
+        Box Dimensions. Shape (3)
 
     """
 

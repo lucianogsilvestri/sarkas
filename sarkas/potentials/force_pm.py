@@ -726,36 +726,58 @@ def sum_over_aliases(kx, ky, kz, kx_M, ky_M, kz_M, h_array, p, four_pi, alpha_sq
 )
 def force_optimized_green_function(box_lengths, h_array, mesh_sizes, aliases, p, constants):
     """
-    Numba'd function to calculate the Optimized Green Function given by eq.(22) of Ref.:cite:`Stern2008`.
+    Calculate the optimized Green's function for the PPPM method.
+
+    This function computes the optimized Green's function used in solving Poisson's equation
+    efficiently in Fourier space for the PPPM method.
 
     Parameters
     ----------
-    box_lengths : numpy.ndarray
-        Length of simulation's box in each direction.
-
-    h_array : numpy.ndarray
-        Mesh spacings.
-
-    mesh_sizes : numpy.ndarray
-        Number of mesh points in x,y,z.
-
-    aliases : numpy.ndarray
-        Number of aliases in each direction.
-
-    p : numpy.ndarray
-        Array of charge assignment order (cao) for each dimension.
-
-    constants : numpy.ndarray
-        Screening parameter, Ewald parameter, :math:`4 \\pi \\eplison_0`.
+    box_lengths : ndarray
+        Length of simulation's box in each direction, shape (3,).
+    h_array : ndarray
+        Mesh spacings, shape (3,).
+    mesh_sizes : ndarray
+        Number of mesh points in x, y, z, shape (3,).
+    aliases : ndarray
+        Number of aliases in each direction, shape (3,).
+    p : ndarray
+        Charge assignment order (cao) for each dimension, shape (3,).
+    constants : ndarray
+        Array containing [screening parameter, Ewald parameter, 4πε₀], shape (3,).
 
     Returns
     -------
-    G_k : numpy.ndarray
-        Optimal Green Function
-
+    G_k : ndarray
+        Optimized Green's function, shape (mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]).
+    kx_v : ndarray
+        Array of kx values, shape (1, mesh_sizes[0]).
+    ky_v : ndarray
+        Array of ky values, shape (mesh_sizes[1], 1).
+    kz_v : ndarray
+        Array of kz values, shape (mesh_sizes[2], 1, 1).
     PM_err : float
-        Error in the force calculation due to the optimized Green's function. eq.(28) of :cite:`Dharuman2017` .
+        Estimated error in the force calculation due to the optimized Green's function.
 
+    Notes
+    -----
+    The optimized Green's function is derived from the work of Hockney and Eastwood,
+    with improvements by Deserno and Holm. It aims to minimize the error in the force
+    calculation for a given charge assignment scheme and mesh size.
+
+    The function handles both 3D and lower-dimensional systems. The aliasing sum is
+    crucial for improving accuracy, especially for higher-order charge assignment schemes.
+
+    This function is typically called once at the beginning of a simulation to set up
+    the Green's function. The PM error estimate can be used to assess the accuracy of
+    the method for given parameters.
+
+    References
+    ----------
+    .. [1] Hockney, R. W., & Eastwood, J. W. (1988). Computer simulation using particles. CRC Press.
+    .. [2] Deserno, M., & Holm, C. (1998). How to mesh up Ewald sums. I. A theoretical and
+           numerical comparison of various particle mesh routines. The Journal of Chemical Physics,
+           109(18), 7678-7693.
     """
     kappa = constants[0]
     Gew = constants[1]
@@ -886,53 +908,59 @@ def mesh_point_shift(cao):
 )
 def update(pos, charges, masses, mesh_sizes, mesh_spacings, mesh_volume, box_volume, G_k, kx_v, ky_v, kz_v, cao):
     """
-    Calculate the long range part of particles' accelerations.
+    Calculate the long range part of particles' accelerations using the Particle-Mesh method.
+
+    This function implements the core of the Particle-Mesh (PM) component of the PPPM algorithm.
+    It computes the long-range contributions to particle accelerations and potential energies.
 
     Parameters
     ----------
-    pos: numpy.ndarray
-        Particles' positions.
-
-    charges: numpy.ndarray
-        Particles' charges.
-
-    masses: numpy.ndarray
-        Particles' masses.
-
-    mesh_sizes: numpy.ndarray
-        Mesh points per direction.
-
-    mesh_spacings: numpy.ndarray
-        Width of the mesh cells.
-
-    mesh_volume: float
-        Non-zero volume of the mesh.
-
-    box_volume: float
-        Non-zero box volume (area in 2D).
-
-    G_k : numpy.ndarray
-        Optimized Green's function.
-
-    kx_v : numpy.ndarray
-        Array of kx values.
-
-    ky_v : numpy.ndarray
-        Array of ky values.
-
-    kz_v : numpy.ndarray
-        Array of kz values.
-
-    cao : numpy.ndarray
-        Charge order parameter.
+    pos : ndarray
+        Particles' positions, shape (N, 3).
+    charges : ndarray
+        Particles' charges, shape (N,).
+    masses : ndarray
+        Particles' masses, shape (N,).
+    mesh_sizes : ndarray
+        Number of mesh points per direction, shape (3,).
+    mesh_spacings : ndarray
+        Width of the mesh cells, shape (3,).
+    mesh_volume : float
+        Volume of a single mesh cell.
+    box_volume : float
+        Total volume of the simulation box.
+    G_k : ndarray
+        Optimized Green's function in Fourier space, shape (mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]).
+    kx_v : ndarray
+        Array of kx values, shape (1, mesh_sizes[0]).
+    ky_v : ndarray
+        Array of ky values, shape (mesh_sizes[1], 1).
+    kz_v : ndarray
+        Array of kz values, shape (mesh_sizes[2], 1, 1).
+    cao : ndarray
+        Charge assignment order for each direction, shape (3,).
 
     Returns
     -------
-    pot_particle : numpy.ndarray
-        Long range part of the potential for each particle.
+    pot_particle : ndarray
+        Long range part of the potential for each particle, shape (N,).
+    acc_f : ndarray
+        Long range part of particles' accelerations, shape (N, 3).
 
-    acc_f : numpy.ndarray
-        Long range part of particles' accelerations.
+    Notes
+    -----
+    This function uses FFTW through pyfftw for efficient Fourier transforms. It assumes
+    periodic boundary conditions and requires pre-computed optimized Green's function.
+
+    The algorithm follows these main steps:
+    1. Assign charges to the mesh
+    2. Perform forward FFT on the charge density
+    3. Solve Poisson's equation in Fourier space
+    4. Compute the electric field in Fourier space
+    5. Perform inverse FFT to get real-space electric field
+    6. Interpolate mesh values to particle positions
+
+    The function is optimized using Numba's JIT compilation.
 
     """
 

@@ -167,7 +167,7 @@ def pauli_force(r, pot_matrix):
 
     # Pauli Term
     u_r = D * log(1.0 - 0.5 * exp(-F * r2))
-    f_r = -D * (2.0 * r * F * exp(-F * r2)) / (1.0 - 0.5 * exp(-F * r2))
+    f_r = - D * ( r * F * exp(-F * r2)) / (1.0 - 0.5 * exp(-F * r2))
 
     return u_r, f_r
 
@@ -252,14 +252,32 @@ def kelbg_force(r_in, pot_matrix):
     force : float
         Force between two particles.
 
+    Notes
+    -----
+    The Kelbg potential is defined as
+
+    .. math::
+        U_{\rm kelbg}(r) = - \frac{q_aq_b}{4\pi \epsilon_0} \frac{1}{r} \left [  e^{- 2 \pi r^2/\Lambda_{ab}^2 }
+        - \sqrt{2} \pi \dfrac{r}{\Lambda_{ab}} \textrm{erfc} \left ( \sqrt{ 2\pi}  r/ \Lambda_{ab} \right )
+        \right ].
+
+    where :math:`\Lambda_{ab}` is the thermal de Broglie wavelength between the two charges. The `pot_matrix` should have the following elements
+    
+    pot_matrix[0] = qi*qj/4*pi*eps0
+    pot_matrix[1] = sqrt(2pi)/deBroglie
+    pot_matrix[2] = e-e Pauli term factor (O or 1)
+    pot_matrix[3] = e-e Pauli term exponent term
+    pot_matrix[4] = Ewald parameter
+    pot_matrix[5] = Short-range cutoff
     """
 
-    A = pot_matrix[0]
-    C = pot_matrix[1]
-    D = pot_matrix[2]
+    A = pot_matrix[0]  # qi*qj/4*pi*eps0
+    C = pot_matrix[1]  # sqrt(2pi)/deBroglie
+    D = pot_matrix[2]  # e-e Pauli term factor
     F = pot_matrix[3]
-    alpha = pot_matrix[4]
-    rs = pot_matrix[5]
+    E = pot_matrix[4] # flag for diffraction term 
+    alpha = pot_matrix[5]
+    rs = pot_matrix[6]
 
     # Branchless programming
     r = r_in * (r_in >= rs) + rs * (r_in < rs)
@@ -270,21 +288,22 @@ def kelbg_force(r_in, pot_matrix):
 
     # Ewald short-range potential and force terms
     U_ewald = A * erfc(alpha * r) / r
-    f_ewald = U_ewald / r2  # 1/r derivative
-    f_ewald += A * (2.0 * alpha / sqrt(pi) / r2) * exp(-a2 * r2)  # erfc derivative
+    f_ewald = U_ewald / r  # 1/r derivative
+    f_ewald += A * (2.0 * alpha / sqrt(pi) / r) * exp(-a2 * r2)  # erfc derivative
 
     # potential
-    u_r_diff = A * C * sqrt(pi) * erfc(C * r / sqrt(pi))
-    u_r_diff_1 = -A * exp(-C2 * r2 / pi) / r
+    erfc_argument = C * r 
+    u_r_diff = A * C * sqrt(pi) * erfc(erfc_argument)  # C = sqrt(2pi)/deBroglie hence C * sqrt(pi) = sqrt(2)/deBroglie * pi 
+    u_r_diff_1 = -A * exp(-C2 * r2) / r
     # Force
-    dvdr_diff = A * C * sqrt(pi) * (2.0 * C2 * exp(-C2 * r2 / pi) / pi)  # erfc derivative
-    dvdr_diff_1 = u_r_diff_1 * (1.0 / r + 2.0 * C2 * r / pi)  # exp(r)/r derivative
+    dvdr_diff = A * 2.0 * C2 * exp(-C2 * r2)   # erfc derivative
+    dvdr_diff_1 = u_r_diff_1 * (1.0 / r + 2.0 * C2 * r)  # exp(r^2)/r derivative
 
     # Pauli Term
     U_pauli, f_pauli = pauli_force(r, pot_matrix)
 
-    u_r = U_ewald + u_r_diff + u_r_diff_1 + U_pauli
-    force = f_ewald + dvdr_diff + dvdr_diff_1 + f_pauli
+    u_r = U_ewald + E * (u_r_diff + u_r_diff_1) + U_pauli
+    force = f_ewald + E * (dvdr_diff + dvdr_diff_1) + f_pauli
 
     return u_r, force
 
@@ -422,7 +441,7 @@ def kelbg_potential_derivatives(r, pot_matrix):
     C = pot_matrix[1]  # 2pi/deBroglie
     D = pot_matrix[2]  # e-e Pauli term factor
     F = pot_matrix[3]  # e-e Pauli term exponent term
-
+    E = pot_matrix[4]  # flag for diffraction term
     r2 = r * r
     r3 = r2 * r
 
@@ -439,7 +458,7 @@ def kelbg_potential_derivatives(r, pot_matrix):
     # Force
     dvdr_diff = -2.0 * A * C2 * exp(-C2 * r2 / pi) / pi  # erfc derivative
     dvdr_diff_1 = -u_r_diff_1 * (1.0 / r + 2.0 * C2 * r / pi)  # exp(r)/r derivative
-    #
+    # 
     d2v_dr2_diff = dvdr_diff * (-2.0 * C2 * r / pi)
     d2v_dr2_diff_1 = u_r_diff_1 * (1.0 / r2 - 2.0 * C2 / pi) + (1.0 / r + 2.0 * C2 * r / pi) * dvdr_diff_1
 
@@ -452,9 +471,9 @@ def kelbg_potential_derivatives(r, pot_matrix):
     dvdr_coul = -A / r2
     d2v_dr2_coul = 2.0 * A / r3
 
-    u_r = u_r_coul + u_r_diff + u_r_pauli
-    dv_dr = dvdr_coul + dvdr_diff + dvdr_pauli
-    d2v_dr2 = d2v_dr2_coul + d2v_dr2_diff + d2v_dr2_pauli
+    u_r = u_r_coul + E * u_r_diff + u_r_pauli
+    dv_dr = dvdr_coul + E * dvdr_diff + dvdr_pauli
+    d2v_dr2 = d2v_dr2_coul + E * d2v_dr2_diff + d2v_dr2_pauli
 
     return u_r, dv_dr, d2v_dr2
 
@@ -548,7 +567,7 @@ def update_params(potential, species):
 
     deBroglie_const = TWOPI * potential.hbar**2 / potential.kB
 
-    potential.matrix = zeros((potential.num_species, potential.num_species, 6))
+    potential.matrix = zeros((potential.num_species, potential.num_species, 7))
     for i, sp1 in enumerate(species):
         m1 = sp1.mass
         q1 = sp1.charge
@@ -571,19 +590,19 @@ def update_params(potential, species):
                     else:
                         potential.matrix[i, j, 2] = -potential.kB * sp1.temperature
                         potential.matrix[i, j, 3] = TWOPI / (lambda_deB**2)
-
+                potential.matrix[i, j, 4] = 1.0
             else:
                 # Use ion temperature in i-i interactions only
                 lambda_deB = sqrt(deBroglie_const / (reduced * total_ion_temperature))
-
+                potential.matrix[i, j, 4] = 0.0
             potential.matrix[i, j, 0] = q1 * q2 / potential.fourpie0
-            potential.matrix[i, j, 1] = TWOPI / lambda_deB
+            potential.matrix[i, j, 1] = sqrt(TWOPI) / lambda_deB if potential.qsp_type == "kelbg" else TWOPI/lambda_deB
 
     if not potential.qsp_pauli:
         potential.matrix[:, :, 2] = 0.0
 
-    potential.matrix[:, :, 4] = potential.pppm_alpha_ewald
-    potential.matrix[:, :, 5] = potential.a_rs
+    potential.matrix[:, :, 5] = potential.pppm_alpha_ewald
+    potential.matrix[:, :, 6] = potential.a_rs
 
     if potential.qsp_type == "deutsch":
         potential.force = deutsch_force
@@ -614,5 +633,9 @@ def update_params(potential, species):
         # TODO: Calculate the PP Force error from the e-e diffraction term only.
         # the following is a placeholder
         potential.pppm_pp_err = force_error_analytic_pp(
-            potential.type, potential.rc, potential.matrix, sqrt(3.0 * potential.a_ws / (4.0 * pi))
+            potential.type,
+            potential.rc,
+            0.0,
+            potential.pppm_alpha_ewald,
+            sqrt(3.0 * potential.a_ws / (4.0 * pi)),
         )
