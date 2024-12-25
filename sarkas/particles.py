@@ -992,7 +992,8 @@ class Particles:
             dy_lattice = self.pbox_lengths[1] / (0.5 * self.total_num_ptcls) ** (1.0 / 3.0)  # Lattice spacing
             dz_lattice = self.pbox_lengths[2] / (0.5 * self.total_num_ptcls) ** (1.0 / 3.0)  # Lattice spacing
 
-            # Create x, y, and z position arrays
+            # Create x, y, and z position arrays. 
+            # Note that the lattice is shifted by 0.5 * dx_lattice this is to ensure periodic boundary conditions. There are no particles at the corner [0,0,0] while there is one at [Lx, Ly, Lz]
             x = arange(0, self.pbox_lengths[0], dx_lattice) + 0.5 * dx_lattice
             y = arange(0, self.pbox_lengths[1], dy_lattice) + 0.5 * dy_lattice
             z = arange(0, self.pbox_lengths[2], dz_lattice) + 0.5 * dz_lattice
@@ -1006,11 +1007,11 @@ class Particles:
             Z += self.rnd_gen.uniform(-0.5, 0.5, Z.shape) * perturb * dz_lattice
 
             half_Np = int(self.total_num_ptcls / 2)
-            # Flatten the meshgrid values for plotting and computation
+            
             self.pos[:half_Np, 0] = X.ravel() + self.box_lengths[0] / 2 - self.pbox_lengths[0] / 2
             self.pos[:half_Np, 1] = Y.ravel() + self.box_lengths[1] / 2 - self.pbox_lengths[1] / 2
             self.pos[:half_Np, 2] = Z.ravel() + self.box_lengths[2] / 2 - self.pbox_lengths[2] / 2
-
+            
             self.pos[half_Np:, 0] = X.ravel() + 0.5 * dx_lattice + self.box_lengths[0] / 2 - self.pbox_lengths[0] / 2
             self.pos[half_Np:, 1] = Y.ravel() + 0.5 * dy_lattice + self.box_lengths[1] / 2 - self.pbox_lengths[1] / 2
             self.pos[half_Np:, 2] = Z.ravel() + 0.5 * dz_lattice + self.box_lengths[2] / 2 - self.pbox_lengths[2] / 2
@@ -1362,13 +1363,6 @@ class Particles:
         self.species_pressure, self.species_pressure_kin_tensor, self.species_pressure_pot_tensor = calc_pressure_tensor(
             self.vel, self.virial_species_tensor, self.species_masses, self.species_num, self.box_volume, self.dimensions
         )
-        
-    # def calculate_thermodynamic_quantities_full(self):
-    #     """Calculate thermodynamics quantities from particles data."""
-    #     self.calculate_total_kinetic_energy()
-    #     self.calculate_total_potential_energy()
-    #     self.calculate_total_pressure()
-    #     self.calculate_total_enthalpy()
 
     def calculate_total_electric_current(self):
         """Calculate the total electric current of the system, by summing the electric current of each species and store it into :attr:`total_electric_current`."""
@@ -1488,52 +1482,6 @@ class Particles:
         """Calculate the observables for each species."""
         for key in self.species_observables_method_map.keys():
             self.species_observables_method_map[key]()
-
-    # def make_thermodynamics_dictionary_full(self):
-    #     """
-    #     Put all thermodynamic quantities into a dictionary. This is used for saving data while running.
-
-    #     Return
-    #     ------
-
-    #     data : dict
-    #         Thermodynamics data. In case of multiple species, it returns thermodynamics quantities per species.
-    #         keys = [`Total Energy`, `Total Kinetic Energy`, `Total Potential Energy`, `Total Temperature`, `Total Pressure`,
-    #         `Ideal Pressure`, `Excess Pressure, `Total Enthalpy`]
-    #     """
-    #     # Save Energy data
-    #     thermo_keys = {
-    #         'total_energy': None,
-    #         'kinetic_energy': None,
-    #         'potential_energy': None,
-    #         'temperature': None,
-    #         'pressure': None,
-    #         'ideal_pressure': None,
-    #         'excess_pressure': None,  # Ensure correct formatting and completeness in key names
-    #         'enthalpy': None
-    #     }
-
-    #     # Create a new dictionary where each key is a species name and each value is a copy of thermodynamics_data
-    #     species_data = {
-    #         species: thermo_keys.copy() for species in self.species_names
-    #     }
-    #     for sp, (temp, kin, pot) in enumerate(
-    #         zip(self.species_temperature, self.species_kinetic_energy, self.species_potential_energy)
-    #     ):  
-    #         species_data[f"{self.species_names[sp]}"]["total_energy"] = self.species_kinetic_energy[sp] + self.species_potential_energy[sp]
-    #         species_data[f"{self.species_names[sp]}"]["kinetic_energy"] = kin
-    #         species_data[f"{self.species_names[sp]}"]["potential_energy"] = pot
-    #         species_data[f"{self.species_names[sp]}"]["temperature"] = temp
-    #         species_data[f"{self.species_names[sp]}"]["pressure"] = self.species_pressure[sp]
-    #         species_data[f"{self.species_names[sp]}"]["ideal_pressure"] = (
-    #             self.species_pressure_kin_tensor[:, :, sp].trace() / self.dimensions)
-            
-    #         species_data[f"{self.species_names[sp]}"]["excess_pressure"] = (
-    #             self.species_pressure_pot_tensor[:, :, sp].trace() / self.dimensions)
-            
-    #         species_data[f"{self.species_names[sp]}"]["enthalpy"] = self.species_enthalpy[sp]
-    
-    #     return species_data
 
     def random_reject(self, r_reject):
         """
