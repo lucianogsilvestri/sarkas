@@ -1136,13 +1136,13 @@ def enforce_pbc(pos, cntr, box_vector):
     Parameters
     ----------
     pos : numpy.ndarray
-        Particles' positions.
+        Particles' positions. Shape (N,3)
 
     cntr : numpy.ndarray
-        Counter for the number of times each particle get folded back into the main simulation box
+        Counter for the number of times each particle get folded back into the main simulation box. Shape (N, 3)
 
     box_vector : numpy.ndarray
-        Box Dimensions.
+        Box Dimensions. Shape (3)
 
     """
 
