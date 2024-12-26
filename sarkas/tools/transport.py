@@ -648,7 +648,7 @@ class Diffusion(TransportCoefficients):
                     # Grab vacf data of each slice
                     integrand = observable.dataframe_acf_slices[(vacf_str, sp, "Total", f"slice {isl}")].values
                     df_str = f"{sp} Diffusion_slice {isl}"
-                    data = const * fast_integral_loop(time=self.time_array, integrand=integrand)
+                    data = const * cumulative_trapezoid(integrand, x=self.time_array, initial=0.0) #fast_integral_loop(time=self.time_array, integrand=integrand)
                     columns_list.append(df_str)
                     data_list.append(data)
             
@@ -687,7 +687,7 @@ class Diffusion(TransportCoefficients):
                     par_vacf_str = (vacf_str, sp, "Z", f"slice {isl}")
                     integrand_par = observable.dataframe_acf_slices[par_vacf_str].to_numpy()
 
-                    col_data = fast_integral_loop(time=self.time_array, integrand=integrand_par)
+                    col_data = cumulative_trapezoid(integrand_par, x=self.time_array, initial=0.0) #fast_integral_loop(time=self.time_array, integrand=integrand_par)
                     col_name = f"{sp} Diffusion_Parallel_slice {isl}"
                     self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
 
@@ -699,7 +699,7 @@ class Diffusion(TransportCoefficients):
                         observable.dataframe_acf_slices[x_vacf_str].to_numpy()
                         + observable.dataframe_acf_slices[y_vacf_str].to_numpy()
                     )
-                    col_data = fast_integral_loop(time=self.time_array, integrand=integrand_perp)
+                    col_data = cumulative_trapezoid(integrand_perp, x=self.time_array, initial=0.0) # fast_integral_loop(time=self.time_array, integrand=integrand_perp)
                     col_name = f"{sp} Diffusion_Perpendicular_slice {isl}"
                     self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
 
@@ -762,7 +762,7 @@ class Diffusion(TransportCoefficients):
         if plot:
             _, _ = self.plot(observable, display_plot=display_plot)
 
-    def plot(self, observable, display_plot: bool = False):
+    def plot(self, observable, scaling: tuple = (1.0, 1.0), display_plot: bool = False, **kwargs):
         """Make a dual plot comparing the ACF and the Transport Coefficient by using the :meth:`plot_tc` method.
 
         Parameters
@@ -792,17 +792,21 @@ class Diffusion(TransportCoefficients):
         figs = {}
         axes = {}
 
+        # Check if scaling is provided if it is a single value then make it a tuple
+        if not isinstance(scaling, tuple):
+            scaling = (scaling, 1.0)
+        
         if observable.magnetized:
             for isp, sp in enumerate(observable.species_names):
                 # sp_vacf_str = f"{sp} " + vacf_str
                 sp_diff_str = f"{sp} Diffusion"
 
                 # Parallel
-                acf_avg = observable.dataframe_acf[(vacf_str, sp, "Parallel", "Mean")].to_numpy()
-                acf_std = observable.dataframe_acf[(vacf_str, sp, "Parallel", "Std")].to_numpy()
+                acf_avg = observable.dataframe_acf[(vacf_str, sp, "Parallel", "Mean")].to_numpy() / scaling[0]
+                acf_std = observable.dataframe_acf[(vacf_str, sp, "Parallel", "Std")].to_numpy() / scaling[0]
 
-                tc_avg = self.dataframe[(sp_diff_str, "Parallel", "Mean")].to_numpy()
-                tc_std = self.dataframe[(sp_diff_str, "Parallel", "Std")].to_numpy()
+                tc_avg = self.dataframe[(sp_diff_str, "Parallel", "Mean")].to_numpy() / scaling[1]
+                tc_std = self.dataframe[(sp_diff_str, "Parallel", "Std")].to_numpy() / scaling[1]
 
                 fig, (ax1, ax2, ax3, ax4) = self.plot_tc(
                     time=self.time_array,
@@ -816,11 +820,11 @@ class Diffusion(TransportCoefficients):
                 figs[sp] = {"Parallel": fig}
                 axes[sp] = {"Parallel": (ax1, ax2, ax3, ax4)}
                 # Perpendicular
-                acf_avg = observable.dataframe_acf[(vacf_str, sp, "Perpendicular", "Mean")]
-                acf_std = observable.dataframe_acf[(vacf_str, sp, "Perpendicular", "Std")]
+                acf_avg = observable.dataframe_acf[(vacf_str, sp, "Perpendicular", "Mean")] / scaling[0]
+                acf_std = observable.dataframe_acf[(vacf_str, sp, "Perpendicular", "Std")] / scaling[0]
 
-                tc_avg = self.dataframe[(sp_diff_str, "Perpendicular", "Mean")]
-                tc_std = self.dataframe[(sp_diff_str, "Perpendicular", "Std")]
+                tc_avg = self.dataframe[(sp_diff_str, "Perpendicular", "Mean")] / scaling[1]
+                tc_std = self.dataframe[(sp_diff_str, "Perpendicular", "Std")] / scaling[1]
 
                 fig, (ax1, ax2, ax3, ax4) = self.plot_tc(
                     time=self.time_array,
@@ -835,12 +839,12 @@ class Diffusion(TransportCoefficients):
                 axes[sp]["Perpendicular"] = (ax1, ax2, ax3, ax4)
         else:
             for isp, sp in enumerate(observable.species_names):
-                acf_avg = observable.dataframe_acf[(vacf_str, sp, "Total", "Mean")].to_numpy()
-                acf_std = observable.dataframe_acf[(vacf_str, sp, "Total", "Std")].to_numpy()
+                acf_avg = observable.dataframe_acf[(vacf_str, sp, "Total", "Mean")].to_numpy() / scaling[0]
+                acf_std = observable.dataframe_acf[(vacf_str, sp, "Total", "Std")].to_numpy() / scaling[0]
 
                 d_str = f"{sp} Diffusion"
-                tc_avg = self.dataframe[(d_str, "Mean")].to_numpy()
-                tc_std = self.dataframe[(d_str, "Std")].to_numpy()
+                tc_avg = self.dataframe[(d_str, "Mean")].to_numpy() / scaling[1]
+                tc_std = self.dataframe[(d_str, "Std")].to_numpy() / scaling[1]
 
                 fig, (ax1, ax2, ax3, ax4) = self.plot_tc(
                     time=self.time_array,
@@ -854,6 +858,10 @@ class Diffusion(TransportCoefficients):
                 figs[sp] = fig
                 axes[sp] = (ax1, ax2, ax3, ax4)
 
+        if kwargs.get("figname"):
+            fig.savefig(os_path_join(self.saving_dir, kwargs.get("figname")))
+        else:
+            fig.savefig(os_path_join(self.saving_dir, f"{self.__name__}_Plot.png"))
         return figs, axes
 
 

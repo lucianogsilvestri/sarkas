@@ -1103,8 +1103,9 @@ class Observable:
                 return read_hdf(self.observable_filenames["hdf"]["path"], mode="r", index_col=False)
         except FileNotFoundError:
             data_file = self.filename_csv if hasattr(self, "filename_csv") else self.observable_filenames["hdf"]["path"]
-            print(f"\nData file not found! \n {data_file}")
-            # self.compute()
+            # if self.verbose is true, print the message otherwise just return
+            if self.verbose:
+                print(f"\nFile {data_file} not found!")
 
     def load_dataframe_slices(self):
         """
@@ -1118,8 +1119,8 @@ class Observable:
         try:
             return read_hdf(self.observable_filenames["hdf_slices"]["path"], mode="r", index_col=False)
         except FileNotFoundError:
-            print(f"\nFile {self.observable_filenames['hdf_slices']['path']} not found!")
-            # self.compute()
+            if self.verbose:
+                print(f"\nFile {self.observable_filenames['hdf_slices']['path']} not found!")
 
     def load_simulation_dataframe(self):
         """
@@ -1142,9 +1143,10 @@ class Observable:
                 self.read_data_from_dumps()
                 self.save_simulation_hdf()
         except FileNotFoundError:
-            print(
-                f"\nData file not found! \n {self.observable_filenames['simulation_hdf']['path']}\nCollecting data from snapshots ..."
-            )
+            if self.verbose:
+                print(
+                    f"\nData file not found! \n {self.observable_filenames['simulation_hdf']['path']}\nCollecting data from snapshots ..."
+                )
             self.read_data_from_dumps()
             self.save_simulation_hdf()
 
@@ -1865,17 +1867,16 @@ class Observable:
             if self.no_slices == 1:
                 # Default case
                 # Independent blocks = True and no_slices = 1
-                # The +1 is to include the initial dump
-                self.timesteps_shift = self.no_steps + 1
-                self.timesteps_per_slice = self.no_steps + 1
+                self.timesteps_shift = self.no_steps
+                self.timesteps_per_slice = self.no_steps
                 
                 self.plasma_periods_shift = int(self.timesteps_shift // self.timesteps_per_plasma_period)
                 self.plasma_periods_per_slice = int(self.no_steps * self.dt // self.plasma_period)
 
-                self.block_length = int(self.timesteps_per_slice // self.dump_step) + 1
+                self.block_length = int(self.no_steps // self.dump_step) + 1
                 
-                self.dumps_per_slice = self.timesteps_per_slice//self.dump_step + 1
-                self.dumps_shift = self.timesteps_shift//self.dump_step + 1
+                self.dumps_per_slice = self.no_dumps
+                self.dumps_shift = self.no_dumps
                 self.dumps_per_block = self.no_dumps
             else:
                 # Independent blocks = True and no_slices > 1
@@ -4603,17 +4604,19 @@ class RadialDistributionFunction(Observable):
 
         dump_init = 0
         dump_end = 0
-        step = self.timesteps_shift //self.dump_step # rint(self.plasma_periods_shift * self.timesteps_per_plasma_period).astype(int)
-
+        step = self.dumps_per_slice - 1 # The -1 is due to zero indexing. The last dump is the number of dumps - 1.
+        
+        column_names = [f"{sp1}-{sp2} RDF_slice {isl}" for isl in range(self.no_slices) for sp1 in self.species_names for sp2 in self.species_names]
+        # Create dict with the column names as the keys. This is needed to add the columns to the dataframe
+        columns_dict = {col_name: zeros(self.no_bins) for col_name in column_names}
         with h5py.File(self.h5md_filepath, "r") as h5md_file:
             for isl in tqdm(range(self.no_slices), desc="Calculating RDF for slice", disable=not self.verbose):
-                dump_end += self.timesteps_per_slice // self.dump_step
-                # data_init = load_from_restart(self.dump_dir, dump_init)
-                # data_end = load_from_restart(self.dump_dir, dump_end)
+                dump_end += step
+
                 data_init = h5md_file["observables"]["rdf_hist"]['value'][dump_init, :,:,:]
                 data_end = h5md_file["observables"]["rdf_hist"]['value'][dump_end, :,:,:]
                 for i, sp1 in enumerate(self.species_names):
-                    for j, sp2 in enumerate(self.species_names[i:], i):
+                    for j, sp2 in enumerate(self.species_names[i:], start = i):
                         denom_const = pair_density[i, j] * self.timesteps_per_slice
                         # Each slice should be considered as an independent system.
                         # The RDF is calculated from the difference between the last dump of the slice and the initial dump
@@ -4624,10 +4627,13 @@ class RadialDistributionFunction(Observable):
 
                         col_name = f"{sp1}-{sp2} RDF_slice {isl}"
                         col_data = rdf_hist_slc / denom_const / bin_vol
-                        self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
+                        columns_dict[col_name] = col_data
+                        # self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
 
                 dump_init += step
                 dump_end += step
+
+        self.dataframe_slices = DataFrame(columns_dict)
 
     @avg_slices_doc
     def average_slices_data(self):
@@ -5706,15 +5712,8 @@ class VelocityAutoCorrelationFunction(Observable):
 
         start_index = 0  # Dump number to start the acf calculation
         end_index = self.block_length  # Dump number to end the acf calculation
+        step = self.dumps_per_slice
 
-        step = int(self.timesteps_shift // self.dump_step)
-
-        # self.dataframe_acf[f"{self.__name__.swapcase()}_Species_Axis_Time"] = self.simulation_dataframe.iloc[
-        #     :end_index, 0
-        # ]
-        # self.dataframe_acf_slices[f"{self.__name__.swapcase()}_Species_Axis_Time"] = self.simulation_dataframe.iloc[
-        #     :end_index, 0
-        # ]
         columns_list = [f"{self.__name__.swapcase()}_Species_Axis_Time"]
         data_list = [self.simulation_dataframe.iloc[:end_index, 0].values]
 
@@ -5736,15 +5735,14 @@ class VelocityAutoCorrelationFunction(Observable):
                     for ip in range(self.no_ptcls_per_species[isp]):
                         # Auto-correlation function
                         vel = self.simulation_dataframe[(f"{sp1}", f"{ip}", f"{ax}")].iloc[start_index:end_index].values
+                        # delta_v = vel  ## - vel.mean()
+                        acf += correlationfunction(vel,vel)
 
-                        delta_v = vel  ## - vel.mean()
-                        acf += correlationfunction(delta_v, delta_v) / self.no_ptcls_per_species[isp]
-
+                    acf /= self.no_ptcls_per_species[isp]
                     # Store in the dataframe
                     col_name = f"{self.__name__.swapcase()}_{sp1}_{ax}_slice {isl}"
                     columns_list.append(col_name)
                     data_list.append(acf)
-                    # self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, acf, col_name)
 
                     # Add to the total ACF of each species pair.
                     total_vacf_per_species += acf / self.dimensions
@@ -5752,8 +5750,6 @@ class VelocityAutoCorrelationFunction(Observable):
                 col_name = f"{self.__name__.swapcase()}_{sp1}_Total_slice {isl}"
                 columns_list.append(col_name)
                 data_list.append(total_vacf_per_species)
-                
-                # self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, total_vacf_per_species, col_name)
 
             start_index += step
             end_index += step
