@@ -4,7 +4,7 @@ Particles:
         name: Yb
         number_density: 2.920e+16
         mass: 2.9103621e-25
-        num: 5000
+        num: 10000 # 5000
         Z: 1.0
         temperature: 2.0e-03
 
@@ -12,7 +12,7 @@ Particles:
         name: Ca
         number_density: 1.200e+16
         mass: 6.690487592e-26
-        num: 2055
+        num: 4110 #2055
         Z: 1.0
         temperature: 2.0e-03
 
@@ -34,8 +34,8 @@ Parameters:
     boundary_conditions: open
     load_method: gaussian
     load_gauss_sigma: [342.0e-6, 697.0e-6]
-    production_steps: 500
-    prod_dump_step: 50
+    production_steps: 5000
+    prod_dump_step: 10
 
 IO:
     verbose: True

@@ -3,7 +3,7 @@ Module for calculating physical quantities from Sarkas checkpoints.
 """
 import inspect
 from copy import deepcopy
-from typing import List
+from typing import List, Union
 from IPython import get_ipython
 
 if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
@@ -17,7 +17,7 @@ import warnings
 from arch.unitroot import ADF, KPSS
 from matplotlib.gridspec import GridSpec
 from numba import njit
-from numpy import append as np_append, mean
+from numpy import append as np_append, asarray, mean
 from numpy import (
     allclose,
     argsort,
@@ -73,9 +73,12 @@ from seaborn import histplot as sns_histplot
 
 from ..utilities.io import print_to_logger
 from ..utilities.maths import correlationfunction
-from ..utilities.misc import add_col_to_df
+from ..utilities.misc import add_col_to_df, calculate_beta
 from ..utilities.timing import datetime_stamp, SarkasTimer, time_stamp
 from .fit_functions import exponential, gaussian
+
+from astropy import units as ast_u
+from astropy import constants as ast_c
 
 UNITS = [
     # MKS Units
@@ -4911,15 +4914,43 @@ class Thermodynamics(Observable):
         # Update the attribute with the passed arguments
         self.__dict__.update(kwargs.copy())
         self.update_finish()
-
+    
     def calculate_beta_slices(self, ensemble: str = "NVE"):
-        """Calculate the inverse temperature by taking the mean of the temperature time series."""
+        """
+        Calculate the inverse temperature by taking the mean of the temperature time series.
+        This is stored in the :py:attr:`sarkas.tools.observables.Thermodynamics.beta_slices` attribute.
+        
+        Parameters
+        ----------
+        ensemble : str, optional
+            Ensemble to use. Default is "NVE".
+        
+        Returns
+        -------
+        None
+        
+        Notes
+        -----
+        The inverse temperature is calculated by from the mean of the temperature time series if the ensemble is "NVE". 
+        Otherwise (``ensemble = "NVT"``), it is set to the desired temperature (`self.T_desired`).
+        The temperature time series is taken from :py:attr:`sarkas.tools.observables.Thermodynamics.dataframe_slices`.
+        The :py:attr:`sarkas.tools.observables.Thermodynamics.beta_slices` attribute is used in the calculation of the specific heat capacity.
+        """
+
         if ensemble == "NVE":
             self.beta_slices = zeros(self.no_slices)
-            for isl in range(self.no_slices):
-                self.beta_slices[isl] = 1.0 / (self.kB * self.dataframe_slices[("Temperature", f"slice {isl}")].mean())
+            if len(self.species_names) > 1:               
+                for isl in range(self.no_slices):
+                    col_name = ("Total", "Temperature", f"slice {isl}")
+                    col_data = self.dataframe_slices[col_name].mean()   
+                    self.beta_slices[isl] = calculate_beta(col_data, k_B = self.kB)
+            else:
+                for isl in range(self.no_slices):
+                    col_name = (f"{self.species_names[0]}", "Temperature", f"slice {isl}")
+                    col_data = self.dataframe_slices[col_name].mean()
+                    self.beta_slices[isl] = calculate_beta(col_data, k_B = self.kB)
         else:
-            self.beta_slices = ones(self.no_slices) * 1.0 / (self.kB * self.T_desired)
+            self.beta_slices = ones(self.no_slices) * calculate_beta(self.T_desired, k_B = self.kB)
 
     def calculate_heat_capacity_slices(self, ensemble: str = "NVE"):
         """Calculate the specific heat capacity from the fluctuations of the energy."""
@@ -4928,75 +4959,155 @@ class Thermodynamics(Observable):
 
         if ensemble == "NVE":
             self.specific_heat_volume_slice = zeros(self.no_slices)
-            for isl in range(self.no_slices):
-                kin_2 = (self.dataframe_slices[("Kinetic Energy", f"slice {isl}")].std()) ** 2
-                denom = 1 - 2.0 * self.beta_slices[isl] ** 2 * kin_2 / (self.dimensions * self.total_num_ptcls)
-                self.specific_heat_volume_slice[isl] = 0.5 * self.dimensions * self.kB * self.total_num_ptcls / denom
+
+            if len(self.species_names) > 1:
+                for isl in range(self.no_slices):
+                    kin_2 = (self.dataframe_slices[("Total", "Kinetic Energy", f"slice {isl}")].std()) ** 2
+                    denom = 1 - 2.0 * self.beta_slices[isl] ** 2 * kin_2 / (self.dimensions * self.total_num_ptcls)
+                    self.specific_heat_volume_slice[isl] = 0.5 * self.dimensions * self.kB * self.total_num_ptcls / denom
+            else:
+                for isl in range(self.no_slices):
+                    kin_2 = (self.dataframe_slices[(f"{self.species_names[0]}", "Kinetic Energy", f"slice {isl}")].std()) ** 2
+                    denom = 1 - 2.0 * self.beta_slices[isl] ** 2 * kin_2 / (self.dimensions * self.total_num_ptcls)
+                    self.specific_heat_volume_slice[isl] = 0.5 * self.dimensions * self.kB * self.total_num_ptcls / denom
+
         else:
             self.specific_heat_volume_slice = zeros(self.no_slices)
             for isl in range(self.no_slices):
-                deltaE_2 = (self.dataframe_slices[("Total Energy", f"slice {isl}")].std()) ** 2
+                cols = [(f"{sp}", "Total Energy", f"slice {isl}") for sp in self.species_names]
+                deltaE_2 = (self.dataframe_slices[cols].sum(axis = 1).std()) ** 2
                 self.specific_heat_volume_slice[isl] = deltaE_2 * self.beta_slices[isl] ** 2 * self.kB
-
+        
     def calculate_beta_simulation(self, ensemble: str = "NVE"):
-        """Calculate the inverse temperature by taking the mean of the temperature time series."""
-        if ensemble == "NVE":
-            self.beta = 1.0 / (self.kB * self.simulation_dataframe["Temperature"].mean())
-        else:
-            self.beta = 1.0 / (self.kB * self.T_desired)
+        """Calculate the inverse temperature by taking the mean of the temperature time series. This is stored in the :py:attr:`sarkas.tools.observables.Thermodynamics.beta` attribute.
+        
+        Parameters
+        ----------
+        ensemble : str, optional
+            Ensemble to use. Default is "NVE".
+        
+        Returns
+        -------
+        None
 
+        Notes
+        -----
+        The inverse temperature is calculated by from the mean of the temperature time series if the ensemble is "NVE".
+        Otherwise (``ensemble = "NVT"``), it is set to the desired temperature (`self.T_desired`). 
+        The temperature time series is taken from :py:attr:`sarkas.tools.observables.Thermodynamics.simulation_dataframe`.
+        The :py:attr:`sarkas.tools.observables.Thermodynamics.beta` attribute is used in the calculation of the specific heat capacity.
+
+        """
+
+        if ensemble == "NVE":
+            cols = [(f"{sp}", "Temperature") for sp in self.species_names]
+            self.beta = calculate_beta(self.simulation_dataframe[cols].mean(axis = 1).mean(), k_B = self.kB)
+        else:
+            self.beta = calculate_beta(self.T_desired, k_B = self.kB)
+    
     def calculate_heat_capacity_simulation(self, ensemble: str = "NVE"):
-        """Calculate the specific heat capacity from the fluctuations of the energy."""
+        """
+        Calculate the specific heat capacity from the fluctuations of the energy. 
+        The specific heat capacity is stored in the :py:attr:`sarkas.tools.observables.Thermodynamics.specific_heat_volume` attribute.
+        
+        Parameters
+        ----------
+        ensemble : str, optional
+            Ensemble to use. Default is "NVE".
+        
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        The specific heat capacity is calculated from the fluctuations of the total energy, taken from :py:attr:`sarkas.tools.observables.Thermodynamics.simulation_dataframe`, divided by the number of dimensions and the number of particles.
+        In the NVT ensemble (``ensemble = "NVT"``), the specific heat capacity is calculated as the standard deviation of the total energy
+        
+        .. math::
+            C_V = k_B\beta^2 \left \langle \Delta E^2 \right \rangle
+        
+        In the NVE ensemble (``ensemble = "NVE"``), the specific heat capacity is calculated as
+
+        .. math::
+            C_V = \frac{dN k_B}{2} \left ( 1 - \frac{2\beta^2}{dN} \left \langle K^2 \right \rangle \right )^{-1}
+        
+        where :math:`d` is the number of dimensions and :math:`\left \langle K^2 \right \rangle` is the standard deviation of the kinetic energy.
+
+        """
 
         self.calculate_beta_simulation(ensemble=ensemble)
-
+        
         if ensemble == "NVE":
-            kin_2 = (self.simulation_dataframe["Kinetic Energy"].std()) ** 2
+
+            cols = [(f"{sp}", "Kinetic Energy") for sp in self.species_names]
+            kin_2 = (self.simulation_dataframe[cols].sum(axis = 1).std()) ** 2
+            
             denom = 1 - 2.0 * self.beta**2 * kin_2 / (self.dimensions * self.total_num_ptcls)
             self.specific_heat_volume = 0.5 * self.dimensions * self.kB * self.total_num_ptcls / denom
         else:
-            deltaE_2 = (self.simulation_dataframe["Total Energy"].std()) ** 2
+            cols = [(f"{sp}", "Total Energy") for sp in self.species_names]
+            deltaE_2 = (self.simulation_dataframe[cols].sum(axis = 1).std()) ** 2
+
             self.specific_heat_volume = deltaE_2 * self.beta**2 * self.kB
 
+    @staticmethod
+    def capitalize_words(s):
+        return ' '.join(word.capitalize() for word in s.split('_'))
+    
     @calc_slices_doc
     def calc_slices_data(self):
+
         start_index = 0  # Index of the simulation_dataframe to start the acf calculation
         end_index = self.block_length  # final index
 
-        step = int(
-            self.timesteps_shift // self.dump_step
-        )  # rint(self.plasma_periods_shift * self.timesteps_per_plasma_period / self.dump_step).astype(int)
+        time_data = zeros(self.block_length)
 
-        self.dataframe[f"Quantity_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
-        self.dataframe_slices[f"Quantity_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
+        step = self.dumps_per_slice - 1  # The -1 is due to zero indexing. The last dump is the number of dumps - 1.
 
-        colums_list = []
-        data_list = []
-        # Loop over the columns of the simulation_dataframe except the time column (0th column)
-        for col_name, col_data in self.simulation_dataframe.iloc[:, 1:].items():
-            start_index = 0  # Index of the simulation_dataframe to start the acf calculation
-            end_index = self.block_length  # final index
+        if len(self.species_names) > 1:
+            list_of_species = [*self.species_names, "Total"]
+        else:
+            list_of_species = self.species_names
+        
+        total_thermodynamics_data = {f"Species_Quantity_Time": time_data}
+        
+        for species in list_of_species:
+            for key in self.thermodynamics_list:
+                for isl in range(self.no_slices):
+                    if key == 'temperature':
+                        total_thermodynamics_data[f"{species}_Temperature_slice {isl}"] = zeros(self.block_length)
+                    else:
+                        total_thermodynamics_data[f"{species}_{self.capitalize_words(key)}_slice {isl}"] = zeros(self.block_length)
 
-            for isl in tqdm(
-                range(self.no_slices),
-                desc=f"Collecting {col_name} data",
-                disable=not self.verbose,
-                position=0,
-                leave=False,
-            ):
-                df_col_name = f"{col_name}_slice {isl}"
-                colums_list.append(df_col_name)
-                data_list.append(col_data[start_index:end_index].values)
-                # self.dataframe_slices = add_col_to_df(
-                #     self.dataframe_slices, col_data[start_index:end_index].values, df_col_name
-                # )
+        total_thermodynamics_data = {f"Species_Quantity_Time": self.simulation_dataframe.iloc[:end_index, 0].values}
 
-                start_index += step
-                end_index += step
-            # end of slice loop
+        for isp, sp_name in enumerate(self.species_names):
+            for obs_name in self.thermodynamics_list:
+                start_index = 0  # Index of the simulation_dataframe to start the acf calculation
+                end_index = self.block_length  # final index
 
-        data = dict(zip(colums_list, data_list))
-        self.dataframe_slices = DataFrame(data)
+                for isl in tqdm(
+                    range(self.no_slices),
+                    desc=f"Collecting {sp_name} {obs_name} data",
+                    disable=not self.verbose,
+                    position=0,
+                    leave=False,
+                ):
+                    col_name = (f"{sp_name}", f"{self.capitalize_words(obs_name)}")
+                    col_data = self.simulation_dataframe[col_name].iloc[start_index:end_index].values
+                    total_thermodynamics_data[f"{sp_name}_{self.capitalize_words(obs_name)}_slice {isl}"] = col_data.copy()
+                    
+                    # Add to total only if multiple species
+                    if len(self.species_names) > 1:
+                        const = (1.0/len(self.species_names) if obs_name == 'temperature' else 1.0)
+                        total_thermodynamics_data[f"Total_{self.capitalize_words(obs_name)}_slice {isl}"] += col_data * const
+
+                    start_index += step
+                    end_index += step
+                # end of slice loop
+        
+        self.dataframe_slices = DataFrame(total_thermodynamics_data)
 
     @calc_acf_slices_doc
     def calc_acf_slices_data(self):
@@ -5027,15 +5138,39 @@ class Thermodynamics(Observable):
     @avg_slices_doc
     def average_slices_data(self):
         ### Slices loop
-        for _, df_col_name in enumerate(self.simulation_dataframe.columns[1:]):
-            columns = [f"{df_col_name}_slice {isl}" for isl in range(self.no_slices)]
-            col_data = self.dataframe_slices[columns].mean(axis=1)
-            col_name = f"{df_col_name}_Mean"
-            self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+        # for _, df_col_name in enumerate(self.simulation_dataframe.columns[1:]):
+        #     columns = [f"{df_col_name}_slice {isl}" for isl in range(self.no_slices)]
+        #     col_data = self.dataframe_slices[columns].mean(axis=1)
+        #     col_name = f"{df_col_name}_Mean"
+        #     self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
 
-            col_data = self.dataframe_slices[columns].std(axis=1)
-            col_name = f"{df_col_name}_Std"
-            self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+        #     col_data = self.dataframe_slices[columns].std(axis=1)
+        #     col_name = f"{df_col_name}_Std"
+        #     self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+
+        if len(self.species_names) > 1:
+            list_cols = [*self.species_names, "Total"]
+        else:
+            list_cols = self.species_names
+        
+        self.dataframe = {}
+        
+        self.dataframe["Species_Quantity_Time"] = self.dataframe_slices["Species_Quantity_Time"].values.copy()
+
+        for species in list_cols:
+            for key in self.thermodynamics_list:
+                capital_key = self.capitalize_words(key)
+                col_list = [f"{species}_{capital_key}_slice {isl}" for isl in range(self.no_slices)]
+                col_data = self.dataframe_slices[col_list].mean(axis=1)
+                col_name = f"{species}_{capital_key}_Mean"
+                self.dataframe[col_name] = col_data
+                # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+
+                col_data = self.dataframe_slices[col_list].std(axis=1)
+                col_name = f"{species}_{capital_key}_Std"
+                self.dataframe[col_name] = col_data
+
+        self.dataframe = DataFrame(self.dataframe)
 
     @avg_acf_slices_doc
     def average_acf_slices_data(self):
@@ -5057,8 +5192,8 @@ class Thermodynamics(Observable):
         self.calc_slices_data()
         self.average_slices_data()
         self.save_hdf()
-        self.calculate_beta_slices()
-        self.calculate_heat_capacity_slices()
+        # self.calculate_beta_slices()
+        # self.calculate_heat_capacity_slices()
         tend = self.timer.current()
         time_stamp(
             self.log_file,
@@ -5151,11 +5286,21 @@ class Thermodynamics(Observable):
         """
         Create a dynamic mapping from thermodynamics_list to properly capitalized column names.
         """
-        def capitalize_words(s):
-            return ' '.join(word.capitalize() for word in s.split('_'))
-        
-        return {key: capitalize_words(key) if key.lower() != 'temperature' else 'Temperature' for key in self.thermodynamics_list}
 
+        column_mapping = {}
+        if len(self.species_names) > 1:
+            list_of_species = [*self.species_names, "Total"]
+        else:
+            list_of_species = self.species_names
+
+        for species in list_of_species:
+            for key in self.thermodynamics_list:
+                if key.lower() == 'temperature':
+                    column_mapping[f"{species}__{key}"] = f'{species}_Temperature'
+                else:
+                    column_mapping[f"{species}__{key}"] = f"{species}_{self.capitalize_words(key)}"
+        return column_mapping
+    
     def read_data_from_dumps(self, phase=None):
         """
         Grab the simulation data and store it in a pandas DataFrame.
@@ -5173,7 +5318,19 @@ class Thermodynamics(Observable):
         else:
             h5md_filepath = self.h5md_filepath
 
-        total_thermodynamics_data = { key : zeros(self.no_dumps) for key in self.thermodynamics_list }
+        # Initialize storage with the correct column names based on number of species
+        if len(self.species_names) > 1:
+            total_thermodynamics_data = {
+                f"{species}__{key}": zeros(self.no_dumps) 
+                for species in [*self.species_names, "Total"]  # Include Total only for multiple species
+                for key in self.thermodynamics_list
+            }
+        else:
+            total_thermodynamics_data = {
+                f"{self.species_names[0]}__{key}": zeros(self.no_dumps)
+                for key in self.thermodynamics_list
+            }
+            
         time_data = zeros(self.no_dumps)
 
         with h5py.File(h5md_filepath, 'r') as file:
@@ -5182,14 +5339,17 @@ class Thermodynamics(Observable):
                 species_group = observables_group[sp_name]
                 
                 for obs_name in self.thermodynamics_list:
-                    const = 1.0
                     try:
                         obs_data = species_group[obs_name]
                         if obs_name == 'temperature': 
-                            # If multi-component species, the temperature is the average of the components
-                            const = species_group.attrs['particle_number']/self.total_num_ptcls
                             time_data = obs_data['time'][:]
-                        total_thermodynamics_data[obs_name] += obs_data['value'][:] * const
+                        total_thermodynamics_data[f"{sp_name}__{obs_name}"] = obs_data['value'][:]
+                        
+                        # Add to total only if multiple species
+                        if len(self.species_names) > 1:
+                            const = (species_group.attrs['particle_number']/self.total_num_ptcls 
+                                   if obs_name == 'temperature' else 1.0)
+                            total_thermodynamics_data[f"Total__{obs_name}"] += obs_data['value'][:] * const
 
                     except KeyError:
                         print(f"Observable '{obs_name}' not found for species '{sp_name}'")
@@ -5202,20 +5362,21 @@ class Thermodynamics(Observable):
 
         # Create dynamic column mapping
         column_mapping = self._create_column_mapping()
-        column_mapping['time'] = 'Time'  # Ensure 'time' is mapped to 'Time'
+        column_mapping['time'] = 'Species_Time'  # Ensure 'time' is mapped to 'Time'
 
         # Rename columns according to the mapping
         self.simulation_dataframe.rename(columns=column_mapping, inplace=True)
 
         # Ensure 'Time' is the first column
         cols = self.simulation_dataframe.columns.tolist()
-        cols.insert(0, cols.pop(cols.index('Time')))
+        cols.insert(0, cols.pop(cols.index('Species_Time')))
         self.simulation_dataframe = self.simulation_dataframe[cols]
         self.save_simulation_hdf()
 
     def temp_energy_plot(
         self,
         process,
+        time_scale: float = 1.0,
         info_list: list = None,
         show: bool = False,
         publication: bool = False,
@@ -5228,6 +5389,9 @@ class Thermodynamics(Observable):
         ----------
         process : sarkas.processes.Process
             Sarkas Process.
+
+        time_scale : float
+            Scale factor for the time axis.
 
         info_list: list, optional
             List of strings to print next to the plots.
@@ -5322,26 +5486,35 @@ class Thermodynamics(Observable):
         # Grab the color line list from the plt cycler. I will use this in the hist plots
         color_from_cycler = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
+        # ------------------------------------------- Constants -------------------------------------------#
+        K2eV = ast_u.K.to(ast_u.eV, equivalencies=ast_u.temperature_energy())
+        enrg_2eV = ast_u.erg.to(ast_u.eV) if process.parameters.units == "cgs" else ast_u.J.to(ast_u.eV)
+
         # ------------------------------------------- Temperature -------------------------------------------#
         # Calculate Temperature plot's labels and multipliers
+        cols = [(f"{sp}", "Temperature") for sp in self.species_names]
+
+        temperature = self.simulation_dataframe[cols].mean(axis=1) * K2eV  # Convert to eV
+        time_arr = self.simulation_dataframe[("Species", "Time")].values / time_scale
+
         time_mul, temp_mul, time_prefix, temp_prefix, time_lbl, temp_lbl = plot_labels(
-            self.simulation_dataframe["Time"], self.simulation_dataframe["Temperature"], "Time", "Temperature", self.units
+            time_arr, temperature, "Time", "ElectronVolt", self.units
         )
         # Rescale quantities
-        time = time_mul * self.simulation_dataframe["Time"]
-        Temperature = temp_mul * self.simulation_dataframe["Temperature"]
-        T_desired = temp_mul * self.T_desired
+        time = time_mul * time_arr
+        Temperature = temp_mul * temperature
+        T_desired = temp_mul * self.T_desired * K2eV # Convert to eV
 
-        # Temperature moving average
+        # Temperature rolling average
         T_cumavg = Temperature.expanding().mean()
 
-        # Temperature deviation and its moving average
+        # Temperature deviation and its rolling average
         Delta_T = (Temperature - T_desired) * 100 / T_desired
         Delta_T_cum_avg = Delta_T.expanding().mean()
 
         # Temperature Main plot
         T_main_plot.plot(time, Temperature, alpha=0.7)
-        T_main_plot.plot(time, T_cumavg, label="Moving Average")
+        T_main_plot.plot(time, T_cumavg, label="Rolling Average")
         T_main_plot.axhline(T_desired, ls="--", c="r", alpha=0.7, label="Desired T")
         T_main_plot.legend(loc="best")
         T_main_plot.set(ylabel="Temperature" + temp_lbl, xlabel="Time" + time_lbl)
@@ -5356,9 +5529,10 @@ class Thermodynamics(Observable):
             # < delta T^2> = T_desired^2 * ( 2 /(Np * Dims) ) *( 1 -  Np * Dims/2 * k_B/Cv)
             # where Cv is the heat capacity at constant volume.
             self.calculate_heat_capacity_simulation(ensemble="NVE")
-            dN = self.total_num_ptcls * self.dimensions
-            factor = 1 - 0.5 * dN * self.kB / self.specific_heat_volume
-            T_std = T_desired * sqrt(2.0 / dN * factor)
+            dN_2 = 0.5 * self.total_num_ptcls * self.dimensions
+            
+            term = 1 - dN_2 * (self.kB / self.specific_heat_volume)
+            T_std = T_desired * sqrt(term / dN_2 )
             # TODO: Review this calculation.
             # T_std *= sqrt(1 - 0.5 *process.parameters.dimensions*process.parameters.total_num_ptcls/heat_capacity_v)
         else:
@@ -5387,16 +5561,16 @@ class Thermodynamics(Observable):
 
         # ------------------------------------------- Total Energy -------------------------------------------#
         # Calculate Energy plot's labels and multipliers
-        factor = 1.0 / process.parameters.J2erg if process.parameters.units == "cgs" else 1.0
+        cols = [(f"{sp}", "Total Energy") for sp in self.species_names]
 
-        Energy = self.simulation_dataframe["Total Energy"].copy()  # * factor / process.parameters.eV2J  # Energy in [eV]
+        tot_energy = self.simulation_dataframe[cols].sum(axis = 1) * enrg_2eV # Convert to eV
         time_mul, energy_mul, _, _, time_lbl, energy_lbl = plot_labels(
-            self.simulation_dataframe["Time"], Energy, "Time", "Energy", self.units
+            time_arr, tot_energy, "Time", "ElectronVolt", self.units
         )
-        Energy *= energy_mul
-        # Total Energy moving average
+        Energy = energy_mul * tot_energy
+        # Total Energy rolling average
         E_cumavg = Energy.expanding().mean()
-        # Total Energy Deviation and its moving average
+        # Total Energy Deviation and its rolling average
         Delta_E = (Energy - Energy.iloc[0]) * 100 / Energy.iloc[0]
         Delta_E_cum_avg = Delta_E.expanding().mean()
         # Deviation Plot
@@ -5406,7 +5580,7 @@ class Thermodynamics(Observable):
 
         # Energy main plot
         E_main_plot.plot(time, Energy, alpha=0.7)
-        E_main_plot.plot(time, E_cumavg, label="Moving Average")
+        E_main_plot.plot(time, E_cumavg, label="Rolling Average")
         E_main_plot.axhline(Energy.mean(), ls="--", c="r", alpha=0.7, label="Avg")
         E_main_plot.legend(loc="best")
         E_main_plot.set(ylabel="Total Energy" + energy_lbl, xlabel="Time" + time_lbl)
@@ -5419,19 +5593,21 @@ class Thermodynamics(Observable):
         # Since this requires a lot of prior calculation I skip it and just make a Gaussian
         if self.phase == "production":
             self.calculate_heat_capacity_simulation(ensemble="NVE")
-            NkB = self.total_num_ptcls * self.kB
-            beta_desired = 1.0 / (self.kB * self.T_desired)
+            dN_2 = 0.5 * self.dimensions * self.total_num_ptcls
+            beta_desired = calculate_beta(self.T_desired, k_B = self.kB)
             delta_E2 = (
                 self.dimensions
                 * self.total_num_ptcls
                 / beta_desired**2
-                * (1 - 0.5 * self.dimensions * NkB / self.specific_heat_volume)
+                * (1 - dN_2 * (self.kB / self.specific_heat_volume) )
             )
         else:
             self.calculate_heat_capacity_simulation(ensemble="NVT")
-            delta_E2 = self.specific_heat_volume / self.beta**2 / self.kB
 
-        delta_E = sqrt(delta_E2)
+            delta_E2 = (self.specific_heat_volume / self.beta**2 / self.kB)
+
+        delta_E = sqrt(delta_E2) * enrg_2eV
+        
         # Calculate the theoretical distribution of the energy.
         # E_dist_desired is a Gaussian centered at the actual mean with actaul E_std. This is to confirm that we have a Gaussian process.
         E_dist_desired = scp_stats.norm(loc=Energy.mean(), scale=delta_E * energy_mul)
@@ -5446,7 +5622,7 @@ class Thermodynamics(Observable):
 
         if not publication:
             dt_mul, _, _, _, dt_lbl, _ = plot_labels(
-                process.integrator.dt, self.simulation_dataframe["Total Energy"], "Time", "Energy", self.units
+                process.integrator.dt, tot_energy, "Time", "Energy", self.units
             )
 
             # Information section
@@ -5485,11 +5661,11 @@ class Thermodynamics(Observable):
 
                 eq_cycles = int(process.parameters.equilibration_steps * process.integrator.dt / self.plasma_period)
                 # calculate the actual coupling constant
-                t_ratio = self.T_desired / self.simulation_dataframe["Temperature"].mean()
-                coupling_constant = (
-                    self.simulation_dataframe["Potential Energy"].mean()
-                    / self.simulation_dataframe["Kinetic Energy"].mean()
-                )
+                t_ratio = self.T_desired * K2eV / Temperature.mean()
+                p_cols = [(f"{sp}", "Potential Energy") for sp in self.species_names]
+                k_cols = [(f"{sp}", "Kinetic Energy") for sp in self.species_names]
+                coupling_constant = (self.simulation_dataframe[p_cols].sum(axis=1).mean() / self.simulation_dataframe[k_cols].sum(axis=1).mean()) * t_ratio
+
                 to_append = [
                     f"Equilibration cycles = {eq_cycles}",
                     f"Potential: {process.potential.type}",
@@ -5557,19 +5733,19 @@ class Thermodynamics(Observable):
 
     #     fig, ax = plt.subplots(1, 3, figsize=(24, 7))
     #     ax[0].plot(time, Gamma)
-    #     ax[0].plot(time, Gamma.expanding().mean(), alpha=0.8, label="Moving Average")
+    #     ax[0].plot(time, Gamma.expanding().mean(), alpha=0.8, label="Rolling Average")
     #     # ax.axhline(self.coupling_constant, c = 'r', ls = '--', alpha = 0.7, label = r"Original $\Gamma$")
     #     ax[0].legend()
     #     ax[0].set(ylabel=r"$\Gamma = \frac{\langle U \rangle}{\langle K \rangle}$", xlabel=f"Time {time_lbl}")
 
     #     ax[1].plot(time, Gamma_T)
-    #     ax[1].plot(time, Gamma_T.expanding().mean(), alpha=0.8, label="Moving Average")
+    #     ax[1].plot(time, Gamma_T.expanding().mean(), alpha=0.8, label="Rolling Average")
     #     # ax.axhline(self.coupling_constant, c = 'r', ls = '--', alpha = 0.7, label = r"Original $\Gamma$")
     #     ax[1].legend()
     #     ax[1].set(ylabel=r"$\Gamma_T = \frac{\langle U \rangle}{k_B T}$", xlabel=f"Time {time_lbl}")
 
     #     ax[2].plot(time, Gamma_a)
-    #     ax[2].plot(time, Gamma_a.expanding().mean(), alpha=0.8, label="Moving Average")
+    #     ax[2].plot(time, Gamma_a.expanding().mean(), alpha=0.8, label="Rolling Average")
     #     ax[2].axhline(self.coupling_constant, c="r", ls="--", alpha=0.7, label=r"Original $\Gamma$")
     #     ax[2].legend()
     #     ax[2].set(
@@ -7526,10 +7702,10 @@ def make_gaussian_plot(time, data, xlabel, ylabel):
     data_mean = data_plot.mean()
     data_std = data_plot.std()
 
-    # moving average
+    # rolling average
     data_cumavg = data_plot.expanding().mean()
 
-    # deviation and its moving average
+    # deviation and its rolling average
     delta_data = (data_plot - data_mean) * 100 / data_mean
     delta_data_cum_avg = delta_data.expanding().mean()
 

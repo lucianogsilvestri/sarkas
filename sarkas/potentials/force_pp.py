@@ -455,8 +455,11 @@ def particles_interaction_loop(
                                             pot, fr = force(r, p_matrix)
                                             fr /= r
                                             # Need to add the same pot to each particle pair.
-                                            ptcl_pot_energy[i] += ( 0.25 * (id_i == id_j) + 0.5* (id_i != id_j) )* pot
-                                            ptcl_pot_energy[j] += ( 0.25 * (id_i == id_j) + 0.5* (id_i != id_j) )* pot
+                                            # The factor of 1/2 is to account for the fact that we are counting each pair twice
+                                            # The total potential energy will be calculated from the sum of the potential energy of each particle (ptcls_pot_energy = ptcls.potential_energy)
+                                            # The total potential energy is 1/2 * \sum_{i = 1}^N \sum_{j = 1, \\ j \neq i}^N U(r_ij)
+                                            ptcl_pot_energy[i] += 0.5 * pot
+                                            ptcl_pot_energy[j] += 0.5 * pot
 
                                             # Update the acceleration for i particles in each dimension
 
