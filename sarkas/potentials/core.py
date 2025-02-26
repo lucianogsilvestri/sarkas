@@ -3,7 +3,7 @@ Module handling the potential class.
 """
 from copy import deepcopy
 from fmm3dpy import hfmm3d, lfmm3d
-from numpy import array, inf, int64, ndarray, pi, sqrt, tanh
+from numpy import array, inf, int64, ndarray, pi, sqrt, tanh, newaxis
 from warnings import warn
 
 from ..utilities.exceptions import AlgorithmWarning
@@ -664,11 +664,11 @@ class Potential:
             ptcls.rdf_hist,
         )
 
-        # if self.type != "lj":
-        #     # Mie Energy of charged systems
-        #     # J-M.Caillol, J Chem Phys 101 6080(1994) https: // doi.org / 10.1063 / 1.468422
-        #     dipole = ptcls.charges @ ptcls.pos
-        #     ptcls.total_potential_energy += 2.0 * pi * (dipole**2).sum() / (3.0 * self.box_volume * self.fourpie0)
+        if self.type != "lj":
+            # Mie Energy of charged systems
+            # J-M.Caillol, J Chem Phys 101 6080(1994) https: // doi.org / 10.1063 / 1.468422
+            dipole = ptcls.charges[:, newaxis] *  ptcls.pos
+            ptcls.potential_energy += 2.0 * pi * (dipole**2).sum(axis = -1) / (3.0 * self.box_volume * self.fourpie0)
 
     def update_brute(self, ptcls):
         """
@@ -695,8 +695,8 @@ class Potential:
         # if self.type != "lj":
         #     # Mie Energy of charged systems
         #     # J-M.Caillol, J Chem Phys 101 6080(1994) https: // doi.org / 10.1063 / 1.468422
-        #     dipole = ptcls.charges @ ptcls.pos
-        #     ptcls.total_potential_energy += 2.0 * pi * (dipole**2).sum() / (3.0 * self.box_volume * self.fourpie0)
+        #     dipole = ptcls.charges[:, newaxis] *  ptcls.pos
+        #     ptcls.potential_energy += 2.0 * pi * (dipole**2).sum(axis = -1) / (3.0 * self.box_volume * self.fourpie0)
 
     def update_pm(self, ptcls):
         """Calculate the pm part of the potential and acceleration.
@@ -724,9 +724,6 @@ class Potential:
 
         # Ewald Self-energy
         U_long -= self.QFactor * self.pppm_alpha_ewald / sqrt(pi) / self.total_num_ptcls
-
-        # Neutrality condition
-        # U_long += -pi * self.total_net_charge**2.0 / (2.0 * self.box_volume * self.pppm_alpha_ewald**2)
 
         ptcls.potential_energy += U_long
 

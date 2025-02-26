@@ -6,7 +6,7 @@ import csv
 from copy import deepcopy
 from h5py import File as h5File
 from numba import float64, int64, jit, njit, void
-from numpy import arange, array, empty, floor, full, int64
+from numpy import arange, array, empty, exp, floor, full, histogram, int64, log, pi
 from numpy import load as np_load
 from numpy import (
     loadtxt,
@@ -161,6 +161,8 @@ class Particles:
         self.species_masses = None
         self.species_charges = None
         self.species_velocity_moments = None
+        self.species_thermal_speed = None
+        self.species_kl_divergence = None
 
         self.no_grs = None
         self.rdf_hist = None
@@ -175,6 +177,7 @@ class Particles:
         self.species_observables_method_map = {
             "Momentum": self.calculate_species_momentum,
             "Velocity Moments": self.calculate_species_velocity_moments,
+            "KL Divergence": self.calculate_species_kl_divergence,
             "Electric Current": self.calculate_species_electric_current,
             "Pressure Tensor": self.calculate_species_pressure_tensor,
             "Heat Flux": self.calculate_species_heat_flux,
@@ -551,6 +554,9 @@ class Particles:
 
         self.species_initial_velocity = zeros((self.num_species, 3))
         self.species_thermal_velocity = zeros((self.num_species, 3))
+        
+        self.species_thermal_speed = zeros(self.num_species)
+        self.species_kl_divergence = zeros( (self.num_species, 3))
 
         self.species_initial_spatial_distribution = empty((self.num_species, 3), dtype=str)
         self.species_initial_velocity_distribution = empty((self.num_species, 3), dtype=str)
@@ -878,6 +884,7 @@ class Particles:
                 species_end += sp.num
                 self.species_initial_velocity[ic, :] = sp.initial_velocity
                 self.species_thermostat_temperatures[ic] = sp.temperature
+                self.species_thermal_speed[ic] = sqrt(self.kB * sp.temperature / sp.mass)
                 if sp.initial_velocity_distribution == "boltzmann":
                     if isinstance(sp.temperature, (int, float)):
                         sp_temperature = zeros(3)
@@ -1311,6 +1318,14 @@ class Particles:
                     self.vel[species_start:species_end, :], moment=mom + 1, axis=0
                 )
             species_start += num
+
+    def calculate_species_kl_divergence(self):
+        """Calculate the Kullback-Leibler divergence of the velocity distribution of each species and stores it into :attr:`species_kl_divergence`."""
+        
+        # TODO: this is a temporary solution. The number of bins should be user defined. Maybe?
+        nbins = self.total_num_ptcls // 10
+
+        self.species_kl_divergence = kl_divergence(self.vel, self.species_num, self.species_thermal_velocity, nbins)
 
     def calculate_species_potential_energy(self):
         """Calculate the potential energy of each species from :attr:`potential_energy`, calculated in the force loop, and stores it into :attr:`species_potential_energy`."""
@@ -1922,3 +1937,62 @@ def calc_species_diffusion_flux(vel, species_masses, species_num):
         species_diffusion_flux[i, :] *= m_alpha / m_bar
 
     return species_diffusion_flux
+
+
+
+@jit(nopython=True)
+def kl_divergence(vel, species_num, species_thermal_velocity, n_bins=100):
+    """
+    Calculate KL divergence between samples and a standard normal distribution.
+    Manually calculates probability density from histogram counts.
+    
+    Parameters:
+    -----------
+    vel : numpy.ndarray
+        Array of particle velocities, shape=(num_particles, 3)
+    
+    species_num : numpy.ndarray
+        Number of particles for each species, shape=(num_species,)
+
+    species_thermal_velocity : numpy.ndarray
+        Thermal velocity of each species, shape=(num_species, 3)
+
+    n_bins : int
+        Number of bins for histogram estimation
+        
+    Returns:
+    --------
+    float
+        KL divergence value
+    """
+    # Set fixed range for standard normal: ±4 sigma covers 99.993% of distribution
+    range_min, range_max = -5.0, 5.0
+    
+    species_kl_div = zeros( (len(species_num), vel.shape[1]) )
+    species_start = 0
+    species_end = 0
+    for ic, sp_num in enumerate(species_num):
+        species_end += sp_num
+        
+        for d in range(vel.shape[1]):
+            samples = vel[species_start:species_end, d]/ species_thermal_velocity[ic,d]
+            # Calculate histogram counts (not density)
+            hist, bin_edges = histogram(samples, bins=n_bins, range=(range_min, range_max))    
+            # Calculate bin width and centers
+            bin_width = (range_max - range_min) / n_bins
+            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+            
+            # Convert counts to probability density
+            # density = count / (N * bin_width) where N is total number of samples
+            hist = hist / (len(samples) * bin_width)
+            
+            # Calculate standard normal PDF at bin centers
+            # Using the simplified formula since mean=0, std=1
+            normal_pdf = exp(-0.5 * bin_centers**2) / sqrt(2 * pi)
+            
+            # Calculate KL divergence only where hist > 0 to avoid log(0)
+            mask = hist > 0
+            species_kl_div[ic,d] = sum(hist[mask] * log(hist[mask] / normal_pdf[mask]))
+        species_start += sp_num
+
+    return species_kl_div

@@ -289,7 +289,7 @@ class Parameters:
         self.plot_style = None
         self.pre_run = False
         self.threading = False
-        self.md_simulations_dir = "Simulations"
+        self.md_simulations_dir = "SarkasSimulations"
         self.production_dir = "Production"
         self.magnetization_dir = "Magnetization"
         self.equilibration_dir = "Equilibration"

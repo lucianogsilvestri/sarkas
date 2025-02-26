@@ -36,7 +36,8 @@ Parameters:
     # (OPTIONAL) This is a list of observable that you want to calculate during the simulation.
     # observables_list: ["Electric Current", "Momentum", "Pressure Tensor", "Enthalpy", "Heat Flux", "Velocity Moments"]
     # (OPTIONAL) The observables_group is a list of Particles attributes that will be saved during the simulation
-    # observables_array_list: ["species_electric_current", "species_momentum", "species_pressure", "species_pressure_tensor",  "species_enthalpy", "species_heat_flux", "species_velocity_moments"]   
+    observables_arrays_list: ["potential_energy"]
+    # observables_arrays_list: ["species_electric_current", "species_momentum", "species_pressure", "species_pressure_tensor",  "species_enthalpy", "species_heat_flux", "species_velocity_moments"]   
     # This is a list of thermodynamics that you want to calculate during the simulation.
     # thermodynamics_list: ["total energy", "temperature", "kinetic energy", "potential energy","pressure" ]
 
