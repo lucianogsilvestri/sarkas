@@ -5376,7 +5376,6 @@ class Thermodynamics(Observable):
     def temp_energy_plot(
         self,
         process,
-        time_scale: float = 1.0,
         info_list: list = None,
         show: bool = False,
         publication: bool = False,
@@ -5389,9 +5388,6 @@ class Thermodynamics(Observable):
         ----------
         process : sarkas.processes.Process
             Sarkas Process.
-
-        time_scale : float
-            Scale factor for the time axis.
 
         info_list: list, optional
             List of strings to print next to the plots.
@@ -5407,36 +5403,6 @@ class Thermodynamics(Observable):
 
         """
 
-        # if phase:
-        #     phase = phase.lower()
-        #     self.phase = phase
-        #     if self.phase == "equilibration":
-        #         self.no_dumps = 1 +  self.eq_no_dumps # Add 1 to include the initial dump
-        #         self.dump_dir = self.eq_dump_dir
-        #         self.dump_step = self.eq_dump_step
-        #         # self.saving_dir = self.equilibration_dir
-        #         self.no_steps = self.equilibration_steps
-        #         self.grab_sim_data(self.phase)
-        #         # self.simulation_dataframe = self.simulation_dataframe.iloc[1:, :]
-
-        #     elif self.phase == "production":
-        #         self.no_dumps = 1 +  self.prod_no_dumps # Add 1 to include the initial dump
-        #         self.dump_dir = self.prod_dump_dir
-        #         self.dump_step = self.prod_dump_step
-        #         # self.saving_dir = self.production_dir
-        #         self.no_steps = self.production_steps
-        #         self.grab_sim_data(self.phase)
-
-        #     elif self.phase == "magnetization":
-        #         self.no_dumps = 1 +  self.mag_no_dumps # Add 1 to include the initial dump
-        #         self.dump_dir = self.mag_dump_dir
-        #         self.dump_step = self.mag_dump_step
-        #         # self.saving_dir = self.magnetization_dir
-        #         self.no_steps = self.magnetization_steps
-        #         self.grab_sim_data(self.phase)
-
-        # else:
-        #     self.grab_sim_data()
         if self.simulation_dataframe is None:
             self.load_simulation_dataframe()
 
@@ -5495,7 +5461,7 @@ class Thermodynamics(Observable):
         cols = [(f"{sp}", "Temperature") for sp in self.species_names]
 
         temperature = self.simulation_dataframe[cols].mean(axis=1) * K2eV  # Convert to eV
-        time_arr = self.simulation_dataframe[("Species", "Time")].values / time_scale
+        time_arr = self.simulation_dataframe[("Species", "Time")].values
 
         time_mul, temp_mul, time_prefix, temp_prefix, time_lbl, temp_lbl = plot_labels(
             time_arr, temperature, "Time", "ElectronVolt", self.units
@@ -5638,7 +5604,7 @@ class Thermodynamics(Observable):
                     Info_plot.text(0.0, y_coord, "Species {} : {}".format(isp + 1, sp.name))
                     Info_plot.text(0.0, y_coord - 0.5, "  No. of particles = {} ".format(sp.num))
                     Info_plot.text(
-                        0.0, y_coord - 1.0, "  Temperature = {:.2f} {}".format(temp_mul * sp.temperature, temp_lbl)
+                        0.0, y_coord - 1.0, "  Temperature = {:.2f} {}".format(temp_mul * sp.temperature * K2eV, temp_lbl)
                     )
                     y_coord -= 1.5
 
@@ -5660,16 +5626,9 @@ class Thermodynamics(Observable):
                     info_list.append(f"  Berendsen rate = {process.integrator.thermalization_rate:.2f}")
 
                 eq_cycles = int(process.parameters.equilibration_steps * process.integrator.dt / self.plasma_period)
-                # calculate the actual coupling constant
-                t_ratio = self.T_desired * K2eV / Temperature.mean()
-                p_cols = [(f"{sp}", "Potential Energy") for sp in self.species_names]
-                k_cols = [(f"{sp}", "Kinetic Energy") for sp in self.species_names]
-                coupling_constant = (self.simulation_dataframe[p_cols].sum(axis=1).mean() / self.simulation_dataframe[k_cols].sum(axis=1).mean()) * t_ratio
-
                 to_append = [
                     f"Equilibration cycles = {eq_cycles}",
                     f"Potential: {process.potential.type}",
-                    f"  Eff Coupl Const = {coupling_constant:.2e}",
                     f"  Tot Force Error = {process.potential.force_error:.2e}",
                     f"Integrator: {integrator_type[self.phase]}",
                 ]
@@ -5714,6 +5673,7 @@ class Thermodynamics(Observable):
         # Restore the previous rcParams
         plt.rcParams = current_rcParams
 
+        return fig,  {"main_plot": T_main_plot, "hist_plot": T_hist_plot, "delta_plot": T_delta_plot}, {"main_plot": E_main_plot,"hist_plot": E_hist_plot, "delta_plot": E_delta_plot}
     # def gamma_plot(self, phase: str = None, figname: str = None, show: bool = False):
 
     #     if phase:
