@@ -4608,7 +4608,7 @@ class RadialDistributionFunction(Observable):
         dump_init = 0
         dump_end = 0
         step = self.dumps_per_slice - 1 # The -1 is due to zero indexing. The last dump is the number of dumps - 1.
-        
+        self.bin_vol = bin_vol.copy()
         column_names = [f"{sp1}-{sp2} RDF_slice {isl}" for isl in range(self.no_slices) for sp1 in self.species_names for sp2 in self.species_names]
         # Create dict with the column names as the keys. This is needed to add the columns to the dataframe
         columns_dict = {col_name: zeros(self.no_bins) for col_name in column_names}
