@@ -3,7 +3,7 @@ Module containing the basic class for handling the plasma's components.
 """
 
 from copy import deepcopy
-from numpy import array, ndarray, pi, sqrt, zeros
+from numpy import array, ndarray, pi, sqrt, zeros, isclose
 
 from .utilities.fdints import fdm1h, invfd1h
 
@@ -242,7 +242,11 @@ class Species:
             Electrostatic * Thermal constants.
 
         """
-        self.ai = (self.charge / z_avg) ** (1.0 / 3.0) * a_ws if z_avg > 0 else self.ai_dens
+        if isclose(z_avg, 0.0):
+            self.ai = self.ai_dens
+        else:
+            self.ai = (self.charge / z_avg) ** (1.0 / 3.0) * a_ws 
+        
         self.coupling = self.charge**2 / (self.ai * const * self.temperature)
 
     def calc_ws_radius(self):

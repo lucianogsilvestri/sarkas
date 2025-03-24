@@ -72,7 +72,7 @@ The elements of the :attr:`sarkas.potentials.core.Potential.matrix` are:
 from math import erfc
 from numba import jit
 from numba.core.types import float64, UniTuple
-from numpy import exp, log, pi, sqrt, zeros
+from numpy import exp, log, pi, sqrt, zeros, isclose
 from warnings import warn
 
 from ..utilities.exceptions import AlgorithmWarning
@@ -540,7 +540,7 @@ def update_params(potential, species):
         raise ValueError("QSP interaction can only be calculated using pppm algorithm.")
 
     # Check for neutrality
-    if potential.total_net_charge != 0:
+    if ~isclose(potential.total_net_charge, 0.0):
         warn("Total net charge is not zero.", category=AlgorithmWarning)
 
     # Default attributes

@@ -655,7 +655,7 @@ class Observable:
     def get_nkt_slice(self, hdf5_file, species_name, slice_start, slice_end):
         """Retrieve a slice of nkt data for a specific species from the HDF5 file."""
         with h5py.File(hdf5_file, 'r') as f:
-            return f[f'{species_name}'][:, slice_start:slice_end]
+            return f[f'nkt_{species_name}'][:, slice_start:slice_end]
     
     # def calc_nkt_slices_data(self):
     #     """Calculate n(k,t) for each slice."""
@@ -1224,7 +1224,7 @@ class Observable:
 
         """
         if nkt_flag:
-            if not hasattr(self, 'nkt_hdf_file') or not os.path.exists(self.nkt_hdf_file):
+            if not hasattr(self, 'nkt_hdf_file') or not os_path_exists(self.nkt_hdf_file):
                 return False
 
             try:
@@ -1240,7 +1240,7 @@ class Observable:
                         return False
                     
                     # Check if all elements are equal within a small tolerance
-                    if not np.allclose(stored_k_list, self.k_list, rtol=1e-5, atol=1e-8):
+                    if not allclose(stored_k_list, self.k_list, rtol=1e-5, atol=1e-8):
                         return False
 
                     # Check for angle_averaging attribute
@@ -5061,8 +5061,6 @@ class Thermodynamics(Observable):
         start_index = 0  # Index of the simulation_dataframe to start the acf calculation
         end_index = self.block_length  # final index
 
-        time_data = zeros(self.block_length)
-
         step = self.dumps_per_slice - 1  # The -1 is due to zero indexing. The last dump is the number of dumps - 1.
 
         if len(self.species_names) > 1:
@@ -5070,42 +5068,40 @@ class Thermodynamics(Observable):
         else:
             list_of_species = self.species_names
         
-        total_thermodynamics_data = {f"Species_Quantity_Time": time_data}
+        # total_thermodynamics_data = {f"Species_Quantity_Time": time_data}
         
-        for species in list_of_species:
-            for key in self.thermodynamics_list:
-                for isl in range(self.no_slices):
-                    if key == 'temperature':
-                        total_thermodynamics_data[f"{species}_Temperature_slice {isl}"] = zeros(self.block_length)
-                    else:
-                        total_thermodynamics_data[f"{species}_{self.capitalize_words(key)}_slice {isl}"] = zeros(self.block_length)
+        # for species in list_of_species:
+        #     for key in self.thermodynamics_list:
+        #         for isl in range(self.no_slices):
+        #             if key == 'temperature':
+        #                 total_thermodynamics_data[f"{species}_Temperature_slice {isl}"] = zeros(self.block_length)
+        #             else:
+        #                 total_thermodynamics_data[f"{species}_{self.capitalize_words(key)}_slice {isl}"] = zeros(self.block_length)
 
+
+        # Join the elements of a tuple with a _
         total_thermodynamics_data = {f"Species_Quantity_Time": self.simulation_dataframe.iloc[:end_index, 0].values}
+        cols = self.simulation_dataframe.columns[1:]
+        total_thermodynamics_data.update({'_'.join(col).strip()+f"_slice {isl}" : zeros(self.block_length)  for col in cols for isl in range(self.no_slices)})
 
-        for isp, sp_name in enumerate(self.species_names):
-            for obs_name in self.thermodynamics_list:
-                start_index = 0  # Index of the simulation_dataframe to start the acf calculation
-                end_index = self.block_length  # final index
+        for col_name_tuple in cols:
+            start_index = 0  # Index of the simulation_dataframe to start the acf calculation
+            end_index = self.block_length  # final index
 
-                for isl in tqdm(
-                    range(self.no_slices),
-                    desc=f"Collecting {sp_name} {obs_name} data",
-                    disable=not self.verbose,
-                    position=0,
-                    leave=False,
-                ):
-                    col_name = (f"{sp_name}", f"{self.capitalize_words(obs_name)}")
-                    col_data = self.simulation_dataframe[col_name].iloc[start_index:end_index].values
-                    total_thermodynamics_data[f"{sp_name}_{self.capitalize_words(obs_name)}_slice {isl}"] = col_data.copy()
-                    
-                    # Add to total only if multiple species
-                    if len(self.species_names) > 1:
-                        const = (1.0/len(self.species_names) if obs_name == 'temperature' else 1.0)
-                        total_thermodynamics_data[f"Total_{self.capitalize_words(obs_name)}_slice {isl}"] += col_data * const
+            for isl in tqdm(
+                range(self.no_slices),
+                desc=f"Collecting {col_name_tuple[0]} {col_name_tuple[1]} data",
+                disable=not self.verbose,
+                position=0,
+                leave=False,
+            ):
+                col_data = self.simulation_dataframe[col_name_tuple].iloc[start_index:end_index].values
+                dict_key = '_'.join(col_name_tuple).strip()+f"_slice {isl}"
+                total_thermodynamics_data[dict_key] = col_data.copy()
 
-                    start_index += step
-                    end_index += step
-                # end of slice loop
+                start_index += step
+                end_index += step
+            # end of slice loop
         
         self.dataframe_slices = DataFrame(total_thermodynamics_data)
 
