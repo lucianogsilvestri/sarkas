@@ -9,7 +9,10 @@ from numpy.fft import fftshift, ifftshift
 from pyfftw.builders import fftn, ifftn
 
 
-@jit(float64[:](int64, float64), nopython=True)
+from numba import jit, float64, int64
+import numpy as np
+
+@jit(nopython=True)
 def assgnmnt_func(cao, x):
     """
     Calculate the charge assignment function as given in Ref.:cite:`Deserno1998`
@@ -66,7 +69,7 @@ def assgnmnt_func(cao, x):
 
     elif cao == 7:
         W[0] = (
-            1.0 - 12.0 * x + 60.0 * x * 2 - 160.0 * x**3 + 240.0 * x**4 - 192.0 * x**5 + 64.0 * x**6
+            1.0 - 12.0 * x + 60.0 * x ** 2 - 160.0 * x**3 + 240.0 * x**4 - 192.0 * x**5 + 64.0 * x**6
         ) / 46080.0
 
         W[1] = (
@@ -94,22 +97,7 @@ def assgnmnt_func(cao, x):
     return W
 
 
-@jit(
-    float64[:, :](
-        float64[:, :, :],  # E_x_r
-        float64[:, :, :],  # E_y_r
-        float64[:, :, :],  # E_z_r
-        float64[:, :],  # mesh_pos
-        int64[:, :],  # mesh_points
-        float64[:],  # charges / masses
-        # float64[:],  # masses
-        int64[:],  # cao
-        int64[:],  # mesh_sz
-        float64[:],  # mid
-        int64[:],  # pshift
-    ),
-    nopython=True,
-)
+@jit(nopython=True)
 def calc_acc_pm(E_x_r, E_y_r, E_z_r, mesh_pos, mesh_points, q_over_m, cao, mesh_sz, mid, pshift):
     """
     Calculates the long range part of particles' accelerations.
@@ -227,113 +215,69 @@ def calc_acc_pm(E_x_r, E_y_r, E_z_r, mesh_pos, mesh_points, q_over_m, cao, mesh_
     return acc
 
 
-@jit(float64[:, :, :](float64[:, :], int64[:, :], float64[:], int64[:], int64[:], float64[:], int64[:]), nopython=True)
+@jit(nopython=True)
 def calc_charge_dens(mesh_pos, mesh_points, charges, cao, mesh_sz, mid, pshift):
     """
-    Assigns Charges to Mesh Points.
+    Assigns charges to mesh points using periodic boundary conditions.
 
     Parameters
     ----------
-    mesh_pos: numpy.ndarray
+    mesh_pos : numpy.ndarray
         Particles' positions relative to the mesh.
-
-    mesh_points: numpy.ndarray
+    mesh_points : numpy.ndarray
         Particles' positions on the mesh.
-
-    charges: numpy.ndarray
+    charges : numpy.ndarray
         Particles' charges.
-
-    cao: numpy.ndarray
-        Charge assignment order.
-
-    mesh_sz: numpy.ndarray
-        Mesh points per direction.
-
-    mid: numpy.ndarray
-        Midpoint flag for the three directions.
-
-    pshift: numpy.ndarray
-        Midpoint shift in each direction.
+    cao : numpy.ndarray
+        Charge assignment order for each dimension.
+    mesh_sz : numpy.ndarray
+        Number of mesh points per direction.
+    mid : numpy.ndarray
+        Midpoint flag for each direction.
+    pshift : numpy.ndarray
+        Shift to the closest mesh point for each direction.
 
     Returns
     -------
-    rho_r: numpy.ndarray
-        Charge density distributed on mesh.
-
+    rho_r : numpy.ndarray
+        Charge density distributed on the mesh.
     """
-
     rho_r = zeros((mesh_sz[2], mesh_sz[1], mesh_sz[0]), dtype=float64)
 
-    # ix = x-coord of the (left) closest mesh point
-    # (ix + 0.5)*h_array[0] = midpoint between the two mesh points closest to the particle
-
     for ipart in range(len(charges)):
+        # Determine the left-most mesh index and the offset for each direction.
         ix = mesh_points[ipart, 0]
-        delta_x = mesh_pos[ipart, 0] - (ix + mid[0])
-
         iy = mesh_points[ipart, 1]
-        delta_y = mesh_pos[ipart, 1] - (iy + mid[1])
-
         iz = mesh_points[ipart, 2]
-        delta_z = mesh_pos[ipart, 2] - (iz + mid[2])
-        # delta_x, delta_y, delta_z = particle's distances to the closest (mid)-point of the mesh
 
+        delta_x = mesh_pos[ipart, 0] - (ix + mid[0])
+        delta_y = mesh_pos[ipart, 1] - (iy + mid[1])
+        delta_z = mesh_pos[ipart, 2] - (iz + mid[2])
+
+        # Calculate weights using the charge assignment function.
         wx = assgnmnt_func(cao[0], delta_x)
         wy = assgnmnt_func(cao[1], delta_y)
         wz = assgnmnt_func(cao[2], delta_z)
 
-        izn = iz - pshift[2]  # min. index along z-axis
+        # Use modulo (%) for periodic boundary conditions.
+        # Calculate starting indices in each dimension.
+        base_z = (iz - pshift[2]) % mesh_sz[2]
+        base_y = (iy - pshift[1]) % mesh_sz[1]
+        base_x = (ix - pshift[0]) % mesh_sz[0]
 
         for g in range(cao[2]):
-            # if izn < 0:
-            #   r_g = izn + mesh_sz[2]
-            # elif izn > (mesh_sz[2] - 1):
-            #     r_g = izn - mesh_sz[2]
-            # else:
-            #     r_g = izn
-
-            r_g = izn + mesh_sz[2] * (izn < 0) - mesh_sz[2] * (izn > (mesh_sz[2] - 1))
-            iyn = iy - pshift[1]  # min. index along y-axis
-
+            r_g = (base_z + g) % mesh_sz[2]
             for i in range(cao[1]):
-                r_i = iyn + mesh_sz[1] * (iyn < 0) - mesh_sz[1] * (iyn > (mesh_sz[1] - 1))
-
-                # if iyn < 0:
-                #     r_i = iyn + mesh_sz[1]
-                # elif iyn > (mesh_sz[1] - 1):
-                #     r_i = iyn - mesh_sz[1]
-                # else:
-                #     r_i = iyn
-
-                ixn = ix - pshift[0]  # min. index along x-axis
-
+                r_i = (base_y + i) % mesh_sz[1]
                 for j in range(cao[0]):
-                    r_j = ixn + mesh_sz[0] * (ixn < 0) - mesh_sz[0] * (ixn > (mesh_sz[0] - 1))
-
-                    # if ixn < 0:
-                    #     r_j = ixn + mesh_sz[0]
-                    # elif ixn > (mesh_sz[0] - 1):
-                    #     r_j = ixn - mesh_sz[0]
-                    # else:
-                    #     r_j = ixn
-
+                    r_j = (base_x + j) % mesh_sz[0]
                     rho_r[r_g, r_i, r_j] += charges[ipart] * wz[g] * wy[i] * wx[j]
-
-                    ixn += 1 * (mesh_sz[0] > 1)  # Do not increase the index if there is only 1 point mesh
-
-                iyn += 1 * (mesh_sz[1] > 1)  # Do not increase the index if there is only 1 point mesh
-
-            izn += 1 * (mesh_sz[2] > 1)
-            # Do not increase the index if there is only 1 point mesh. This is kinda redundant because if there is only
-            # one point then also cao == 1. add a test for this!
 
     return rho_r
 
 
-@jit(
-    UniTuple(complex128[:, :, :], 3)(complex128[:, :, :], float64[:, :], float64[:, :], float64[:, :, :]),
-    nopython=True,
-)
+
+@jit(nopython=True)
 def calc_field(phi_k, kx_v, ky_v, kz_v):
     """
     Numba'd function that calculates the Electric field in Fourier space.
@@ -372,7 +316,7 @@ def calc_field(phi_k, kx_v, ky_v, kz_v):
     return E_kx, E_ky, E_kz
 
 
-@jit(Tuple((float64[:, :], int64[:, :]))(float64[:, :], float64[:], int64[:]), nopython=True)
+@jit(nopython=True)
 def calc_mesh_coord(pos, h_array, cao):
     """
     Calculate the particles positions with respect to the mesh and their closest point on the mesh.
@@ -409,19 +353,7 @@ def calc_mesh_coord(pos, h_array, cao):
     return mesh_pos, mesh_points.astype(int64)
 
 
-@jit(
-    float64[:](
-        float64[:, :, :],  # E_x_r
-        float64[:, :],  # mesh_pos
-        int64[:, :],  # mesh_points
-        float64[:],  # charges
-        int64[:],  # cao
-        int64[:],  # mesh_sz
-        float64[:],  # mid
-        int64[:],  # pshift
-    ),
-    nopython=True,
-)
+@jit(nopython=True)
 def calc_pot_pm(phi_r, mesh_pos, mesh_points, charges, cao, mesh_sz, mid, pshift):
     """
     Calculates the long range part of particles' accelerations.
@@ -511,7 +443,7 @@ def calc_pot_pm(phi_r, mesh_pos, mesh_points, charges, cao, mesh_sz, mid, pshift
                     #     r_j = ixn
 
                     # q_over_m = charges[ipart] / masses[ipart]
-                    pot_p[ipart] += q * phi_r[r_g, r_i, r_j] * wz[g] * wy[i] * wx[j]
+                    pot_p[ipart] += 0.5* q * phi_r[r_g, r_i, r_j] * wz[g] * wy[i] * wx[j]
 
                     ixn += 1
 
@@ -522,7 +454,7 @@ def calc_pot_pm(phi_r, mesh_pos, mesh_points, charges, cao, mesh_sz, mid, pshift
     return pot_p
 
 
-@jit(UniTuple(float64[:, :], 3)(int64[:], int64[:], float64[:]), nopython=True)
+@jit(nopython=True)
 def create_k_aliases(aliases, mesh_sizes, non_zero_box_lengths):
     """Calculate the alias arrays of the reciprocal space arrays for anti-aliasing.
 
@@ -580,7 +512,7 @@ def create_k_aliases(aliases, mesh_sizes, non_zero_box_lengths):
     return kx_M, ky_M, kz_M
 
 
-@jit(Tuple((float64[:, :], float64[:, :], float64[:, :, :]))(int64[:], float64[:]), nopython=True)
+@jit(nopython=True)
 def create_k_arrays(mesh_sizes, non_zero_box_lengths):
     """Calculate the reciprocal space arrays.
 
@@ -633,12 +565,7 @@ def create_k_arrays(mesh_sizes, non_zero_box_lengths):
     return kx_v, ky_v, kz_v
 
 
-@jit(
-    UniTuple(float64, 2)(
-        float64, float64, float64, float64[:], float64[:], float64[:], float64[:], int64[:], float64, float64, float64
-    ),
-    nopython=True,
-)
+@jit(nopython=True)
 def sum_over_aliases(kx, ky, kz, kx_M, ky_M, kz_M, h_array, p, four_pi, alpha_sq, kappa_sq):
     """
     Perform the sum over aliases in each direction.
@@ -718,12 +645,7 @@ def sum_over_aliases(kx, ky, kz, kx_M, ky_M, kz_M, h_array, p, four_pi, alpha_sq
     return U_G_k, U_k_sq
 
 
-@jit(
-    Tuple((float64[:, :, :], float64[:, :], float64[:, :], float64[:, :, :], float64))(
-        float64[:], float64[:], int64[:], int64[:], int64[:], float64[:]
-    ),
-    nopython=True,
-)
+@jit(nopython=True)
 def force_optimized_green_function(box_lengths, h_array, mesh_sizes, aliases, p, constants):
     """
     Calculate the optimized Green's function for the PPPM method.
@@ -855,7 +777,7 @@ def force_optimized_green_function(box_lengths, h_array, mesh_sizes, aliases, p,
     return G_k, kx_v, ky_v, kz_v, PM_err
 
 
-@jit(Tuple((float64[:], int64[:]))(int64[:]), nopython=True)
+@jit(nopython=True)
 def mesh_point_shift(cao):
     """
     Calculate the required shift based on the parity of the charge assignment orders.
@@ -888,24 +810,24 @@ def mesh_point_shift(cao):
 
 
 # FFTW version
-@jit(
-    Tuple((float64[:], float64[:, :]))(
-        float64[:, :],  # pos
-        float64[:],  # charges
-        float64[:],  # masses
-        int64[:],  # mesh_sizes
-        float64[:],  # mesh_spacings
-        float64,  # mesh_volume
-        float64,  # box_volume
-        float64[:, :, :],  # G_k
-        float64[:, :],  # kx_v
-        float64[:, :],  # ky_v
-        float64[:, :, :],  # kz_v
-        int64[:],
-    ),
-    nopython=False,
-    forceobj=True,  # This is needed so that it doesn't throw an error nor warning
-)
+# @jit(
+#     Tuple((float64[:], float64[:, :]))(
+#         float64[:, :],  # pos
+#         float64[:],  # charges
+#         float64[:],  # masses
+#         int64[:],  # mesh_sizes
+#         float64[:],  # mesh_spacings
+#         float64,  # mesh_volume
+#         float64,  # box_volume
+#         float64[:, :, :],  # G_k
+#         float64[:, :],  # kx_v
+#         float64[:, :],  # ky_v
+#         float64[:, :, :],  # kz_v
+#         int64[:],
+#     ),
+#     nopython=False,
+#     forceobj=True,  # This is needed so that it doesn't throw an error nor warning
+# )
 def update(pos, charges, masses, mesh_sizes, mesh_spacings, mesh_volume, box_volume, G_k, kx_v, ky_v, kz_v, cao):
     """
     Calculate the long range part of particles' accelerations using the Particle-Mesh method.
@@ -1021,7 +943,7 @@ def update(pos, charges, masses, mesh_sizes, mesh_spacings, mesh_volume, box_vol
 
     # Potential of each particle
     pot_particle = calc_pot_pm(phi_r, mesh_pos, mesh_points, charges, cao, mesh_sizes, mid, pshift)
-    # The sum of this is equal to U_f, i.e. Long range part of the potential. It was tested.
+    # The sum of this is equal to U_f, i.e. Long range part of the potential. 
     # I leave it here for future testing
     # U_f = 0.5 * (rho_k_sq * G_k).sum() / box_volume
 

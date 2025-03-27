@@ -150,6 +150,7 @@ class Particles:
         self.virial_species_tensor = None
         self.heat_flux_species_tensor = None
         self.potential_energy = None
+        self.dipole_energy = None
         self.pbc_cntr = None
         self.masses = None
         self.charges = None
@@ -164,6 +165,13 @@ class Particles:
         self.species_thermal_speed = None
         self.species_kl_divergence = None
 
+        self.species_kinetic_energy = None
+        self.species_potential_energy = None
+        self.species_dipole_energy = None
+        self.species_temperature = None
+        self.species_thermostat_temperatures = None
+
+        
         self.no_grs = None
         self.rdf_hist = None
 
@@ -265,6 +273,7 @@ class Particles:
         self.rdf_hist = zeros((self.__dict__["num_species"], self.__dict__["num_species"], self.__dict__["rdf_nbins"]))
         self.virial_species_tensor = zeros((self.__dict__["num_species"], self.__dict__["num_species"], 3, 3))
         self.potential_energy = zeros((self.__dict__["total_num_ptcls"]))
+        self.dipole_energy = zeros((self.__dict__["total_num_ptcls"]))
         self.heat_flux_species_tensor = zeros((self.__dict__["num_species"], self.__dict__["num_species"], 3))
 
     def copy_params(self, params):
@@ -550,6 +559,7 @@ class Particles:
 
         self.kinetic_energy = zeros(self.total_num_ptcls)
         self.potential_energy = zeros(self.total_num_ptcls)
+        self.dipole_energy = zeros(self.total_num_ptcls)
         self.temperature = zeros(self.total_num_ptcls)
 
         self.species_initial_velocity = zeros((self.num_species, 3))

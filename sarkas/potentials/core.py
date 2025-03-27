@@ -668,7 +668,7 @@ class Potential:
             # Mie Energy of charged systems
             # J-M.Caillol, J Chem Phys 101 6080(1994) https: // doi.org / 10.1063 / 1.468422
             dipole = ptcls.charges[:, newaxis] *  ptcls.pos
-            ptcls.potential_energy += 2.0 * pi * (dipole**2).sum(axis = -1) / (3.0 * self.box_volume * self.fourpie0)
+            ptcls.dipole_energy = 2.0 * pi * dipole**2 / (3.0 * self.box_volume * self.fourpie0)
 
     def update_brute(self, ptcls):
         """
@@ -692,11 +692,11 @@ class Potential:
             self.measure,
             ptcls.rdf_hist,
         )
-        # if self.type != "lj":
-        #     # Mie Energy of charged systems
-        #     # J-M.Caillol, J Chem Phys 101 6080(1994) https: // doi.org / 10.1063 / 1.468422
-        #     dipole = ptcls.charges[:, newaxis] *  ptcls.pos
-        #     ptcls.potential_energy += 2.0 * pi * (dipole**2).sum(axis = -1) / (3.0 * self.box_volume * self.fourpie0)
+        if self.type != "lj":
+            # Mie Energy of charged systems
+            # J-M.Caillol, J Chem Phys 101 6080(1994) https: // doi.org / 10.1063 / 1.468422
+            dipole = ptcls.charges[:, newaxis] *  ptcls.pos
+            ptcls.dipole_energy = 2.0 * pi * dipole**2 / (3.0 * self.box_volume * self.fourpie0)
 
     def update_pm(self, ptcls):
         """Calculate the pm part of the potential and acceleration.
