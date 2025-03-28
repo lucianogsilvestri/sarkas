@@ -722,8 +722,8 @@ class Potential:
             self.pppm_cao,
         )
 
-        # Ewald Self-energy
-        U_long -= self.QFactor * self.pppm_alpha_ewald / sqrt(pi) / self.total_num_ptcls
+        # Ewald self-energy of each particle
+        U_long -= ptcls.charges**2 * self.pppm_alpha_ewald / sqrt(pi)
 
         ptcls.potential_energy += U_long
 
