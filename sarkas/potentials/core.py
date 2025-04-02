@@ -315,6 +315,7 @@ class Potential:
 
         # Needed physical constants
         self.fourpie0 = params.fourpie0
+        self.eps0 = params.eps0
         self.a_ws = params.a_ws
         self.kB = params.kB
         self.eV2K = params.eV2K
@@ -664,12 +665,6 @@ class Potential:
             ptcls.rdf_hist,
         )
 
-        if self.type != "lj":
-            # Mie Energy of charged systems
-            # J-M.Caillol, J Chem Phys 101 6080(1994) https: // doi.org / 10.1063 / 1.468422
-            dipole = ptcls.charges[:, newaxis] *  ptcls.pos
-            ptcls.dipole_energy = 2.0 * pi * dipole**2 / (3.0 * self.box_volume * self.fourpie0)
-
     def update_brute(self, ptcls):
         """
         Calculate particles' acceleration and potential brutally.
@@ -692,11 +687,6 @@ class Potential:
             self.measure,
             ptcls.rdf_hist,
         )
-        if self.type != "lj":
-            # Mie Energy of charged systems
-            # J-M.Caillol, J Chem Phys 101 6080(1994) https: // doi.org / 10.1063 / 1.468422
-            dipole = ptcls.charges[:, newaxis] *  ptcls.pos
-            ptcls.dipole_energy = 2.0 * pi * dipole**2 / (3.0 * self.box_volume * self.fourpie0)
 
     def update_pm(self, ptcls):
         """Calculate the pm part of the potential and acceleration.
@@ -709,7 +699,7 @@ class Potential:
         """
         U_long, acc_l_r = pm_update(
             ptcls.pos,
-            ptcls.charges,
+            ptcls.charges / sqrt(self.fourpie0),  # The division by fourpie0 is needed for MKS units
             ptcls.masses,
             self.pppm_mesh,
             self.pppm_h_array,
@@ -723,11 +713,16 @@ class Potential:
         )
 
         # Ewald self-energy of each particle
-        U_long -= ptcls.charges**2 * self.pppm_alpha_ewald / sqrt(pi)
+        U_long -= ptcls.charges**2 * self.pppm_alpha_ewald / sqrt(pi) / self.fourpie0
 
         ptcls.potential_energy += U_long
 
         ptcls.acc += acc_l_r
+
+        # Self-energy correction to the total potential energy 
+        # J-M.Caillol, J Chem Phys 101 6080 (1994) https: // doi.org / 10.1063 / 1.468422
+        dipole = ptcls.charges[:, newaxis] *  ptcls.pos
+        ptcls.dipole_energy = 2.0 * pi * abs(dipole)**2 / (3.0 * self.eps0 * self.box_volume )
 
     def update_pppm(self, ptcls):
         """Calculate particles' potential and accelerations using pppm method.
