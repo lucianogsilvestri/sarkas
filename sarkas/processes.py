@@ -18,12 +18,14 @@ from matplotlib.colors import LogNorm
 from numpy import (
     arange,
     array,
+    full,
     int64,
     linspace,
     log2,
     log10,
     logspace,
     meshgrid,
+    pi,
     sqrt,
     zeros,
 )
@@ -45,7 +47,6 @@ from .time_evolution.integrators import Integrator
 from .utilities.io import InputOutput, print_to_logger
 from .utilities.maths import force_error_analytic_pp, force_error_approx_pppm
 from .utilities.timing import SarkasTimer
-
 
 class Process:
     """Parent class for :class:`sarkas.process.PreProcess`, :class:`sarkas.process.Simulation`, and
@@ -83,8 +84,6 @@ class Process:
         Class handling the IO in Sarkas.
 
     """
-
-    from .potentials.core import Potential
 
     def __init__(
         self,
@@ -126,7 +125,6 @@ class Process:
         else:
             self.species = []
 
-        self.threads_ls = []
         self.observables_dict = {}
         self.transport_dict = {}
 
@@ -333,7 +331,6 @@ class Process:
                 sizes = array([eq_dump_size, prod_dump_size, mag_dump_size])            
         self.io.directory_size_report(sizes, process=self.__name__)
         
-
     def evolve(self, phase, thermalization, it_start, it_end, dump_step):
         """
         Evolve the system forward in time.
@@ -364,7 +361,9 @@ class Process:
             self.integrator.update(self.particles)
 
             if (it + 1) % dump_step == 0:
+
                 self.particles.calculate_observables()
+                
                 # self.io.dump(phase, self.particles, it + 1)
                 time = self.integrator.dt * (it + 1)
                 self.io.save_timestep_data(it + 1, dump_step, time, self.particles)
@@ -372,61 +371,6 @@ class Process:
             if thermalization and (it + 1 >= self.integrator.thermalization_timestep):
                 self.particles.calculate_species_kinetic_temperature()
                 self.integrator.thermostate(self.particles)
-
-    # def evolve_loop_threading(self, phase, thermalization, it_start, it_end, dump_step):
-    #     """
-    #     Evolve the system forward in time. This method is similar to :meth:`sarkas.processes.Process.evolve_loop` with
-    #     the only difference that it uses `threading` for saving data, it starts a new thread to save the data.
-    #     In the case of small number of particles this can slow down the simulation, therefore it must be chosen by setting
-    #     the parameters `threading = True` in the input file or in the :class:`sarkas.core.Parameters` class.
-
-    #     Parameters
-    #     ----------
-    #     phase: str
-    #         Indicates the stage of the simulation used for saving dumps in the right directory. \n
-    #         Choices = ("equilibration", "production", "magnetization")
-
-    #     thermalization : bool
-    #         Indicates whether to apply the thermostat or not.
-
-    #     it_start: int
-    #         Initial timestep of the loop.
-
-    #     it_end: int
-    #         Final timestep of the loop.
-
-    #     dump_step: int
-    #         Interval for dumping data.
-
-    #     """
-    #     for it in trange(it_start, it_end, disable=not self.parameters.verbose):
-    #         # Calculate the Potential energy and update particles' data
-
-    #         self.integrator.update(self.particles)
-
-    #         if (it + 1) % dump_step == 0:
-    #             th = Thread(
-    #                 target=self.io.dump,
-    #                 name=f"Sarkas_{phase.capitalize()}_Thread - {it + 1}",
-    #                 args=(
-    #                     phase,
-    #                     self.particles.__deepcopy__(),
-    #                     it + 1,
-    #                 ),
-    #             )
-
-    #             self.threads_ls.append(th)
-
-    #             th.start()
-
-    #         if thermalization and (it + 1 >= self.integrator.thermalization_timestep):
-    #             self.integrator.thermostate(self.particles)
-
-    #     # Wait for all the threads to finish
-    #     for x in self.threads_ls:
-    #         x.join()
-
-    #     self.threads_ls.clear()
 
     def initialization(self):
         """Initialize all classes."""
@@ -581,7 +525,7 @@ class Process:
                 # Restore the original value for future use
                 self.parameters.load_method = old_method
                 # Update the log file. It is set to the simulation log in the parameters class, but it is correct in the IO class.
-                self.parameters.log_file = self.io.log_file
+                self.parameters.log_file = self.io.log_file      
         else:
             self.initialization()
 
@@ -742,17 +686,16 @@ class PreProcess(Process):
         # array([16, 24, 32, 48, 56, 64, 72, 88, 96, 112, 128], dtype=int64)
         self.pm_caos = arange(1, 8, dtype=int64)
         self.pp_cells = arange(3, 16, dtype=int64)
-        self.kappa = None
         super().__init__(input_file)
 
     def analytical_approx_pppm(self):
         """Calculate the total force error as given in :cite:`Dharuman2017`."""
 
-        a_min = self.potential.pppm_alpha_ewald * 0.5
-        a_max = self.potential.pppm_alpha_ewald * 1.5
+        a_min = self.potential.pppm_alpha_ewald * 0.25
+        a_max = self.potential.pppm_alpha_ewald * 2.0
 
         r_min = self.potential.rc * 0.5
-        r_max = self.potential.rc * 1.5
+        r_max = self.potential.rc * 2.0
 
         alphas = linspace(a_min, a_max, 101)
         rcuts = linspace(r_min, r_max, 101)
@@ -763,6 +706,8 @@ class PreProcess(Process):
 
         # TODO: Fix this hack
         potential_copy = self.potential.__copy__()
+        # Reset the potential parameters
+        potential_copy.estimate_parameters = False
         potential_copy.setup(self.parameters, self.species)
         # potential_copy = self.potential.__deepcopy__()
         for ia, alpha in enumerate(alphas):
@@ -892,27 +837,6 @@ class PreProcess(Process):
         )
         # Line Plot
         self.make_pppm_line_plot(rcuts, alphas, chosen_alpha, chosen_rcut, total_force_error)
-
-    def make_lagrangian_plot(self):
-        "TODO: complete this."
-        c_mesh, m_mesh = meshgrid(self.pp_cells, self.pm_meshes)
-        fig = plt.figure()
-        ax = fig.add_subplot(111)  # projection='3d')
-        # CS = ax.plot_surface(m_mesh, c_mesh, self.lagrangian, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
-        CS = ax.contourf(
-            m_mesh, c_mesh, self.lagrangian, norm=LogNorm(vmin=self.lagrangian.min(), vmax=self.lagrangian.max())
-        )
-        CS2 = ax.contour(CS, colors="w")
-        ax.clabel(CS2, fmt="%1.0e", colors="w")
-        fig.colorbar(CS)
-        ax.scatter(self.best_mesh, self.best_cells, s=200, c="k")
-        ax.set_xlabel("Mesh size")
-        ax.set_ylabel(r"Cells = $L/r_c$")
-        ax.set_title("2D Lagrangian")
-        fig.savefig(join(self.io.directory_tree["preprocessing"]["path"], "2D_Lagrangian.png"))
-
-        # ax[1].set_xticks([8, 16, 32, 64, 128])
-        # ax[1].set_xticklabels([8, 16, 32, 64, 128])
 
     def make_pppm_line_plot(self, rcuts, alphas, chosen_alpha, chosen_rcut, total_force_error):
         """
@@ -1213,17 +1137,6 @@ class PreProcess(Process):
         chosen_alpha = self.potential.pppm_alpha_ewald * self.parameters.a_ws
         chosen_rcut = self.potential.rc / self.parameters.a_ws
 
-        # mesh_dir = join(self.pppm_plots_dir, 'Mesh_{}'.format(self.potential.pppm_mesh[0]))
-        # if not exists(mesh_dir):
-        #     mkdir(mesh_dir)
-        #
-        # cell_num = int(self.parameters.box_lengths.min() / self.potential.rc)
-        # cell_dir = join(mesh_dir, 'Cells_{}'.format(cell_num))
-        # if not exists(cell_dir):
-        #     mkdir(cell_dir)
-        #
-        # self.pppm_plots_dir = cell_dir
-
         # Color Map
         self.make_pppm_color_map(rcuts, alphas, chosen_alpha, chosen_rcut, total_force_error)
 
@@ -1284,9 +1197,6 @@ class PreProcess(Process):
 
         # Clean everything
         plt.close("all")
-
-        # Set the screening parameter
-        self.kappa = self.potential.matrix[0, 0, 1] if self.potential.type == "yukawa" else 0.0
 
         if timing:
             self.time_n_space_estimates(loops=loops)
@@ -1436,86 +1346,149 @@ class PreProcess(Process):
 
         self.directory_sizes()
 
-    def timing_study_calculation(self):
-        """Estimate the best number of mesh points and cutoff radius."""
-
+    def timing_study_calculation(self, target_error=1e-5, pp_cells=None, pm_meshes=None, pm_caos=None, method="brute_force"):
+        """
+        Estimate optimal PPPM parameters balancing accuracy and performance.
+        
+        Parameters
+        ----------
+        target_error : float, optional
+            Target force error tolerance. If provided, will find fastest configuration meeting this error. Default is 1e-5.
+        pp_cells : numpy.ndarray, optional
+            Array of cells for PP calculations. If None uses the attribute :attr:`PreProcess.pp_cells`.
+        pm_meshes : numpy.ndarray, optional
+            Array of mesh sizes for PM calculations. If None uses the attribute :attr:`PreProcess.pm_meshes`.
+        pm_caos : numpy.ndarray, optional
+            Array of charge assignment orders. If None uses the attribute :attr:`PreProcess.pm_caos`.
+        method : str, optional
+            Method for parameter optimization: "brute_force" or "automated". Default is "brute_force".
+        
+        Returns
+        -------
+        dict
+            Dictionary containing the optimal parameters and Pareto-optimal configurations.
+        
+        Notes
+        -----
+        User-provided parameters are saved as attributes (self.user_pp_cells, 
+        self.user_pm_meshes, self.user_pm_caos) and are respected without modification. 
+        """
+        # Setup directories for outputs
         self.pppm_plots_dir = join(self.io.directory_tree["preprocessing"]["path"], "PPPM_Plots")
         if not exists(self.pppm_plots_dir):
             mkdir(self.pppm_plots_dir)
 
-        msg = "\n\n{:=^70} \n".format(" Timing Study ")
+        msg = "\n\n{:=^70} \n".format(f" PPPM Parameter Optimization ({method}) ")
         self.io.write_to_logger(msg)
 
+        # Store original values to restore later
         self.input_rc = self.potential.rc
         self.input_mesh = self.potential.pppm_mesh.copy()
         self.input_alpha = self.potential.pppm_alpha_ewald
         self.input_cao = self.potential.pppm_cao.copy()
+        self.input_aliases = self.potential.pppm_aliases.copy()
 
-        data = []
-        # Rescaling constant to calculate the PP force error
-        rescaling_constant = (
-            sqrt(self.potential.total_num_ptcls) * self.potential.a_ws**2 / sqrt(self.potential.pbox_volume)
-        )
-
-        # Set the maximum number of cells to be L / (2 * a_ws). 2* a_ws is the closest two particles can be.
+        # Calculate maximum allowed cells based on minimum particle separation
         max_cells = int(0.5 * self.parameters.box_lengths.min() / self.parameters.a_ws)
-        if max_cells != self.pp_cells[-1]:
-            self.pp_cells = arange(3, max_cells, dtype=int)
+        
+        # Rescaling constant for PP force error calculation
+        rescaling_constant = (
+            sqrt(self.potential.total_num_ptcls) * self.potential.a_ws**2 / 
+            sqrt(self.potential.pbox_volume)
+        )
+        
+        # Choose optimization method
+        if method.lower() == "automated":
+            return self._automated_parameter_selection(target_error, rescaling_constant, max_cells)
+        else:  # Default to brute force
+            return self._brute_force_parameter_selection(pp_cells, pm_meshes, pm_caos, target_error, max_cells)
 
-        # Start the loop for averaging PM and PP acceleration times
-        for _, m in enumerate(
-            tqdm(self.pm_meshes, desc="Looping over the PM meshes", disable=not self.parameters.verbose)
-        ):
+    def _brute_force_parameter_selection(self, pp_cells=None, pm_meshes=None, pm_caos=None, 
+                                        target_error=None, max_cells=None):
+        """
+        Perform brute force parameter sweep to find optimal PPPM parameters.
+        
+        Parameters are the same as timing_study_calculation.
+        """
+        # Save user inputs in self attributes for reference
+        if pp_cells is not None:
+            self.user_pp_cells = pp_cells.copy() if hasattr(pp_cells, 'copy') else pp_cells
+        if pm_meshes is not None:
+            self.user_pm_meshes = pm_meshes.copy() if hasattr(pm_meshes, 'copy') else pm_meshes
+        if pm_caos is not None:
+            self.user_pm_caos = pm_caos.copy() if hasattr(pm_caos, 'copy') else pm_caos
+        
+        # Use provided parameters or defaults
+        if pp_cells is None:
+            # If no user input, calculate based on max_cells, but respect original defaults
+            if max_cells is not None and max_cells > self.pp_cells[-1]:
+                pp_cells = arange(3, max_cells, dtype=int)
+            else:
+                pp_cells = self.pp_cells
+        # User input is respected - we don't modify it based on max_cells
+            
+        if pm_meshes is None:
+            pm_meshes = self.pm_meshes
+        if pm_caos is None:
+            pm_caos = self.pm_caos
+
+        # Data collection for all parameter combinations
+        data = []
+
+        # Progress tracking for all parameter combinations
+        total_combinations = len(pm_meshes) * len(pm_caos) * len(pp_cells)
+        progress = tqdm(total=total_combinations, 
+                    desc="Testing PPPM parameter combinations", 
+                    disable=not self.parameters.verbose)
+
+        # Start the parameter sweep
+        for _, m in enumerate(pm_meshes):
             # Setup PM params
-            self.potential.pppm_mesh = m * array([1, 1, 1], dtype=int)
+            self.potential.pppm_mesh = full(3, m, dtype=int)
             self.potential.pppm_alpha_ewald = 0.3 * m / self.potential.box_lengths.min()
             self.potential.pppm_h_array = self.potential.box_lengths / self.potential.pppm_mesh
-            self.io.write_to_logger(f"\n Mesh = {m, m, m}:\n\t cao = ")
 
-            for _, cao in enumerate(self.pm_caos):
-                self.io.write_to_logger(f"{cao}, ")
-                self.potential.pppm_cao = cao * array([1, 1, 1], dtype=int)
-
-                # Update the potential matrix since alpha has changed
-                # if self.potential.type == "qsp":
-                #     self.potential.pot_update_params(self.potential, self.species)
-                # else:
+            for _, cao in enumerate(pm_caos):
+                self.potential.pppm_cao = full(3, cao, dtype=int)
+                
+                # Update potential parameters
                 self.potential.pot_update_params(self.potential, self.species)
-                # The Green's function depends on alpha, Mesh and cao. It also updates the pppm_pm_err
+                
+                # Calculate Green's function and PM error
                 green_time = self.green_function_timer()
 
-                # Calculate the PM acceleration timing 3x and average
+                # Measure PM acceleration time (average of 3 runs)
                 pm_acc_time = 0.0
                 for it in range(3):
                     self.timer.start()
                     self.potential.update_pm(self.particles)
                     pm_acc_time += self.timer.stop() / 3.0
 
-                # Loop over the number of cells
-                for _, cell in enumerate(self.pp_cells):
-                    # Cutoff radius is the side of the cells.
+                # For each cutoff radius option
+                for _, cell in enumerate(pp_cells):
+                    # Update progress bar
+                    progress.update(1)
+                    
+                    # Set cutoff radius based on cell size
                     self.potential.rc = self.potential.box_lengths.min() / cell
 
-                    # Update the potential pp error
-                    self.potential.pppm_pp_err = force_error_analytic_pp(
-                        self.potential.type,
-                        self.potential.rc,
-                        self.potential.screening_length,
-                        self.potential.pppm_alpha_ewald,
-                        rescaling_constant,
-                    )
+                    # Calculate PPPM error approximation
+                    self.potential.calculate_force_error()
 
-                    # Note: the PM error does not depend on rc. Only on alpha and it is given by G_k
-                    self.potential.force_error = sqrt(self.potential.pppm_pp_err**2 + self.potential.pppm_pm_err**2)
-
-                    # The PP acceleration does not depend on cao.
-                    # However, it still needs to be in its loop for updating the dataframe.
+                    # Measure PP acceleration time (average of 3 runs)
                     pp_acc_time = 0.0
                     for it in range(3):
                         self.timer.start()
                         self.potential.update_linked_list(self.particles)
                         pp_acc_time += self.timer.stop() / 3.0
 
+                    # Total acceleration time
+                    total_acc_time = pp_acc_time + pm_acc_time
+                    
+                    # Error metrics
+                    pp_pm_ratio = self.potential.pppm_pp_err / self.potential.pppm_pm_err
+
+                    # Store all the data
                     data_row = [
                         cell,
                         self.potential.rc,
@@ -1538,13 +1511,20 @@ class PreProcess(Process):
                         green_time * 1.0e-9,
                         pp_acc_time * 1.0e-9,
                         pm_acc_time * 1.0e-9,
-                        (pp_acc_time + pm_acc_time) * 1.0e-9,
+                        total_acc_time * 1.0e-9,                        
                         self.potential.pppm_pp_err,
                         self.potential.pppm_pm_err,
                         self.potential.force_error,
+                        self.potential.pppm_pm_err_approx,
+                        self.potential.force_error_approx,
+                        pp_pm_ratio,  # Added PP/PM error ratio
                     ]
                     data.append(data_row)
 
+        # Close progress bar
+        progress.close()
+
+        # Create DataFrame with all results
         column_names = [
             "pp_cells",
             "r_cut",
@@ -1571,131 +1551,625 @@ class PreProcess(Process):
             "pppm_pp_error [measured]",
             "pppm_pm_error [measured]",
             "force error [measured]",
+            "pppm_pm_error [approx]",
+            "force error [approx]",
+            "pp_pm_error_ratio"  # Added PP/PM error ratio
         ]
 
         self.dataframe = DataFrame(data, columns=column_names)
-        csv_location = join(self.io.directory_tree["preprocessing"]["path"], f"TimingStudy_data_{self.io.job_id}.csv")
+        csv_location = join(self.io.directory_tree["preprocessing"]["path"], 
+                            f"TimingStudy_data_{self.io.job_id}.csv")
         self.dataframe.to_csv(csv_location, index=False)
 
-        # Reset the original values.
+        # Find and save Pareto-optimal configurations
+        pareto_points, best_point = self.find_pareto_optimal_configs(target_error=target_error)
+        
+        # Run the pppm_estimate for the best parameters
+        self.potential.rc = best_point["r_cut"]
+        self.potential.pppm_mesh = best_point[["M_x", "M_y", "M_z"]].values.astype(int) 
+        self.potential.pppm_alpha_ewald = best_point["pppm_alpha_ewald"]
+        self.potential.pppm_cao = best_point[["pppm_cao_x", "pppm_cao_y", "pppm_cao_z"]].values.astype(int)
+        self.potential.estimate_parameters = False
+        self.pppm_approximation()
+
+        # Reset to original values
         self.potential.rc = self.input_rc
         self.potential.pppm_mesh = self.input_mesh.copy()
         self.potential.pppm_alpha_ewald = self.input_alpha
         self.potential.pppm_cao = self.input_cao.copy()
+        # Set up potential with original parameters 
+        self.potential.estimate_parameters = False
         self.potential.setup(self.parameters, self.species)
-
+                
+        # Report file locations
         msg = (
-            f"\nThe force error and computation times can be found in a dataframe at PreProcess.dataframe "
-            f"and the corresponding csv file is saved in {csv_location}"
+            f"\nResults saved to:\n"
+            f"  Full parameter sweep data: {csv_location}\n"
+            f"  Pareto-optimal configurations: {join(self.io.directory_tree['preprocessing']['path'], f'Pareto_optimal_PPPM_{self.io.job_id}.csv')}\n"
+            f"  Visualizations: {self.pppm_plots_dir}"
         )
+        if self.parameters.verbose:
+                print(msg)
         self.io.write_to_logger(msg)
 
-        # pm_popt = zeros((len(self.pm_caos), 2))
-        # for ic, cao in enumerate(self.pm_caos):
-        #     # Fit the PM times
-        #     pm_popt[ic, :], _ = curve_fit(
-        #         lambda x, a, b: a + 5 * b * x ** 3 * log2(x ** 3), self.pm_meshes, pm_times[:, ic]
-        #     )
-        #     fit_str = (
-        #         r"Fit = $a_2 + 5 a_3 M^3 \log_2(M^3)$  [s]"
-        #         + "\n"
-        #         + r"$a_2 = ${:.4e}, $a_3 = ${:.4e} ".format(pm_popt[ic, 0], pm_popt[ic, 1])
-        #     )
-        #     print(f"\nPM Time for cao {cao}: " + fit_str)
-        #
-        #     # Fit the PP Times
-        #     pp_popt, _ = curve_fit(
-        #         lambda x, a, b: a + b / x ** 3,
-        #         self.pp_cells,
-        #         pp_times.mean(axis=0),
-        #         p0=[pp_times.mean(axis=0)[0], self.parameters.total_num_ptcls],
-        #         bounds=(0, [pp_times.mean(axis=0)[0], 1e9]),
-        #     )
-        #     fit_pp_str = (
-        #         r"Fit = $a_0 + a_1 / N_c^3$  [s]"
-        #         + "\n"
-        #         + "$a_0 = ${:.4e},  $a_1 = ${:.4e}".format(pp_popt[0], pp_popt[1])
-        #     )
-        #     print(f"\nPP Time cao {cao}:" + fit_pp_str)
-        #
-        #     # Start the plot
-        #     fig, (ax_pp, ax_pm) = plt.subplots(1, 2, sharey=True, figsize=(12, 7))
-        #     ax_pm.plot(self.pm_meshes, pm_times[:, ic], "o", label=f"Measured cao: {cao}")
-        #     ax_pm.plot(
-        #         self.pm_meshes,
-        #         pm_popt[ic, 0] + 5 * pm_popt[ic, 1] * self.pm_meshes ** 3 * log2(self.pm_meshes ** 3),
-        #         ls="--",
-        #         label="Fit",
-        #     )
-        #     ax_pm.annotate(
-        #         text=fit_str,
-        #         xy=(self.pm_meshes[-1], pm_times[-1, ic]),
-        #         xytext=(self.pm_meshes[0], pm_times[-1, ic]),
-        #         bbox=dict(boxstyle="round4", fc="white", ec="k", lw=2),
-        #     )
-        #
-        #     ax_pm.set(title=f"PM calculation time and estimate @ cao = {cao}", yscale="log", xlabel="Mesh size")
-        #     ax_pm.set_xscale("log", base=2)
-        #     ax_pm.legend(ncol=2)
-        #
-        #     # Scatter Plot the PP Times
-        #     self.tot_time_map = zeros(pp_times.shape)
-        #     for j, mesh_points in enumerate(self.pm_meshes):
-        #         self.tot_time_map[j, :] = pm_times[j, ic] + pp_times[j, :]
-        #         ax_pp.plot(self.pp_cells, pp_times[j], "o", label=r"@ Mesh {}$^3$".format(mesh_points))
-        #
-        #     # Plot the Fit PP times
-        #     ax_pp.plot(self.pp_cells, pp_popt[0] + pp_popt[1] / self.pp_cells ** 3, ls="--", label="Fit")
-        #     ax_pp.legend(ncol=2)
-        #     ax_pp.annotate(
-        #         text=fit_pp_str,
-        #         xy=(self.pp_cells[0], pp_times[0, 0]),
-        #         xytext=(self.pp_cells[0], pp_times[-1, -1]),
-        #         bbox=dict(boxstyle="round4", fc="white", ec="k", lw=2),
-        #     )
-        #     ax_pp.set(
-        #         title=f"PP calculation time and estimate @ cao = {cao}",
-        #         yscale="log",
-        #         ylabel="CPU Times [s]",
-        #         xlabel=r"$N_c $ = Cells",
-        #     )
-        #     fig.tight_layout()
-        #     fig.savefig(join(self.pppm_plots_dir, f"Times_cao_{cao}_" + self.io.job_id + ".png"))
-        #
-        #     self.make_force_v_timing_plot(ic)
-        # self.lagrangian = np.empty((len(self.pm_meshes), len(self.pp_cells)))
-        # self.tot_times = np.empty((len(self.pm_meshes), len(self.pp_cells)))
-        # self.pp_times = pp_times.copy()
-        # self.pm_times = pm_times.copy()
-        # for i in range(len(self.pm_meshes)):
-        #     self.tot_times[i, :] = pp_times[i] + pm_times[i]
-        #     self.lagrangian[i, :] = self.force_error_map[i, :]
-        #
-        # best = np.unravel_index(self.lagrangian.argmin(), self.lagrangian.shape)
-        # self.best_mesh = self.pm_meshes[best[0]]
-        # self.best_cells = self.pp_cells[best[1]]
+    def _automated_parameter_selection(self, target_error=1e-5, rescaling_constant=None, max_cells=None):
+        """
+        Perform automated parameter optimization using a directed search approach.
+        
+        Instead of testing all combinations, this method uses iterative refinement and
+        theoretical relationships to quickly converge on optimal parameters.
+        
+        Parameters are the same as timing_study_calculation.
+        """
+        from scipy.optimize import minimize
+        
+        self.io.write_to_logger(f"\nRunning automated parameter optimization (target error: {target_error:.2e})")
+        
+        # Define parameter bounds
+        cao_bounds = (1, 7)
+        mesh_bounds = (8, 128)
+        alpha_factor_bounds = (0.2, 0.5)  # Alpha typically = factor * mesh / box_length
+        rc_factor_bounds = (0.4, 2.0)  # rc typically = box_length / (factor * mesh)
+        
+        # Initialize data collection
+        data = []
+        
+        # First, determine optimal charge assignment order (CAO)
+        # CAO primarily affects accuracy vs setup cost of PM
+        cao_options = [3, 5, 7]
+        cao_results = []
+        
+        for cao in cao_options:
+            # Use a medium mesh for testing
+            mesh = 32
+            self.potential.pppm_mesh = full(3, mesh, dtype=int)
+            self.potential.pppm_cao = full(3, cao, dtype=int)
+            self.potential.pppm_alpha_ewald = 0.3 * mesh / self.potential.box_lengths.min()
+            self.potential.pppm_h_array = self.potential.box_lengths / self.potential.pppm_mesh
+            
+            # Measure setup time (Green's function calculation)
+            self.potential.pot_update_params(self.potential, self.species)
 
-        # self.make_lagrangian_plot()
-        #
-        # # set the best parameter
-        # self.potential.pppm_mesh = self.best_mesh * np.ones(3, dtype=int)
-        # self.potential.rc = self.parameters.box_lengths.min() / self.best_cells
-        # self.potential.pppm_alpha_ewald = 0.3 * self.best_mesh / self.parameters.box_lengths.min()
-        # self.potential.pppm_setup(self.parameters)
-        #
-        # # print report
-        # self.io.timing_study(self)
-        # # time prediction
-        # self.predicted_times = pp_times[best] + pm_times[best[0]]
-        # # Print estimate of run times
-        # self.io.time_stamp('Equilibration',
-        #                    self.timer.time_division(self.predicted_times * self.parameters.equilibration_steps))
-        # self.io.time_stamp('Production',
-        #                    self.timer.time_division(self.predicted_times * self.parameters.production_steps))
-        # self.io.time_stamp('Total Run',
-        #                    self.timer.time_division(self.predicted_times * (self.parameters.equilibration_steps
-        #                                                                     + self.parameters.production_steps)))
+            green_time = self.green_function_timer()
+            
+            # Measure PM time
+            pm_acc_time = 0.0
+            for it in range(3):
+                self.timer.start()
+                self.potential.update_pm(self.particles)
+                pm_acc_time += self.timer.stop() / 3.0
+            
+            # Store results
+            cao_results.append({
+                'cao': cao,
+                'green_time': green_time * 1.0e-9,
+                'pm_time': pm_acc_time * 1.0e-9,
+                'pm_error': self.potential.pppm_pm_err
+            })
+        
+        # Find best CAO based on error/time tradeoff
+        for result in cao_results:
+            result['score'] = result['pm_error'] * (result['green_time'] + result['pm_time'])
+        
+        best_cao_result = min(cao_results, key=lambda x: x['score'])
+        best_cao = best_cao_result['cao']
+        
+        msg = f"\nSelected optimal CAO: {best_cao}"
+        if self.parameters.verbose:
+            print(msg)
+        self.io.write_to_logger(msg)
+        
+        # Now define the objective function for the optimizer
+        def objective_function(params):
+            """
+            Objective function for parameter optimization.
+            
+            Parameters
+            ----------
+            params : array-like
+                [mesh_size, alpha_factor, rc_factor]
+            
+            Returns
+            -------
+            float
+                Weighted combination of time and error, or penalty if error exceeds target.
+            """
+            mesh_size, alpha_factor, rc_factor = params
+            
+            # Convert parameters to actual values
+            mesh = int(mesh_size)  # Round to nearest integer
+            if mesh < mesh_bounds[0]:
+                mesh = mesh_bounds[0]
+            if mesh > mesh_bounds[1]:
+                mesh = mesh_bounds[1]
+            
+            alpha = alpha_factor * mesh / self.potential.box_lengths.min()
+            rc = self.potential.box_lengths.min() / (rc_factor * mesh)
+            
+            # Set parameters in potential
+            self.potential.pppm_mesh = full(3, mesh, dtype=int)
+            self.potential.pppm_alpha_ewald = alpha
+            self.potential.pppm_cao = full(3, best_cao, dtype=int)
+            self.potential.rc = rc
+            self.potential.pppm_h_array = self.potential.box_lengths / self.potential.pppm_mesh
+            
+            # Update potential
+            self.potential.pot_update_params(self.potential, self.species)
+            green_time = self.green_function_timer() * 1.0e-9
+            
+            # Calculate error
+            pp_err = force_error_analytic_pp(
+                self.potential.type,
+                self.potential.rc,
+                self.potential.screening_length,
+                self.potential.pppm_alpha_ewald,
+                rescaling_constant,
+            )
+            
+            # Calculate total force error
+            total_err = sqrt(pp_err**2 + self.potential.pppm_pm_err**2)
+            
+            # Measure performance
+            pm_acc_time = 0.0
+            for it in range(3):
+                self.timer.start()
+                self.potential.update_pm(self.particles)
+                pm_acc_time += self.timer.stop() / 3.0
+            pm_acc_time *= 1.0e-9
+            
+            pp_acc_time = 0.0
+            for it in range(3):
+                self.timer.start()
+                self.potential.update_linked_list(self.particles)
+                pp_acc_time += self.timer.stop() / 3.0
+            pp_acc_time *= 1.0e-9
+            
+            total_time = pm_acc_time + pp_acc_time
+            
+            # Store the data for this evaluation
+            data_row = [
+                int(self.potential.box_lengths.min() / rc),  # pp_cells
+                rc,
+                alpha,
+                best_cao,
+                best_cao,
+                best_cao,
+                mesh,
+                mesh,
+                mesh,
+                mesh**3,
+                self.potential.pppm_h_array[0],
+                self.potential.pppm_h_array[1],
+                self.potential.pppm_h_array[2],
+                self.potential.pppm_h_array.prod(),
+                self.potential.pppm_h_array[0] * alpha,
+                self.potential.pppm_h_array[1] * alpha,
+                self.potential.pppm_h_array[2] * alpha,
+                self.potential.pppm_h_array.prod() * alpha**3,
+                green_time,
+                pp_acc_time,
+                pm_acc_time,
+                total_time,
+                pp_err,
+                self.potential.pppm_pm_err,
+                total_err,
+                pp_err / self.potential.pppm_pm_err,  # PP/PM error ratio
+            ]
+            data.append(data_row)
+            
+            # Return objective value
+            if total_err <= target_error:
+                # If we meet the error target, minimize time
+                return total_time
+            else:
+                # If we don't meet the error target, heavily penalize
+                return total_time + 1000 * (total_err / target_error - 1)
+        
+        # Initial guess: balanced configuration
+        initial_guess = [32, 0.3, 5.0]  # [mesh_size, alpha_factor, rc_factor]
+        
+        # Set up bounds
+        bounds = [
+            mesh_bounds,
+            alpha_factor_bounds,
+            rc_factor_bounds
+        ]
+        
+        # Run the optimization
+        if self.parameters.verbose:
+            print("\nOptimizing mesh, alpha, and rc parameters...")
 
+        result = minimize(
+            objective_function,
+            initial_guess,
+            method='L-BFGS-B',
+            bounds=bounds,
+            options={'maxiter': 20}
+        )
+        
+        # Get optimized parameters
+        opt_mesh, opt_alpha_factor, opt_rc_factor = result.x
+        
+        # Convert to actual values
+        opt_mesh = int(round(opt_mesh))
+        if opt_mesh < mesh_bounds[0]:
+            opt_mesh = mesh_bounds[0]
+        if opt_mesh > mesh_bounds[1]:
+            opt_mesh = mesh_bounds[1]
+        
+        opt_alpha = opt_alpha_factor * opt_mesh / self.potential.box_lengths.min()
+        opt_rc = self.potential.box_lengths.min() / (opt_rc_factor * opt_mesh)
+        
+        # Set optimal parameters and measure final performance
+        self.potential.pppm_mesh = full(3, opt_mesh, dtype=int)
+        self.potential.pppm_alpha_ewald = opt_alpha
+        self.potential.pppm_cao = full(3, best_cao, dtype=int)
+        self.potential.rc = opt_rc
+        self.potential.pppm_h_array = self.potential.box_lengths / self.potential.pppm_mesh
+        
+        # Update potential
+        self.potential.pot_update_params(self.potential, self.species)
+        green_time = self.green_function_timer() * 1.0e-9
+        
+        # Calculate error
+        pp_err = force_error_analytic_pp(
+            self.potential.type,
+            self.potential.rc,
+            self.potential.screening_length,
+            self.potential.pppm_alpha_ewald,
+            rescaling_constant,
+        )
+        
+        # Calculate total force error
+        total_err = sqrt(pp_err**2 + self.potential.pppm_pm_err**2)
+        
+        # Measure final performance
+        pm_acc_time = 0.0
+        for it in range(3):
+            self.timer.start()
+            self.potential.update_pm(self.particles)
+            pm_acc_time += self.timer.stop() / 3.0
+        pm_acc_time *= 1.0e-9
+        
+        pp_acc_time = 0.0
+        for it in range(3):
+            self.timer.start()
+            self.potential.update_linked_list(self.particles)
+            pp_acc_time += self.timer.stop() / 3.0
+        pp_acc_time *= 1.0e-9
+        
+        total_time = pm_acc_time + pp_acc_time
+        
+        # Create DataFrame with all results
+        column_names = [
+            "pp_cells",
+            "r_cut",
+            "pppm_alpha_ewald",
+            "pppm_cao_x",
+            "pppm_cao_y",
+            "pppm_cao_z",
+            "M_x",
+            "M_y",
+            "M_z",
+            "Mesh volume",
+            "h_x",
+            "h_y",
+            "h_z",
+            "h_M volume",
+            "h_x alpha",
+            "h_y alpha",
+            "h_z alpha",
+            "h_M a_ws^3",
+            "G_k time [s]",
+            "pp_acc_time [s]",
+            "pm_acc_time [s]",
+            "tot_acc_time [s]",
+            "pppm_pp_error [measured]",
+            "pppm_pm_error [measured]",
+            "force error [measured]",
+            "pp_pm_error_ratio"  # Added PP/PM error ratio
+        ]
+
+        self.dataframe = DataFrame(data, columns=column_names)
+        csv_location = join(self.io.directory_tree["preprocessing"]["path"], 
+                            f"AutomatedPPPM_data_{self.io.job_id}.csv")
+        self.dataframe.to_csv(csv_location, index=False)
+        
+        # Reset to original values
+        self.potential.rc = self.input_rc
+        self.potential.pppm_mesh = self.input_mesh.copy()
+        self.potential.pppm_alpha_ewald = self.input_alpha
+        self.potential.pppm_cao = self.input_cao.copy()
+        # Set up potential with original parameters
+        self.potential.estimate_parameters = False
+        self.potential.setup(self.parameters, self.species)
+        
+        # Report optimal configuration
+        msg = (
+            f"\nOPTIMAL PPPM CONFIGURATION (AUTOMATED):\n"
+            f"  Mesh: {opt_mesh} | CAO: {best_cao} | rc: {opt_rc:.4e}\n"
+            f"  Ewald alpha: {opt_alpha:.4e} | Force Error: {total_err:.4e}\n"
+            f"  PP Time: {pp_acc_time:.4e} s | PM Time: {pm_acc_time:.4e} s\n"
+            f"  Total Time: {total_time:.4e} s"
+        )
+        if self.parameters.verbose:
+            print(msg)
+        self.io.write_to_logger(msg)
+        
+        # Report file locations
+        msg = (
+            f"\nResults saved to:\n"
+            f"  Optimization data: {csv_location}\n"
+            f"  Visualizations: {self.pppm_plots_dir}"
+        )
+        if self.parameters.verbose:
+            print(msg)
+        self.io.write_to_logger(msg)
+        
+    def find_pareto_optimal_configs(self, configuration_df = None, target_error=1e-5, show_plot=True):
+        """
+        Find the Pareto-optimal configurations (those where error or time cannot 
+        be improved without worsening the other).
+        
+        Parameters
+        ----------
+        configuration_df : pandas.DataFrame, optional
+            DataFrame containing the configuration data. If None, uses self.dataframe.
+
+        target_error : float
+            Target force error tolerance. Default is 1e-5.
+
+        show_plot : bool
+            Whether to show the Pareto frontier plot. Default is True. 
+            If False, only returns the Pareto points without plotting.
+
+        Returns
+        -------
+        list
+            List of Pareto-optimal parameter configurations
+        """
+        if configuration_df is None:
+            configuration_df = self.dataframe
+        
+        pareto_points = []
+        for _, row in configuration_df.iterrows():
+            # Check if this point is dominated by any other point
+            dominated = False
+            for _, other_row in configuration_df.iterrows():
+                # Point i is dominated by point j if j has better (lower) time AND error
+                # Or if one is equal and the other is better
+                if (other_row['tot_acc_time [s]'] <= row['tot_acc_time [s]'] and 
+                    other_row['force error [measured]'] < row['force error [measured]'] and
+                    (other_row['tot_acc_time [s]'] < row['tot_acc_time [s]'] or 
+                    other_row['force error [measured]'] <= row['force error [measured]'])):
+                    dominated = True
+                    break
+            
+            if not dominated:
+                pareto_points.append(row)
+        
+        # Sort by error
+        pareto_points = sorted(pareto_points, key=lambda x: x['force error [measured]'])
+        
+        # Find absolute best configuration 
+        if len(pareto_points) > 0:
+            
+            # Find the best configuration by finding the points which are less the force_error and then choosing the points with the smallest time
+            force_points = [point for point in pareto_points if point['force error [measured]'] <= target_error]
+            best_point = min(force_points, key=lambda x: x['tot_acc_time [s]'])    
+            
+            # Report only the best configuration
+            msg = (
+                f"\nOPTIMAL PPPM CONFIGURATION:\n"
+                f"  Target Error: {target_error:.4e}\n"
+                f"  Mesh: {int(best_point['M_x'])} | CAO: {int(best_point['pppm_cao_x'])} | rc: {best_point['r_cut']:.4e}\n"
+                f"  Ewald alpha: {best_point['pppm_alpha_ewald']:.4e} | Force Error: {best_point['force error [measured]']:.4e}\n"
+                f"  PP Time: {best_point['pp_acc_time [s]']:.4e} s | PM Time: {best_point['pm_acc_time [s]']:.4e} s\n"
+                f"  Total Time: {best_point['tot_acc_time [s]']:.4e} s"
+            )
+            if self.parameters.verbose:
+                print(msg)
+            self.io.write_to_logger(msg)
+        else:
+            print("Unable to find a configuration that meets the target error.")
+            best_point = None
+
+        # If no Pareto points found, return empty list and None
+        if not pareto_points:
+            print("No Pareto-optimal configurations found.")
+            return None, None
+        
+        # Create DataFrame from Pareto points and save to CSV
+        pareto_df = DataFrame(pareto_points)
+        pareto_csv_path = join(self.io.directory_tree['preprocessing']['path'], 
+                            f'Pareto_optimal_PPPM_{self.io.job_id}.csv')
+        pareto_df.to_csv(pareto_csv_path, index=False)
+        self.pareto_points_df = DataFrame(pareto_points)
+
+        return pareto_points, best_point
+    
+    def plot_error_vs_performance(self, configuration_df, pareto_points, best_point):
+        """
+        Generate a Pareto frontier visualization from the configuration DataFrame and Pareto points.
+        
+        Parameters
+        ----------
+        configuration_df : pandas.DataFrame
+            DataFrame containing all tested configurations.
+
+        pareto_points : list
+            List of Pareto-optimal configurations.
+
+        best_point : dict
+            Dictionary containing the best configuration found.
+
+        """
+        if configuration_df is None:
+            configuration_df = self.dataframe
+        # Generate Pareto frontier visualization
+        fig, ax = plt.subplots(figsize=(12, 8))
+
+        scatterplot(
+            data=configuration_df, 
+            x='force error [measured]', 
+            y='tot_acc_time [s]', 
+            size = 'pp_cells', 
+            sizes = (50, 200),  # Adjust size range for better visibility
+            style ='pppm_cao_x', 
+            palette='Dark2',  # Use a color palette
+            alpha=0.7, 
+            hue='M_x',
+            ax=ax,
+        )
+        
+        if pareto_points is not None and len(pareto_points) > 0:
+            # Sort Pareto points by force error for consistent plotting
+
+            # Highlight Pareto-optimal points
+            pareto_errors = [p['force error [measured]'] for p in pareto_points]
+            pareto_times = [p['tot_acc_time [s]'] for p in pareto_points]
+
+            ax.plot(pareto_errors, pareto_times, linewidth=2, markersize=8, alpha = 0.4,
+                    zorder=2, 
+                    markeredgecolor='black', 
+                    markerfacecolor='red', 
+                    linestyle='--', 
+                    marker='o',
+                label='Pareto Frontier')
+
+            if best_point is not None:
+                ax.scatter(best_point['force error [measured]'], best_point['tot_acc_time [s]'],
+                        color='orange', s=200, marker='*', alpha = 0.5, label='Best Configuration', zorder=2.5)
+
+        # Set labels and title
+        ax.set(
+            xscale='log',
+            yscale='log',
+            xlabel=r'Force Error $[Q^2/a_{ws}^2]$',
+            ylabel='Computation Time (s)',
+            title='Error vs Performance'
+        )
+        
+        # Put the legend outside the plot
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        
+        fig.tight_layout()
+        fig.savefig(join(self.pppm_plots_dir, f'pareto_frontier_{self.io.job_id}.png'))
+        
+    def plot_error_balance(self):
+        """
+        Create visualization showing how balanced the PP and PM errors are
+        for different parameter combinations.
+        """
+        fig, ax = plt.subplots()
+        
+        # Group by mesh size
+        for mesh in self.dataframe['M_x'].unique():
+            subset = self.dataframe[self.dataframe['M_x'] == mesh]
+            
+            # For consistent cao
+            cao_filter = subset['pppm_cao_x'] == 4  # Choose a representative cao
+            if cao_filter.any():
+                filtered = subset[cao_filter]
+                
+                # Sort by rc
+                filtered = filtered.sort_values('r_cut')
+                
+                # Plot PP/PM error ratio vs rc
+                ax.plot(
+                    filtered['r_cut'] / self.parameters.a_ws,  # Normalize rc by a_ws
+                    filtered['pp_pm_error_ratio'],
+                    label=f'Mesh={int(mesh)}'
+                )
+                
+                # Find where PP error ≈ PM error (ratio ≈ 1)
+                optimal_idx = (filtered['pp_pm_error_ratio'] - 1).abs().idxmin()
+                optimal_row = filtered.loc[optimal_idx]
+                
+                ax.scatter(
+                    optimal_row['r_cut'] / self.parameters.a_ws,
+                    optimal_row['pp_pm_error_ratio'],
+                    marker='o'
+                )
+        
+        # Add reference line for balanced errors
+        ax.axhline(y=1.0, color='k', linestyle='--', alpha=0.5, 
+                label='Balanced PP and PM Errors')
+        
+        ax.set(
+            xlabel='Cutoff Radius (rc/a_ws)',
+            ylabel='PP Error / PM Error Ratio',
+            yscale='log',
+            title='Error Balance: Optimal rc for Each Mesh Size'
+        )
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        
+        fig.tight_layout()
+        fig.savefig(join(self.pppm_plots_dir, f'error_balance_{self.io.job_id}.png'))
+
+    def plot_parameter_sensitivity(self):
+        """
+        Create visualizations showing how sensitive performance and error
+        are to each parameter.
+        
+        Only creates the visualizations without detailed logging.
+        """
+        # Get baseline parameters
+        try:
+            baseline_mesh = self.input_mesh[0]
+            baseline_cao = self.input_cao[0]
+            baseline_rc = self.input_rc
+        except:
+            # If no baseline exists, use middle values
+            baseline_mesh = self.dataframe['M_x'].median()
+            baseline_cao = self.dataframe['pppm_cao_x'].median()
+            baseline_rc = self.dataframe['r_cut'].median()
+        
+        # Analyze mesh sensitivity
+        # Filter data for constant cao and rc (closest to baseline)
+        rc_filter = abs(self.dataframe['r_cut'] - baseline_rc) < baseline_rc * 0.1
+        cao_filter = self.dataframe['pppm_cao_x'] == baseline_cao
+        mesh_sensitivity = self.dataframe[rc_filter & cao_filter].sort_values('M_x')
+        
+        if not mesh_sensitivity.empty:
+            # Create figure with two subplots
+            fig, ax = plt.subplots(1, 2, figsize=(12, 5))
+            
+            # Plot time sensitivity
+            ax[0].plot(mesh_sensitivity['M_x'], mesh_sensitivity['tot_acc_time [s]'], 'o-')
+            ax[0].set(
+                xscale='log', 
+                yscale='log',
+                xlabel='Mesh Size',
+                ylabel='Computation Time (s)',
+                title='Time Sensitivity to Mesh Size'
+            )
+            
+            # Set x-ticks to actual mesh sizes
+            ax[0].set_xticks(mesh_sensitivity['M_x'].values)
+            ax[0].set_xticklabels(mesh_sensitivity['M_x'].values.astype(int))
+            ax[0].grid(True, alpha=0.3)
+            
+            # Plot error sensitivity
+            ax[1].plot(mesh_sensitivity['M_x'], mesh_sensitivity['force error [measured]'], 'o-')
+            ax[1].set(
+                xscale='log', 
+                yscale='log',
+                xlabel='Mesh Size',
+                ylabel='Force Error',
+                title='Error Sensitivity to Mesh Size'
+            )
+            
+            # Set x-ticks to actual mesh sizes
+            ax[1].set_xticks(mesh_sensitivity['M_x'].values)
+            ax[1].set_xticklabels(mesh_sensitivity['M_x'].values.astype(int))
+            ax[1].grid(True, alpha=0.3)
+            
+            # Adjust layout and save
+            fig.tight_layout()
+            fig.savefig(join(self.pppm_plots_dir, f'sensitivity_mesh_{self.io.job_id}.png'))
+        
 
 class Simulation(Process):
     """

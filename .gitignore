@@ -15,6 +15,7 @@ SarkasSimulations/
 
 # IDE folders
 *.vscode
+*.VSCodeCounter
 *.idea
 
 # Byte-compiled / optimized / DLL files

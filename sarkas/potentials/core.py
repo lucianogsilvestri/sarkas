@@ -3,11 +3,13 @@ Module handling the potential class.
 """
 from copy import deepcopy
 from fmm3dpy import hfmm3d, lfmm3d
-from numpy import array, inf, int64, ndarray, pi, sqrt, tanh, newaxis
+from numpy import array, full, inf, int32, int64, log, log2, ndarray, pi, round, sqrt, tanh, newaxis
 from warnings import warn
 
 from ..utilities.exceptions import AlgorithmWarning
 from ..utilities.fdints import fdm1h, invfd1h
+from ..utilities.maths import force_error_approx_pppm
+
 from .force_pm import force_optimized_green_function as gf_opt
 from .force_pm import update as pm_update
 from .force_pp import update as pp_update
@@ -90,13 +92,15 @@ class Potential:
     a_rs: float = 0.0
     box_lengths: ndarray = None
     box_volume: float = 0.0
-    force_error: float = 0.0
+    force_error: float = None
     fourpie0: float = 0.0
     kappa: float = None
     linked_list_on: bool = True
     matrix: ndarray = None
     measure: bool = False
     method: str = "pp"
+    estimate_parameters: bool = False
+
     pbox_lengths: ndarray = None
     pbox_volume: float = 0.0
     pppm_on: bool = False
@@ -292,6 +296,32 @@ class Potential:
             self.screening_length_type = "thomas-fermi"
             self.screening_length = species[-1].ThomasFermi_wavelength
 
+    def calculate_force_error(self):
+        """
+        Calculate the force error approximation following the method in Dharuman et al. J Chem Phys 2017.
+
+        Returns
+        -------
+        float
+            Force error.
+
+        """
+
+        if self.method == "pp":
+                
+            self.force_error = self.calc_force_error_quad(self)
+
+        elif self.method == "pppm":
+            # The pp part is not approximated, only the pm part
+            force_error_approx, pppm_pm_err, pppm_pp_err = force_error_approx_pppm(potential=self)
+            self.pppm_pp_err = pppm_pp_err
+            self.pppm_pm_err_approx = pppm_pm_err
+            self.force_error = sqrt(self.pppm_pp_err**2 + self.pppm_pm_err**2)
+            self.force_error_approx = force_error_approx
+
+        elif self.method == "fmm":
+            self.force_error = self.fmm_precision
+
     def copy_params(self, params):
         """
         Copy necessary parameters.
@@ -332,6 +362,7 @@ class Potential:
         self.num_species = params.num_species
         self.species_charges = params.species_charges.copy()
         self.species_masses = params.species_masses.copy()
+        self.species_num = params.species_num.copy()
 
         if self.type == "lj":
             self.species_lj_sigmas = params.species_lj_sigmas.copy()
@@ -385,6 +416,9 @@ class Potential:
                 f"           = {self.pppm_h_array[0]:.4e}, {self.pppm_h_array[1]:.4e}, {self.pppm_h_array[2]:.4e} {self.units_dict['length']}\n"
                 f"Mesh size * Ewald_parameter (h * alpha) = {halpha[0]:.4f}, {halpha[1]:.4f}, {halpha[2]:.4f}\n"
                 f"                                        ~ 1/{inv_halpha[0]}, 1/{inv_halpha[1]}, 1/{inv_halpha[2]}\n"
+                f"Approximate PP Force Error = {self.pppm_pp_err:.6e}\n"
+                f"Approximate PM Force Error = {self.pppm_pm_err_approx:.6e}\n"
+                f"Approximate Total Force Error = {self.force_error_approx:.6e}\n"
                 f"PP Force Error = {self.pppm_pp_err:.6e}\n"
                 f"PM Force Error = {self.pppm_pm_err:.6e}\n"
             )
@@ -393,9 +427,33 @@ class Potential:
         msg += f"Tot Force Error = {self.force_error:.6e}\n"
 
         print(msg)
+    
 
-    def method_setup(self):
+    def method_setup(self, species_list = None):
         """Setup algorithm's specific parameters."""
+
+        if self.method in ["pppm", "p3m"] and self.estimate_parameters:
+            # Check for force_error:
+            if self.force_error is None:
+                self.force_error = 1e-5
+
+            if species_list is None:
+                raise AttributeError("species_list not defined! Please pass the species list.")
+            print("\nEstimating PPPM parameters...")
+
+            self.estimate_pppm_parameters(species_list)
+
+        elif self.method in ["pp", "lcl"] and self.estimate_parameters:
+            if self.force_error is None:
+                self.force_error = 1e-5
+            
+            if self.type == "yukawa":
+                kappa = self.kappa
+                rescaling_const = sqrt(3.0/(4.0 * pi) ) * self.QFactor / (self.matrix[0,0,0] * self.total_num_ptcls)
+                rc = - log(self.force_error / rescaling_const/sqrt( 2.0 * pi *kappa) ) / kappa
+                self.rc = rc * self.a_ws
+            else:
+                self.estimate_pp_parameters(species_list)
 
         # Check for cutoff radius
         if not self.method == "fmm":
@@ -446,6 +504,103 @@ class Potential:
             else:
                 self.force_error = self.fmm_precision
                 self.calc_acc_pot = self.update_fmm_yukawa
+
+    def estimate_pp_parameters(self, species_list):
+        """
+        Estimates optimal PP parameters based on system properties and target force error.
+        
+        Parameters
+        ----------
+        species_list : list
+            List of :class:`sarkas.plasma.Species` objects.
+        
+        Raises
+        ------
+        AttributeError
+            Not implemented yet.
+        """
+
+        raise AttributeError("Estimation of PP parameters not implemented yet. Please define the parameters manually.")
+
+    def estimate_pppm_parameters(self, species_list):
+        """
+        Estimates optimal PPPM parameters based on system properties and target force error.
+        
+        Parameters
+        ----------
+        species_list : list
+            List of :class:`sarkas.plasma.Species` objects.
+            
+        Returns
+        -------
+        dict
+            Dictionary of calculated PPPM parameters including rc, alpha, mesh, and cao
+        """
+            
+        # Initialize counters
+        total_particles = 0
+        total_charge_squared = 0
+        total_number_density = 0
+        
+        # Process each species
+        for species in species_list:
+            
+            # Extract species properties
+            num_particles = species.num
+            charge = species.charge
+            number_density = species.number_density
+            
+            # Accumulate totals
+            total_particles += num_particles
+            total_charge_squared += num_particles * (charge**2)
+            total_number_density += number_density
+        
+        # Calculate box dimensions from number density
+
+        # Initial mesh estimate: 
+        pppm_h_array = full(3, 0.5 * self.a_ws, dtype=float)
+        # Mesh size is power of 2 of L/h
+        pppm_mesh = (self.box_lengths / pppm_h_array).astype(int32)
+        # Find the closest power of 2
+        self.pppm_mesh = 2**(round(log2(pppm_mesh))).astype(int32)
+        self.pppm_h_array = self.box_lengths / self.pppm_mesh
+
+        # Calculate rc from the force error formula, assuming pppm_alpha * rc = 3.6
+        # Rearranging: force_error / np.sqrt(2) = 2 * total_charge_squared / np.sqrt(total_particles * volume) * exp(-(pppm_alpha * rc)^2) / sqrt(rc)
+        # Given pppm_alpha * rc = 3.6, exp(-(pppm_alpha * rc)^2) = exp(-12.96)
+        
+        # Solving for rc:
+        # force_error / np.sqrt(2) * np.sqrt(total_particles * volume) / (2 * total_charge_squared) = exp(-12.96) / sqrt(rc)
+        
+        # Set a minimum cutoff radius (e.g., Wigner-Seitz radius)
+        
+        # First calculate alpha using the relation alpha = 0.3 * pppm_mesh[0] / box_length
+        alpha_initial = 0.3 / min(self.pppm_h_array)
+        
+        # Then calculate rc from alpha_initial using pppm_alpha * rc = 3.6
+        rc_initial = 3.6 / alpha_initial
+        
+        # Ensure rc is at least 3 times the Wigner-Seitz radius
+        self.rc = max(rc_initial, 3 * self.a_ws)
+        
+        # Recalculate alpha using the constraint pppm_alpha * rc = 3.6
+        self.pppm_alpha_ewald = 3.6 / self.rc
+        
+        # Choose an appropriate charge assignment order (cao)
+        # Higher cao increases accuracy but adds computational cost
+        # Typically 3-6 is a good range, let's choose based on force_error
+        if self.force_error <= 1e-7:
+            self.pppm_cao = full(3, 7, dtype=int64)
+        elif self.force_error <= 1e-5:
+            self.pppm_cao = full(3, 6, dtype=int64)
+        elif self.force_error <= 1e-4:
+            self.pppm_cao = full(3, 4, dtype=int64)
+        else:
+            self.pppm_cao = full(3, 3, dtype=int64)
+        
+        self.pppm_aliases = array([3, 3, 3], dtype=int)
+        # Print the parameters with :.6e format
+        # print(f"Estimated PPPM parameters: rc = {self.rc:.6e}, alpha = {self.pppm_alpha_ewald:.6e}, mesh = {self.pppm_mesh[0]}, cao = {self.pppm_cao[0]}, force_error = {self.force_error:.6e}, pppm_h_array = {self.pppm_h_array[0]:.6e}")
 
     def pppm_setup(self):
         """Calculate the pppm parameters."""
@@ -502,9 +657,6 @@ class Potential:
         self.pppm_pm_err *= sqrt(self.total_num_ptcls) * self.a_ws**2 * self.fourpie0
         self.pppm_pm_err /= self.box_volume ** (2.0 / 3.0)
 
-        # Total Force Error
-        self.force_error = sqrt(self.pppm_pm_err**2 + self.pppm_pp_err**2)
-
     def pretty_print(self):
         """Print potential information in a user-friendly way."""
 
@@ -513,13 +665,16 @@ class Potential:
         self.method_pretty_print()
 
     def setup(self, params, species):
-        """Set up the potential class.
+        """Set up the attributes and methods of the potential class.
 
         Parameters
         ----------
         params : :class:`sarkas.core.Parameters`
             Simulation's parameters.
 
+        species : list
+            List of :class:`sarkas.plasma.Species` objects.
+        
         """
 
         # Enforce consistency
@@ -528,7 +683,10 @@ class Potential:
 
         self.copy_params(params)
         self.type_setup(species)
-        self.method_setup()
+        self.method_setup(species_list=species)
+        # Update potential matrix with the new parameters in case of pppm
+        self.pot_update_params(self, species)
+        self.calculate_force_error()
 
     def type_setup(self, species):
         """
@@ -562,17 +720,15 @@ class Potential:
             from .coulomb import pretty_print_info, update_params
 
             self.pot_update_params = update_params
-            update_params(self, species)
 
         elif self.type == "yukawa":
             # Yukawa potential
             from .yukawa import pretty_print_info, update_params
 
             self.calc_screening_length(species)
-
             self.pot_update_params = update_params
-            update_params(self, species)
-        
+
+
         elif self.type == "yukawa-friedel":
             # Yukawa-Friedel potential
             from .yukawa_ft import pretty_print_info, update_params
@@ -580,7 +736,6 @@ class Potential:
             self.calc_screening_length(species)
 
             self.pot_update_params = update_params
-            update_params(self, species)
 
         elif self.type == "egs":
             # exact gradient-corrected screening (EGS) potential
@@ -589,21 +744,18 @@ class Potential:
             self.calc_screening_length(species)
 
             self.pot_update_params = update_params
-            update_params(self, species)
 
         elif self.type == "lj":
             # Lennard-Jones potential
             from .lennardjones import pretty_print_info, update_params
 
             self.pot_update_params = update_params
-            update_params(self, species)
 
         elif self.type == "moliere":
             # Moliere potential
             from .moliere import pretty_print_info, update_params
 
             self.pot_update_params = update_params
-            update_params(self, species)
 
         elif self.type == "qsp":
             # QSP potential
@@ -612,7 +764,6 @@ class Potential:
             self.screening_length_type = "qsp"
             self.calc_screening_length(species)
             self.pot_update_params = update_params
-            update_params(self, species)
 
         elif self.type == "hs_yukawa":
             # Hard-Sphere Yukawa
@@ -621,7 +772,6 @@ class Potential:
             self.calc_screening_length(species)
 
             self.pot_update_params = update_params
-            update_params(self, species)
 
         elif self.type == "fitted":
             from .fitted_pot import pretty_print_info, update_params
@@ -629,7 +779,6 @@ class Potential:
             self.screening_length_type = "thomas-fermi"
             self.calc_screening_length(species)
             self.pot_update_params = update_params
-            update_params(self, species)
 
         elif self.type == "tabulated":
             # Tabulated potential
@@ -638,9 +787,9 @@ class Potential:
             self.calc_screening_length(species)
 
             self.pot_update_params = update_params
-            update_params(self, species)
 
         self.pot_pretty_print = pretty_print_info
+        self.pot_update_params(self, species)
 
     def update_linked_list(self, ptcls):
         """
@@ -717,12 +866,18 @@ class Potential:
 
         ptcls.potential_energy += U_long
 
-        ptcls.acc += acc_l_r
+        ptcls.acc += acc_l_r 
 
-        # Self-energy correction to the total potential energy 
-        # J-M.Caillol, J Chem Phys 101 6080 (1994) https: // doi.org / 10.1063 / 1.468422
-        dipole = ptcls.charges[:, newaxis] *  ptcls.pos
-        ptcls.dipole_energy = 2.0 * pi * abs(dipole)**2 / (3.0 * self.eps0 * self.box_volume )
+        # # J-M.Caillol, J Chem Phys 101 6080 (1994) https: // doi.org / 10.1063 / 1.468422
+        # dipoles = ptcls.charges[:, newaxis] *  ptcls.pos / sqrt(self.fourpie0)
+        # vol_const = 2.0 * pi / (3.0 * self.box_volume)
+        # ptcls.dipole_energy = vol_const * (dipoles**2).sum(axis = 1) 
+
+        # dipole_force = -vol_const *  ptcls.charges[:, newaxis] * dipoles.sum(axis = 0)  / sqrt(self.fourpie0)
+        
+        # ptcls.acc += dipole_force/ ptcls.masses[:, newaxis]
+
+        # ptcls.potential_energy += ptcls.dipole_energy
 
     def update_pppm(self, ptcls):
         """Calculate particles' potential and accelerations using pppm method.

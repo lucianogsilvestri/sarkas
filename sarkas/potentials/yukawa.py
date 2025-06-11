@@ -28,12 +28,12 @@ from numba import jit
 from numba.core.types import float64, UniTuple
 from numpy import exp, inf, pi, sqrt, zeros
 from scipy.integrate import quad
+from scipy.special import gamma
+
 from warnings import warn
 
-from ..utilities.maths import force_error_analytic_lcl, force_error_analytic_pp
 
-
-@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
+@jit(nopython=True)
 def yukawa_force_pppm(r_in, pot_matrix):
     """
     Numba'd function to calculate Potential and Force between two particles when the pppm algorithm is chosen.
@@ -81,8 +81,8 @@ def yukawa_force_pppm(r_in, pot_matrix):
         * (exp(kappa_r) * erfc(alpha_r + 0.5 * kappa_alpha) + exp(-kappa_r) * erfc(alpha_r - 0.5 * kappa_alpha))
     )
     # Derivative of the exponential term and 1/r
-    f1 = (0.5 / r) * exp(kappa * r) * erfc(alpha_r + 0.5 * kappa_alpha) * (1.0 / r - kappa)
-    f2 = (0.5 / r) * exp(-kappa * r) * erfc(alpha_r - 0.5 * kappa_alpha) * (1.0 / r + kappa)
+    f1 = (0.5 / r) * exp(kappa_r) * erfc(alpha_r + 0.5 * kappa_alpha) * (1.0 / r - kappa)
+    f2 = (0.5 / r) * exp(-kappa_r) * erfc(alpha_r - 0.5 * kappa_alpha) * (1.0 / r + kappa)
     # Derivative of erfc(a r) = 2a/sqrt(pi) e^{-a^2 r^2}* (x/r)
     f3 = (alpha / sqrt(pi) / r) * (
         exp(-((alpha_r + 0.5 * kappa_alpha) ** 2)) * exp(kappa_r)
@@ -93,7 +93,7 @@ def yukawa_force_pppm(r_in, pot_matrix):
     return u_r, f_r
 
 
-@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
+@jit(nopython=True)
 def yukawa_force(r_in, pot_matrix):
     """
     Numba'd function to calculate Potential and Force between two particles.
@@ -234,18 +234,17 @@ def update_params(potential, species):
         Class handling potential form.
 
     """
-    if potential.method == "pppm":
-        potential.matrix = zeros((potential.num_species, potential.num_species, 4))
-    else:
-        potential.matrix = zeros((potential.num_species, potential.num_species, 3))
-
+    # species[-1] is the electronic background
+    potential.matrix = zeros((len(species) - 1, len(species) - 1, 4))
     potential.matrix[:, :, 1] = 1.0 / potential.screening_length
 
-    # potential.matrix[:, :, 0] = potential.species_charges.reshape((len(potential.species_charge), 1))
-    # * potential.species_charges / potential.fourpie0
-    # the above line is the Python version of the for loops below. I believe that the for loops are easier to understand
-    for i, q1 in enumerate(potential.species_charges):
-        for j, q2 in enumerate(potential.species_charges):
+    if not hasattr(potential, "kappa") or potential.kappa is None:
+        potential.kappa = potential.matrix[0,0, 1] * potential.a_ws
+
+    for i, sp1 in enumerate(species[:-1]): # species[-1] is the electronic background
+        q1 = sp1.charge
+        for j, sp2 in enumerate(species[:-1]):
+            q2 = sp2.charge
             potential.matrix[i, j, 0] = q1 * q2 / potential.fourpie0
 
     potential.matrix[:, :, -1] = potential.a_rs
@@ -253,59 +252,15 @@ def update_params(potential, species):
     potential.potential_derivatives = potential_derivatives
 
     if potential.method == "pp":
-        # The rescaling constant is sqrt ( na^4 ) = sqrt( 3 a/(4pi) )
+
         potential.force = yukawa_force
-
-        # potential.force_error = force_error_analytic_lcl(
-        #     potential.type, potential.rc, potential.matrix, sqrt(3.0 * potential.a_ws / (4.0 * pi))
-        # )
-        potential.force_error = calc_force_error_quad(potential.a_ws, potential.rc, potential.matrix[0, 0])
-
-        # # Force error calculated from eq.(43) in Ref.[1]_
-        # potential.force_error = sqrt( TWOPI / potential.electron_TF_wavelength) * exp(- potential.rc / potential.electron_TF_wavelength)
-        # # Renormalize
-        # potential.force_error *= potential.a_ws ** 2 * sqrt(potential.total_num_ptcls / potential.pbox_volume)
+        potential.calc_force_error_quad = calc_force_error_quad
 
     elif potential.method == "pppm":
         potential.force = yukawa_force_pppm
         potential.matrix[:, :, 2] = potential.pppm_alpha_ewald
-        rescaling_constant = sqrt(potential.total_num_ptcls) * potential.a_ws**2 / sqrt(potential.pbox_volume)
 
-        potential.pppm_pp_err = force_error_analytic_pp(
-            potential.type, potential.rc, potential.screening_length, potential.pppm_alpha_ewald, rescaling_constant
-        )
-
-        # PP force error calculation. Note that the equation was derived for a single component plasma.
-        # kappa_over_alpha = -0.25 * (potential.matrix[0, 0, 1] / potential.matrix[0, 0, 2]) ** 2
-        # alpha_times_rcut = -((potential.matrix[0, 0, 2] * potential.rc) ** 2)
-        # potential.pppm_pp_err = 2.0 * exp(kappa_over_alpha + alpha_times_rcut) / sqrt(potential.rc)
-        # potential.pppm_pp_err *= sqrt(potential.total_num_ptcls) * potential.a_ws ** 2 / sqrt(potential.pbox_volume)
-
-
-def force_error_integrand(r, pot_matrix):
-    r"""Auxiliary function to be used in `scipy.integrate.quad` to calculate the integrand.
-
-    Parameters
-    ----------
-    r_in : float
-        Distance between two particles.
-
-    pot_matrix : numpy.ndarray
-        Slice of the `sarkas.potentials.Potential.matrix` containing the necessary potential parameters.
-
-    Returns
-    -------
-    _ : float
-        Integrand :math:`4\pi r^2 ( d r\phi(r)/dr )^2`
-
-    """
-
-    _, dv_dr, _ = potential_derivatives(r, pot_matrix)
-
-    return 4.0 * pi * r**2 * dv_dr**2
-
-
-def calc_force_error_quad(a, rc, pot_matrix):
+def calc_force_error_quad(potential):
     r"""
     Calculate the force error by integrating the square modulus of the force over the neglected volume.\n
     The force error is calculated from
@@ -345,13 +300,24 @@ def calc_force_error_quad(a, rc, pot_matrix):
 
     """
 
-    params = pot_matrix.copy()
-    params[0] = 1
-    # Un-dimensionalize the screening length.
-    params[1] *= a
-    r_c = rc / a
-    result, _ = quad(force_error_integrand, a=r_c, b=inf, args=(params,))
+    params = potential.matrix.copy()
+    # Rescale the potential parameters so that quad does not fail.
+    params[:, :, 0] /= potential.matrix[:, :, 0] 
+    params[:, :, 1] *= potential.a_ws  # kappa
+    params[:, :, 2] *= potential.a_ws  # Ewald parameter    
+    params[:, :, -1] /= potential.a_ws # Short-range cutoff
 
-    f_err = sqrt(result)
+    r_c = potential.rc / potential.a_ws
+
+    # Solid angle integral
+    solid_angle = 2 * pi**(potential.dimensions / 2) / gamma(potential.dimensions / 2)
+
+    integrand = lambda r: solid_angle * r**(potential.dimensions - 1) * ( potential.force(r, params[0,0])[1])**2
+    result, _ = quad( integrand, a=r_c, b=inf)
+
+    # Rescaling constant = Q^2 sqrt(N/V) = Q^2 sqrt(3 /(4 pi)), with V = L^3 = (4pi /  N)^3
+    QFactor = potential.QFactor / (potential.matrix[0, 0, 0] * potential.total_num_ptcls)
+    f_err = sqrt( result * 3 / (4 * pi)) * QFactor
 
     return f_err
+

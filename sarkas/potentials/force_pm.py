@@ -708,7 +708,7 @@ def force_optimized_green_function(box_lengths, h_array, mesh_sizes, aliases, p,
     four_pi = 4.0 * pi if fourpie0 == 1.0 else 4.0 * pi / fourpie0
 
     mask = box_lengths.nonzero()
-    non_zero_box_lengths = array([1.0, 1.0, 1.0], dtype=float64)
+    non_zero_box_lengths = array([1.0, 1.0, 1.0])
     non_zero_box_lengths[mask] = box_lengths[mask].copy()
 
     kappa_sq = kappa * kappa

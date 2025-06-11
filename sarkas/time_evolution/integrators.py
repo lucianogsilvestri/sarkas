@@ -4,7 +4,7 @@ Module of various types of time_evolution
 
 from copy import deepcopy
 from numba import float64, int64, jit, void
-from numpy import arange, array, cos, cross, log, pi, rint, sin, sqrt, zeros
+from numpy import arange, array, bool_, cos, cross, floor, log, pi, rint, sin, sqrt, zeros
 from scipy.linalg import norm
 
 
@@ -1128,8 +1128,8 @@ def berendsen(vel, T_desired, T, species_np, thermalization_rate):
         species_start += num
 
 
-@jit(void(float64[:, :], float64[:, :], float64[:]), nopython=True)
-def enforce_pbc(pos, cntr, box_vector):
+@jit(nopython=True, cache=True)
+def enforce_pbc(pos, cntr, box_lengths):
     """
     Numba'd function to enforce periodic boundary conditions.
 
@@ -1145,24 +1145,22 @@ def enforce_pbc(pos, cntr, box_vector):
         Box Dimensions. Shape (3)
 
     """
-
-    # Loop over all particles
-    for p in arange(pos.shape[0]):
-        for d in arange(pos.shape[1]):
-            # If particle is outside of box in positive direction, wrap to negative side
-            # if pos[d,p] > box_vector[d]:
-            pos[p, d] -= box_vector[d] * (pos[p, d] > box_vector[d])
-            cntr[p, d] += 1 * (pos[p, d] > box_vector[d])
-            # If particle is outside of box in negative direction, wrap to positive side
-            # if pos[d,p] < 0.0:
-            pos[p, d] += box_vector[d] * (pos[p, d] < 0.0)
-            cntr[p, d] -= 1 * (pos[p, d] < 0.0)
-
-
-@jit(void(float64[:, :], float64[:, :], float64[:, :], float64[:], float64[:]), nopython=True)
+    # Get the number of particles
+    N = pos.shape[0]
+    
+    for i in range(N):
+        for j in range(pos.shape[1]):
+            L = box_lengths[j]
+            # Calculate how many times this particle crosses the boundary
+            fold_count = int(floor(pos[i, j] / L))
+            cntr[i, j] += fold_count
+            # Apply the boundary condition in-place
+            pos[i, j] += - L * fold_count
+    
+@jit(nopython=True, cache=True)
 def enforce_abc(pos, vel, acc, charges, box_vector):
     """
-    Numba'd function to enforce absorbing boundary conditions.
+    Optimized Numba function to enforce absorbing boundary conditions.
 
     Parameters
     ----------
@@ -1176,34 +1174,43 @@ def enforce_abc(pos, vel, acc, charges, box_vector):
         Particles' accelerations.
 
     charges : numpy.ndarray
-        Charge of each particle. Shape = (:attr:`total_num_ptcls`).
+        Charge of each particle.
 
     box_vector: numpy.ndarray
         Box Dimensions.
-
     """
+    # Get dimensions for later use
+    n_particles = pos.shape[0]
+    n_dims = pos.shape[1]
+    
+    # Pre-allocate masks for particles that need modification
+    outside_box = zeros(n_particles, dtype=bool_)
+    
+    # First, identify all particles that are outside the box in any dimension
+    for d in range(n_dims):
+        for p in range(n_particles):
+            if pos[p, d] >= box_vector[d] or pos[p, d] <= 0.0:
+                outside_box[p] = True
+                
+                # Fix positions at boundary
+                if pos[p, d] >= box_vector[d]:
+                    pos[p, d] = box_vector[d]
+                else:
+                    pos[p, d] = 0.0
+    
+    # Now apply changes only to particles that need it
+    for p in range(n_particles):
+        if outside_box[p]:
+            # Reset velocity, acceleration, and charge
+            for d in range(n_dims):
+                vel[p, d] = 0.0
+                acc[p, d] = 0.0
+            charges[p] = 0.0
 
-    # Loop over all particles
-    for p in arange(pos.shape[0]):
-        for d in arange(pos.shape[1]):
-            # If particle is outside of box in positive direction, remove charge, velocity and acceleration
-            if pos[p, d] >= box_vector[d]:
-                pos[p, d] = box_vector[d]
-                vel[p, :] = zeros(3)
-                acc[p, :] = zeros(3)
-                charges[p] = 0.0
-            # If particle is outside of box in negative direction, remove charge, velocity and acceleration
-            if pos[p, d] <= 0.0:
-                pos[p, d] = 0.0
-                vel[p, :] = zeros(3)
-                acc[p, :] = zeros(3)
-                charges[p] = 0.0
-
-
-@jit(void(float64[:, :], float64[:, :], float64[:], float64), nopython=True)
+@jit(nopython = True, cache=True)
 def enforce_rbc(pos, vel, box_vector, dt):
     """
-    Numba'd function to enforce reflecting boundary conditions.
+    Optimized Numba function to enforce reflecting boundary conditions.
 
     Parameters
     ----------
@@ -1218,14 +1225,28 @@ def enforce_rbc(pos, vel, box_vector, dt):
 
     dt : float
         Timestep.
-
     """
-
-    # Loop over all particles
-    for p in arange(pos.shape[0]):
-        for d in arange(pos.shape[1]):
-            # If particle is outside of box in positive direction, wrap to negative side
+    # Get dimensions for later use
+    n_particles = pos.shape[0]
+    n_dims = pos.shape[1]
+    
+    # Pre-allocate arrays to avoid recreating them in loops
+    outside_particles = zeros(n_particles, dtype=bool_)
+    
+    # For each dimension, find particles outside boundaries and reflect them
+    for d in range(n_dims):
+        # Reset the outside particle flags for this dimension
+        for p in range(n_particles):
+            outside_particles[p] = False
+            
+        # First, identify particles outside the box in this dimension
+        for p in range(n_particles):
             if pos[p, d] > box_vector[d] or pos[p, d] < 0.0:
+                outside_particles[p] = True
+        
+        # Then, apply reflections only to those particles
+        for p in range(n_particles):
+            if outside_particles[p]:
                 # Revert velocity
                 vel[p, d] *= -1.0
                 # Restore previous position assuming verlet algorithm

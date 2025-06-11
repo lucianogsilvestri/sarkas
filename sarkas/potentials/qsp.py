@@ -72,14 +72,54 @@ The elements of the :attr:`sarkas.potentials.core.Potential.matrix` are:
 from math import erfc
 from numba import jit
 from numba.core.types import float64, UniTuple
-from numpy import exp, log, pi, sqrt, zeros, isclose
+from numpy import array, exp, inf, log, ndarray, pi, sqrt, unravel_index, zeros, isclose
 from warnings import warn
+from scipy.integrate import quad
+from scipy.special import gamma
 
 from ..utilities.exceptions import AlgorithmWarning
 from ..utilities.maths import force_error_analytic_pp, TWOPI
 
 
-@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
+@jit(nopython=True)
+def pauli_force(r, pot_matrix):
+    """
+    Calculate Pauli term of the QSP potential
+
+    Parameters
+    ----------
+    r : float
+        Distance between two particles.
+
+    pot_matrix : numpy.ndarray
+        It contains potential dependent variables. \n
+        Shape = (6, :attr:`sarkas.core.Parameters.num_species`, :attr:`sarkas.core.Parameters.num_species`)
+
+    Returns
+    -------
+    u_r : float
+        Pauli Potential.
+
+    f_r : float
+        Pauli Force between two particles.
+
+
+    """
+    D = pot_matrix[2]
+    F = pot_matrix[3]
+    A = pot_matrix[4]
+
+    r2 = r * r
+    F2 = F * F
+
+    # Pauli Term
+    u_r = D * log(1.0 - 0.5 * A *  exp(-F2 * r2))
+    f_r = - D *  r * F2  * A * exp(-F2 * r2)/ (1.0 - 0.5 * A * exp(-F2 * r2) )
+
+    return u_r, f_r
+
+
+@jit(nopython=True)
 def deutsch_force(r_in, pot_matrix):
     """
     Calculate Deutsch QSP Force between two particles.
@@ -106,10 +146,10 @@ def deutsch_force(r_in, pot_matrix):
 
     A = pot_matrix[0]
     C = pot_matrix[1]
-    D = pot_matrix[2]
-    F = pot_matrix[3]
-    alpha = pot_matrix[4]
-    rs = pot_matrix[5]
+
+    E = pot_matrix[5]  # flag for diffraction term
+    alpha = pot_matrix[6]
+    rs = pot_matrix[7]
 
     # Branchless programming
     r = r_in * (r_in >= rs) + rs * (r_in < rs)
@@ -127,52 +167,15 @@ def deutsch_force(r_in, pot_matrix):
     f_diff = u_diff * (1.0 / r + C)  # 1/r derivative
 
     # Pauli Term
-    u_pauli = D * log(1.0 - 0.5 * exp(-F * r2))
-    f_pauli = -r * D * F / (exp(F * r2) - 0.5)
+    u_pauli, f_pauli = pauli_force(r, pot_matrix)
 
-    u_r = u_ewald + u_diff + u_pauli
-    f_r = f_ewald + f_diff + f_pauli
-
-    return u_r, f_r
-
-
-@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
-def pauli_force(r, pot_matrix):
-    """
-    Calculate Pauli term of the QSP potential
-
-    Parameters
-    ----------
-    r : float
-        Distance between two particles.
-
-    pot_matrix : numpy.ndarray
-        It contains potential dependent variables. \n
-        Shape = (6, :attr:`sarkas.core.Parameters.num_species`, :attr:`sarkas.core.Parameters.num_species`)
-
-    Returns
-    -------
-    u_r : float
-        Pauli Potential.
-
-    f_r : float
-        Pauli Force between two particles.
-
-
-    """
-    D = pot_matrix[2]
-    F = pot_matrix[3]
-
-    r2 = r * r
-
-    # Pauli Term
-    u_r = D * log(1.0 - 0.5 * exp(-F * r2))
-    f_r = - D * ( r * F * exp(-F * r2)) / (1.0 - 0.5 * exp(-F * r2))
+    u_r = u_ewald + E * u_diff + u_pauli
+    f_r = f_ewald + E * f_diff + f_pauli
 
     return u_r, f_r
 
 
-@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
+@jit(nopython=True)
 def hansen_force(r_in, pot_matrix):
     """
     Calculate Deutsch QSP Force between two particles.
@@ -201,8 +204,8 @@ def hansen_force(r_in, pot_matrix):
     C = pot_matrix[1]
     D = pot_matrix[2]
     F = pot_matrix[3]
-    alpha = pot_matrix[4]
-    rs = pot_matrix[5]
+    alpha = pot_matrix[6]
+    rs = pot_matrix[7]
 
     # Branchless programming
     r = r_in * (r_in >= rs) + rs * (r_in < rs)
@@ -230,7 +233,7 @@ def hansen_force(r_in, pot_matrix):
     return U, force
 
 
-@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
+@jit(nopython=True)
 def kelbg_force(r_in, pot_matrix):
     """
     Calculates the QSP Force between two particles when the pppm algorithm is chosen.
@@ -273,11 +276,10 @@ def kelbg_force(r_in, pot_matrix):
 
     A = pot_matrix[0]  # qi*qj/4*pi*eps0
     C = pot_matrix[1]  # sqrt(2pi)/deBroglie
-    D = pot_matrix[2]  # e-e Pauli term factor
-    F = pot_matrix[3]
-    E = pot_matrix[4] # flag for diffraction term 
-    alpha = pot_matrix[5]
-    rs = pot_matrix[6]
+    E = pot_matrix[5] # flag for diffraction term 
+
+    alpha = pot_matrix[6]
+    rs = pot_matrix[7]
 
     # Branchless programming
     r = r_in * (r_in >= rs) + rs * (r_in < rs)
@@ -308,6 +310,47 @@ def kelbg_force(r_in, pot_matrix):
     return u_r, force
 
 
+def pauli_term_derivatives(r, pot_matrix):
+    """
+    Calculate the Pauli term of the QSP potential
+
+    Parameters
+    ----------
+    r : float
+        Distance between two particles.
+
+    pot_matrix : numpy.ndarray
+        It contains potential dependent variables. \n
+        Shape = (6, :attr:`sarkas.core.Parameters.num_species`, :attr:`sarkas.core.Parameters.num_species`)
+
+    Returns
+    -------
+    u_r : float
+        Pauli Potential.
+    
+    dvdr : float
+        Pauli Force between two particles.
+    
+    d2v_dr2 : float
+        Pauli Force between two particles.
+    
+    """
+    D = pot_matrix[2]
+    F = pot_matrix[3]
+    A = pot_matrix[4]
+
+    r2 = r * r
+    F2 = F * F
+
+    # Pauli Term
+    u_r = D * log(1.0 - 0.5 * A * exp(-F2 * r2))
+    dvdr = - D *  r * F2 * A * exp(-F2 * r2) / (1.0 - 0.5 * A * exp(- F2 * r2) )
+    denom = (1.0 - 0.5 * A * exp(- F2 * r2) - 0.5)**2
+    d2v_dr2 = D * F2 * ( A * exp(-F2 * r2) *( 1 - 2.0 * F2 * r**2 ) - 0.5 * A * exp(- 2.0 * F2 * r2) ) / denom
+
+    return u_r, dvdr, d2v_dr2
+
+
 def deutsch_potential_derivatives(r, pot_matrix):
     """Calculate the first and second derivatives of the potential.
 
@@ -333,16 +376,16 @@ def deutsch_potential_derivatives(r, pot_matrix):
 
     A = pot_matrix[0]  # qi*qj/4*pi*eps0
     C = pot_matrix[1]  # 2pi/deBroglie
-    D = pot_matrix[2]  # e-e Pauli term factor
-    F = pot_matrix[3]  # e-e Pauli term exponent term
+    E = pot_matrix[5]  # flag for diffraction term
 
     r2 = r * r
     r3 = r2 * r
 
     # Pauli term. Note that D = 0 if Pauli is false
-    u_r_pauli = D * log(1.0 - 0.5 * exp(-F * r2))
-    dvdr_pauli = r * F / (exp(F * r2) - 0.5)
-    d2v_dr2_pauli = -2.0 * F * (exp(F * r2) * (4 * F * r2 - 2) + 1) / (2.0 * exp(F * r2) - 1.0) ** 2
+    # u_r_pauli = D * log(1.0 - 0.5 * exp(-F * r2))
+    # dvdr_pauli = r * F / (exp(F * r2) - 0.5)
+    # d2v_dr2_pauli = -2.0 * F * (exp(F * r2) * (4 * F * r2 - 2) + 1) / (2.0 * exp(F * r2) - 1.0) ** 2
+    u_r_pauli, dvdr_pauli, d2v_dr2_pauli = pauli_term_derivatives(r, pot_matrix)
 
     # Diffraction potential and force term
     u_r_diff = -A * exp(-C * r) / r
@@ -354,9 +397,9 @@ def deutsch_potential_derivatives(r, pot_matrix):
     dvdr_coul = -A / r2
     d2v_dr2_coul = 2.0 * A / r3
 
-    u_r = u_r_coul + u_r_diff + u_r_pauli
-    dv_dr = dvdr_coul + dvdr_diff + dvdr_pauli
-    d2v_dr2 = d2v_dr2_coul + d2v_dr2_diff + d2v_dr2_pauli
+    u_r = u_r_coul + E * u_r_diff + u_r_pauli
+    dv_dr = dvdr_coul + E * dvdr_diff + dvdr_pauli
+    d2v_dr2 = d2v_dr2_coul + E * d2v_dr2_diff + d2v_dr2_pauli
 
     return u_r, dv_dr, d2v_dr2
 
@@ -388,6 +431,7 @@ def hansen_potential_derivatives(r, pot_matrix):
     C = pot_matrix[1]  # 2pi/deBroglie
     D = pot_matrix[2]  # e-e Pauli term factor
     F = pot_matrix[3]  # e-e Pauli term exponent term
+    E = pot_matrix[5]  # flag for diffraction term
 
     r2 = r * r
     r3 = r2 * r
@@ -407,9 +451,9 @@ def hansen_potential_derivatives(r, pot_matrix):
     dvdr_coul = -A / r2
     d2v_dr2_coul = 2.0 * A / r3
 
-    u_r = u_r_coul + u_r_diff + u_r_pauli
-    dv_dr = dvdr_coul + dvdr_diff + dvdr_pauli
-    d2v_dr2 = d2v_dr2_coul + d2v_dr2_diff + d2v_dr2_pauli
+    u_r = u_r_coul + E * u_r_diff + u_r_pauli
+    dv_dr = dvdr_coul + E * dvdr_diff + dvdr_pauli
+    d2v_dr2 = d2v_dr2_coul + E * d2v_dr2_diff + d2v_dr2_pauli
 
     return u_r, dv_dr, d2v_dr2
 
@@ -439,16 +483,13 @@ def kelbg_potential_derivatives(r, pot_matrix):
 
     A = pot_matrix[0]  # qi*qj/4*pi*eps0
     C = pot_matrix[1]  # 2pi/deBroglie
-    D = pot_matrix[2]  # e-e Pauli term factor
-    F = pot_matrix[3]  # e-e Pauli term exponent term
-    E = pot_matrix[4]  # flag for diffraction term
+    E = pot_matrix[5]  # flag for diffraction term
+
     r2 = r * r
     r3 = r2 * r
 
     # Pauli term. Note that D = 0 if Pauli is false
-    u_r_pauli = D * log(1.0 - 0.5 * exp(-F * r2))
-    dvdr_pauli = r * F / (exp(F * r2) - 0.5)
-    d2v_dr2_pauli = -2.0 * F * (exp(F * r2) * (4 * F * r2 - 2) + 1) / (2.0 * exp(F * r2) - 1.0) ** 2
+    u_r_pauli, dvdr_pauli, d2v_dr2_pauli = pauli_term_derivatives(r, pot_matrix)
 
     # Diffraction potential and force term
     C2 = C * C
@@ -528,11 +569,13 @@ def update_params(potential, species):
     ----------
     potential : :class:`sarkas.potentials.core.Potential`
         Class handling potential form.
+        Can include custom diffractive lengths via:
+        - potential.ee_diffractive_length: Custom e-e diffractive length
+        - potential.ei_diffractive_length: Custom e-i diffractive length(s)
+                                         Can be a single value or a list matching the number of ion species
 
     species : list,
         List of species data (:class:`sarkas.plasma.Species`).
-
-
     """
     # Do a bunch of checks
     # pppm algorithm only
@@ -565,9 +608,27 @@ def update_params(potential, species):
     # Calculate the total and ion Wigner-Seitz Radius from the total density
     potential.ai = (3.0 / (four_pi * total_ion_number_density)) ** (1.0 / 3.0)  # Ion WS
 
+    theta = species[0].degeneracy_parameter
+    # This is the Jones and Murillo definition of the de Broglie wavelength
     deBroglie_const = TWOPI * potential.hbar**2 / potential.kB
 
-    potential.matrix = zeros((potential.num_species, potential.num_species, 7))
+    potential.matrix = zeros((potential.num_species, potential.num_species, 8))
+
+    # Check for custom diffractive lengths
+    has_custom_ee = hasattr(potential, "ee_diffractive_length")
+    has_custom_ei = hasattr(potential, "ei_diffractive_length")
+    
+    # If ei_diffractive_length is provided, verify it's either a single value
+    # or a list matching the number of ion species
+    if has_custom_ei:
+        num_ion_species = potential.num_species - 1  # total minus electrons
+        if isinstance(potential.ei_diffractive_length, (list, tuple, ndarray)):
+            if len(potential.ei_diffractive_length) != num_ion_species:
+                raise ValueError(f"ei_diffractive_length list must have {num_ion_species} elements (one per ion species)")
+        else:
+            # Convert single value to list for consistent handling
+            potential.ei_diffractive_length = [potential.ei_diffractive_length] * num_ion_species
+
     for i, sp1 in enumerate(species):
         m1 = sp1.mass
         q1 = sp1.charge
@@ -579,63 +640,111 @@ def update_params(potential, species):
             reduced = (m1 * m2) / (m1 + m2)
 
             if sp1.name == "e" or sp2.name == "e":
-                # Use electron temperature in e-e and e-i interactions
-                lambda_deB = sqrt(deBroglie_const / (reduced * species[0].temperature))
-
-                # Pauli term only for e-e interaction
-                if sp1.name == sp2.name:  # e-e
+                # Handle electron-related interactions (e-e and e-i)
+                if sp1.name == sp2.name and sp1.name == "e":  # e-e interaction
+                    if has_custom_ee:
+                        # Use user-provided e-e diffractive length
+                        lambda_deB = potential.ee_diffractive_length
+                    else:
+                        # Calculate e-e diffractive length
+                        lambda_deB = sqrt(deBroglie_const / (reduced * species[0].temperature))
+                    
                     if potential.qsp_type == "hansen":
                         potential.matrix[i, j, 2] = log_2 * potential.kB * sp1.temperature
-                        potential.matrix[i, j, 3] = four_pi / (log_2 * lambda_deB**2)
+                        potential.matrix[i, j, 3] = sqrt(four_pi / (log_2 * lambda_deB**2))
                     else:
+                        # See eq.(44), (45) Jones and Murillo, HEDP (2007)
+                        a1, a2, a3 = 0.2975, 6.090, 1.541
+                        b1, b2, b3, b4 = 0.0842, 0.1027, 1.096, 1.359
+                        A_theta = 1.0 + a1 / (1.0 + a2 * theta**a3)
+                        B_theta = 1.0 + b1 * exp(-b2 * theta**b3) / theta**b4
+
                         potential.matrix[i, j, 2] = -potential.kB * sp1.temperature
-                        potential.matrix[i, j, 3] = TWOPI / (lambda_deB**2)
-                potential.matrix[i, j, 4] = 1.0
-            else:
+                        potential.matrix[i, j, 3] = sqrt(TWOPI * B_theta) / lambda_deB
+                        potential.matrix[i, j, 4] = A_theta
+                else:  # e-i interaction
+                    if has_custom_ei:
+                        # Determine which ion species we're working with to get the right diffractive length
+                        if sp1.name == "e":
+                            ion_index = j - 1  # Offset because e is at index 0
+                        else:
+                            ion_index = i - 1  # Offset because e is at index 0
+                        
+                        # Use user-provided e-i diffractive length
+                        lambda_deB = potential.ei_diffractive_length[ion_index]
+                    else:
+                        # Calculate e-i diffractive length
+                        lambda_deB = sqrt(deBroglie_const / (reduced * species[0].temperature))
+
+                potential.matrix[i, j, 5] = 1.0
+            else:  # i-i interaction
                 # Use ion temperature in i-i interactions only
                 lambda_deB = sqrt(deBroglie_const / (reduced * total_ion_temperature))
-                potential.matrix[i, j, 4] = 0.0
+                potential.matrix[i, j, 5] = 0.0   # No diffraction term for i-i interactions
+                potential.matrix[i, j, 2] = 0.0   # No Pauli term for i-i interactions
+                potential.matrix[i, j, 3] = 0.0   # No Pauli term for i-i interactions
+                potential.matrix[i, j, 4] = 0.0   # No Pauli term for i-i interactions
+
             potential.matrix[i, j, 0] = q1 * q2 / potential.fourpie0
-            potential.matrix[i, j, 1] = sqrt(TWOPI) / lambda_deB if potential.qsp_type == "kelbg" else TWOPI/lambda_deB
+            potential.matrix[i, j, 1] = sqrt(TWOPI) / lambda_deB if potential.qsp_type == "kelbg" else TWOPI / lambda_deB
 
     if not potential.qsp_pauli:
         potential.matrix[:, :, 2] = 0.0
+        potential.matrix[:, :, 3] = 0.0
+        potential.matrix[:, :, 4] = 0.0
 
-    potential.matrix[:, :, 5] = potential.pppm_alpha_ewald
-    potential.matrix[:, :, 6] = potential.a_rs
+    potential.matrix[:, :, 6] = potential.pppm_alpha_ewald
+    potential.matrix[:, :, 7] = potential.a_rs
 
     if potential.qsp_type == "deutsch":
         potential.force = deutsch_force
         potential.potential_derivatives = deutsch_potential_derivatives
-        # Calculate the PP Force error from the e-e diffraction term only since it is the largest.
-        potential.pppm_pp_err = force_error_analytic_pp(
-            potential.type,
-            potential.rc,
-            0.0,
-            potential.pppm_alpha_ewald,
-            sqrt(3.0 * potential.a_ws / (4.0 * pi)),
-        )
+
     elif potential.qsp_type == "hansen":
         potential.force = hansen_force
         potential.potential_derivatives = hansen_potential_derivatives
-        # Calculate the PP Force error from the e-e diffraction term only since it is the largest.
-        potential.pppm_pp_err = force_error_analytic_pp(
-            potential.type,
-            potential.rc,
-            0.0,
-            potential.pppm_alpha_ewald,
-            sqrt(3.0 * potential.a_ws / (4.0 * pi)),
-        )
 
     elif potential.qsp_type == "kelbg":
         potential.force = kelbg_force
         potential.potential_derivatives = kelbg_potential_derivatives
-        # TODO: Calculate the PP Force error from the e-e diffraction term only.
-        # the following is a placeholder
-        potential.pppm_pp_err = force_error_analytic_pp(
-            potential.type,
-            potential.rc,
-            0.0,
-            potential.pppm_alpha_ewald,
-            sqrt(3.0 * potential.a_ws / (4.0 * pi)),
-        )
+
+
+def calc_force_error_quad(potential):
+
+    pot_matrix = potential.matrix.copy()
+
+    # Rescale the q_iq_j term with e-e value
+    pot_matrix[:, :, 0] /= potential.matrix[0, 0, 0] 
+    
+    # Rescale the diffraction lengths by the WS radius
+    pot_matrix[:, :, 1] *= potential.a_ws
+
+    # Rescale the Pauli term
+    pot_matrix[:, :, 2] /= potential.matrix[0, 0, 0]
+    pot_matrix[:, :, 3] *= potential.a_ws
+
+    # Rescale the Ewald parameter and the short-range cutoff
+    pot_matrix[:, :, 5] *= potential.a_ws
+    pot_matrix[:, :, 6] /= potential.a_ws
+
+    r_c = potential.rc / potential.a_ws
+
+    # Solid angle integral
+    solid_angle = 2.0 * pi**(potential.dimensions / 2) / gamma(potential.dimensions / 2)
+
+    integrand = lambda r: solid_angle * r**(potential.dimensions - 1) * ( potential.force(r, pot_matrix[0,0])[1])**2
+    f_err_a, _ = quad( integrand, a=r_c, b=inf)
+
+    # Force Error =  QFactor/sqrt(N V) f_err
+    # QFactor = Sum_s q_s^2 N_s / (4 * pi * epsilon_0),  s indicates species
+    # Constant = QFactor/N * sqrt(N/V) = QFactor / N * sqrt( 3/ (4 pi a_ws*3) )
+    # Rescale by e^2/(4 pi eps0 a_{ws}^2)
+    # Constant = QFactor / (N * e^2/(4 pi eps0) ) * sqrt(3/ (4 pi)) * ( e^2 / sqrt(a_ws^3))
+    # f_err rescaled by a_ws is
+    # f_err = f_err_a * (1 / sqrt(a_ws)) ,
+    # Force Error = QFactor / (N * e^2/(4 pi eps0) ) * sqrt(3/ (4 pi)) * f_err_a * ( e^2 / a_ws^2))
+
+    QFactor = potential.QFactor / (potential.matrix[0, 0, 0] * potential.total_num_ptcls)
+    f_err = sqrt( f_err_a * 3.0 / (4.0 * pi)) * QFactor
+
+    return f_err

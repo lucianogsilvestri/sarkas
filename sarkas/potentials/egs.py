@@ -195,7 +195,7 @@ def update_params(potential, species):
                 potential.matrix[i, j, 4] = 1.0 / potential.gamma_m
                 potential.matrix[i, j, 5] = 1.0 / potential.gamma_p
 
-    potential.matrix[:, :, 6] = potential.a_rs
+    potential.matrix[:, :, -1] = potential.a_rs
 
     if potential.method == "pppm":
         raise AlgorithmError("pppm algorithm not implemented yet.")

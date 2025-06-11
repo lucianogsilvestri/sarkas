@@ -663,7 +663,7 @@ class Parameters:
             self.species_temperature[i] = sp.temperature
             self.species_charges[i] = sp.charge
             self.species_plasma_frequencies[i] = sp.plasma_frequency
-            self.QFactor += sp.QFactor / self.fourpie0
+            self.QFactor += sp.QFactor
 
             wp_tot_sq += sp.plasma_frequency**2
             lambda_D += sp.debye_length**2
@@ -851,7 +851,7 @@ class Parameters:
                 sp.mass_density = sp.mass * sp.number_density
 
             # Q^2 factor see eq.(2.10) in Ballenegger et al. J Chem Phys 128 034109 (2008).
-            sp.QFactor = sp.num * sp.charge**2  # In case of LJ this is zero
+            sp.QFactor = sp.num * sp.charge**2 / self.fourpie0 # In case of LJ this is zero
 
             sp.copy_params(self)
             sp.calc_ws_radius()

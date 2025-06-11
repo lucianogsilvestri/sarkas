@@ -2,8 +2,9 @@
 
 import scipy.signal as scp_signal
 from numba import njit
-from numpy import arange, array, exp, inf, ndarray, pi, sqrt, trapz, zeros_like
-from scipy.integrate import quad
+from numpy import arange, array, exp, float64, inf, ndarray, pi, sqrt, trapz, zeros_like
+from scipy.integrate import quad, quad_vec
+from scipy.special import gamma
 
 TWOPI = 2.0 * pi
 
@@ -118,7 +119,7 @@ def yukawa_green_function(k: float, alpha: float, kappa: float):
     >>> G_k = yukawa_green_function(k = k, alpha = alpha, kappa = kappa)
 
     """
-    return 4.0 * pi * exp(-(k**2 + kappa**2) / (2 * alpha) ** 2) / (kappa**2 + k**2)
+    return 2.0 * TWOPI * exp(-(k**2 + kappa**2) / (2 * alpha) ** 2) / (kappa**2 + k**2)
 
 
 def betamp(m: int, p: int, alpha: float, kappa: float):
@@ -152,7 +153,7 @@ def betamp(m: int, p: int, alpha: float, kappa: float):
 
     """
     exponent = 2 * (m + p + 2)
-    intgrl, _ = quad(lambda x: yukawa_green_function(x, alpha, kappa) ** 2 * x ** (exponent), 0, inf)
+    intgrl, _ = quad_vec(lambda x: yukawa_green_function(x, alpha, kappa) ** 2 * x ** (exponent), 0, inf)
     return intgrl
 
 
@@ -179,27 +180,39 @@ def force_error_approx_pppm(potential):
     """
 
     if potential.type == "yukawa":
-        kappa = potential.a_ws / potential.screening_length
-        alpha = potential.pppm_alpha_ewald * potential.a_ws
-        ha = potential.pppm_h_array[0] / potential.a_ws
-        pppm_pm_err = force_error_approx_pm(kappa, potential.pppm_cao[0], ha, alpha)
-
+        kappa = potential.a_ws / potential.screening_length        
     elif potential.type in ["coulomb", "qsp"]:
-        alpha = potential.pppm_alpha_ewald * potential.a_ws
-        ha = potential.pppm_h_array[0] / potential.a_ws
-        pppm_pm_err = force_error_approx_pm(0.0, potential.pppm_cao[0], ha, alpha)
+        kappa = 0.0
 
-    rescaling_constant = sqrt(potential.total_num_density) * potential.a_ws**2
+    alpha = potential.pppm_alpha_ewald * potential.a_ws
+    ha = potential.pppm_h_array[0] / potential.a_ws
+    rc = potential.rc / potential.a_ws
+
+    # Force Error =  QFactor/sqrt(N V) f_err
+    # QFactor = Sum_s q_s^2 N_s / (4 * pi * epsilon_0),  s indicates species
+    # Constant = QFactor/N * sqrt(N/V) = QFactor / N * sqrt( 3/ (4 pi a_ws*3) )
+    # Rescale by e^2/(4 pi eps0 a_{ws}^2)
+    # Constant = QFactor / (N * e^2/(4 pi eps0) ) * sqrt(3/ (4 pi)) * ( e^2 / sqrt(a_ws^3))
+    # f_err rescaled by a_ws is
+    # f_err = f_err_a * (1 / sqrt(a_ws)) ,
+    # Force Error = QFactor / (N * e^2/(4 pi eps0) ) * sqrt(3/ (4 pi)) * f_err_a * ( e^2 / a_ws^2))
+    QFactor = potential.QFactor / (potential.matrix[0, 0, 0] * potential.total_num_ptcls)
+    rescaling_constant = sqrt(3.0 / (4.0 * pi)) * QFactor 
+
     pppm_pp_err = force_error_analytic_pp(
-        potential.type, potential.rc, potential.screening_length, potential.pppm_alpha_ewald, rescaling_constant
+        potential.type, rc, kappa, alpha, rescaling_constant
     )
-    pppm_pm_err *= sqrt(potential.total_num_density * potential.a_ws**3)
+
+    # This returns (A_f)**(1/2) from eq.(36) in :cite:`Dharuman2017`
+    # The rescaling constant makes it in units of q^2/a_ws^2
+    pppm_pm_err = force_error_approx_pm(kappa, potential.pppm_cao[0], ha, alpha, rescaling_constant)
+    
     force_error_tot = sqrt(pppm_pm_err**2 + pppm_pp_err**2)
 
     return force_error_tot, pppm_pm_err, pppm_pp_err
 
 
-def force_error_approx_pm(kappa: float, p: int, h: float, alpha: float):
+def force_error_approx_pm(kappa: float, p: int, h: float, alpha: float, rescaling_const: float):
     r"""
     Calculates the PM part of the force error, :math:`\Delta F_{\rm {pm}}`,  for a given value of the PPPM parameters.
     The formula for :math:`\Delta F_{\rm {pm}}` can be found in :ref:`force_error`.
@@ -218,6 +231,10 @@ def force_error_approx_pm(kappa: float, p: int, h: float, alpha: float):
     alpha : float
         Ewald screening parameter.
 
+    rescaling_const: float
+        Constant by which to rescale the force error. \n
+        In case of electric forces = :math:`Q^2/(4 \\pi \\epsilon_0) 1/a^2`.
+    
     Returns
     -------
     pm_force_error: float
@@ -266,11 +283,11 @@ def force_error_approx_pm(kappa: float, p: int, h: float, alpha: float):
     # eq.(36) in :cite:`Dharuman2017`
     pm_force_error = sqrt(3.0 * somma) / (2.0 * pi)
 
-    return pm_force_error
+    return pm_force_error * rescaling_const
 
 
 def force_error_analytic_pp(
-    potential_type: str, cutoff_length: float, screening_length: float, alpha_ewald: float, rescaling_const: float
+    potential_type: str, cutoff_length: float, screening_parameter: float, alpha_ewald: float, rescaling_const: float
 ):
     """
     Calculate the short-range part of the force error from the approximation formula given in :cite:`Dharuman2017`.
@@ -283,8 +300,8 @@ def force_error_analytic_pp(
     cutoff_length: float
         Short range cutoff.
 
-    screening_length: float
-        Screening length in case of screened potentials like yukawa. Pass 0 if coulomb
+    screening_parameter: float
+        Inverse of screening length in case of screened potentials like yukawa. Pass 0 if Coulomb or QSP.
 
     alpha_ewald: float
         Ewald screening parameter.
@@ -299,24 +316,12 @@ def force_error_analytic_pp(
         Short range force error in units of `rescaling_const`.
 
     """
-    if potential_type in ["yukawa"]:
-        kappa = 1 / screening_length
 
-        # PP force error calculation. Note that the equation was derived for a single component plasma.
-        kappa_over_alpha = -0.25 * (kappa / alpha_ewald) ** 2
-        alpha_times_rcut = -((alpha_ewald * cutoff_length) ** 2)
-        # eq.(30) from :cite:`Dharuman2017`
-        pppm_pp_err = 2.0 * exp(kappa_over_alpha + alpha_times_rcut) / sqrt(cutoff_length)
-        # Renormalize
-        pppm_pp_err *= rescaling_const
+    kappa_alpha = 0.5 * screening_parameter / alpha_ewald
+    rc_alpha = cutoff_length *  alpha_ewald
 
-    elif potential_type in ["coulomb", "qsp"]:
-
-        # PP force error calculation. Note that the equation was derived for a single component plasma.
-        alpha_times_rcut = -((alpha_ewald * cutoff_length) ** 2)
-        pppm_pp_err = 2.0 * exp(alpha_times_rcut) / sqrt(cutoff_length)
-        # Renormalize
-        pppm_pp_err *= rescaling_const
+    pppm_pp_err = 2.0 * exp(- kappa_alpha**2) * exp(-rc_alpha**2) / sqrt(cutoff_length)
+    pppm_pp_err *= rescaling_const
 
     return pppm_pp_err
 

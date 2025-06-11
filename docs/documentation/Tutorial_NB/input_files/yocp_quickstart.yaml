@@ -13,13 +13,14 @@ Particles:
 Potential:
     type: Yukawa                            # potential type
     method: PP
-    rc: 6.0e-8                              # cm, cut-off radius
+    # rc: 6.0e-8                              # cm, cut-off radius
+    force_error: 1.280814e-05
     screening_length_type: thomas-fermi
     electron_temperature: 5.0e+03
 
 Integrator:
     type: Verlet
-    dt: 5.0e-17                             # sec
+    dt: 5.0e-16                             # sec
     thermostat_type: Berendsen                         # thermostat type
     thermalization_timestep: 300
     berendsen_tau: 539
