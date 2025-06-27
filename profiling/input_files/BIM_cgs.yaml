@@ -1,0 +1,62 @@
+# keywords: BIM, Coulomb, P3M, cgs, random_no_reject,
+Particles:
+    - Species:
+        name: H
+        number_density: 8.1e+27
+        atomic_weight: 1.0
+        num: 5000
+        Z: 1.0
+        temperature_eV: 14.68
+
+    - Species:
+        name: He
+        number_density: 8.1e+27
+        atomic_weight: 4
+        num: 5000
+        Z: 2.0
+        temperature_eV: 14.68
+
+Potential:
+    type: Coulomb
+    method: pppm
+    rc: 1.272427e-09
+    pppm_mesh: [64,64,64]
+    pppm_aliases: [3,3,3]
+    pppm_cao: [6,6,6]
+    pppm_alpha_ewald: 2.610445e+09
+
+Integrator:
+    type: Verlet
+    dt: 9.5e-20
+    thermostat_type: berendsen
+    thermalization_timestep: 800
+    berendsen_tau: 100.0
+
+Parameters:
+    rand_seed: 1234567890
+    units: cgs
+    boundary_conditions: periodic
+    load_method: qmc
+    qmc_sequence: halton
+    equilibration_steps: 4_000
+    production_steps: 10
+    eq_dump_step: 10
+    prod_dump_step: 5
+    #   (OPTIONAL) This is a list of observable that you want to calculate during the simulation.
+    observables_list: ["Pressure Tensor", "Enthalpy", "Heat Flux"]
+    #  (OPTIONAL) The observables_group is a list of Particles attributes that will be saved during the simulation
+    observables_array_list: ["species_pressure", "species_pressure_tensor",  "species_enthalpy", "species_heat_flux"]   
+    # This is a list of thermodynamics that you want to calculate during the simulation.
+    # thermodynamics_list: ["total energy", "temperature", "kinetic energy", "potential energy","pressure" ]
+
+IO:
+    verbose: yes
+    md_simulations_dir: Simulations
+    job_dir: HeH_sim
+
+Observables:
+  - RadialDistributionFunction:
+      no_bins: 250
+
+  - Thermodynamics:
+      phase: production

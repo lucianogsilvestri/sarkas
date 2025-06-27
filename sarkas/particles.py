@@ -6,7 +6,7 @@ import csv
 from copy import deepcopy
 from h5py import File as h5File
 from numba import float64, int64, jit, njit, void
-from numpy import arange, array, empty, exp, floor, full, histogram, int64, log, pi
+from numpy import arange, array, empty, exp, floor, full, histogram, int64, log, newaxis, pi
 from numpy import load as np_load
 from numpy import (
     loadtxt,
@@ -1236,7 +1236,7 @@ class Particles:
 
     def calculate_electric_current(self):
         """Calculate the electric current of each particle and store it into :attr:`electric_current`."""
-        self.electric_current = self.charges * self.vel
+        self.electric_current = self.charges[:, newaxis] * self.vel
 
     def calculate_kinetic_energy(self):
         """Calculate the kinetic energy of each particle.
@@ -1314,7 +1314,7 @@ class Particles:
 
     def calculate_species_momentum(self):
         velocity = vector_species_loop(self.vel, self.species_num)
-        self.species_momentum = self.species_masses * velocity
+        self.species_momentum = self.species_masses[:, newaxis] * velocity
 
     def calculate_species_velocity_moments(self):
         """Calculate the moments of the velocity distribution using the velocity of each species and stores them into :attr:`species_velocity_moments`."""
@@ -1743,6 +1743,7 @@ def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num
 
     """
     # Rescale vel of each particle by their individual mass
+    num_species = species_num.shape[0]
     pressure = zeros(species_num.shape[0])
     pressure_kin = zeros((species_num.shape[0], 3, 3 ))
     pressure_pot = zeros((species_num.shape[0], 3, 3))
@@ -1757,7 +1758,12 @@ def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num
         for j in range(3):
             temp_kin_tensor[i, j, :] = vel[:, i] * vel[:, j]
 
-    pressure_kin = species_masses * tensor_species_loop(temp_kin_tensor, species_num) / box_volume
+    # Hack becuse numba does not support broadcasting
+    temp_tensor = tensor_species_loop(temp_kin_tensor, species_num) / box_volume
+    for isp in range(num_species):
+        pressure_kin[isp, :, :] = species_masses[isp] * temp_tensor[isp, :, :]
+
+    # pressure_kin = species_masses.reshape( (num_species,3, 3)) * 
     # Sum over the species
     pressure_pot =  virial_species_tensor.sum(axis = 0)/box_volume # tensor_cross_species_loop(virial_species_tensor, species_num) / box_volume
     pressure_tensor = pressure_kin + pressure_pot
