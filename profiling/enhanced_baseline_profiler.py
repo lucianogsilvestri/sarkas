@@ -72,14 +72,14 @@ class EnhancedBaselineProfiler:
         self.physics_methods = [
             'calculate_kinetic_energy',
             'calculate_species_kinetic_temperature', 
-            # 'calculate_species_momentum',
-            # 'calculate_center_of_mass_velocity',
-            # 'remove_center_of_mass_motion',
-            # 'calculate_species_electric_current',
-            # 'calculate_species_pressure_tensor',
-            # 'calculate_species_heat_flux',
-            # 'calculate_species_diffusion_flux',
-            # 'calculate_species_velocity_moments'
+            'calculate_species_momentum',
+            'calculate_center_of_mass_velocity',
+            'remove_center_of_mass_motion',
+            'calculate_species_electric_current',
+            'calculate_species_pressure_tensor',
+            'calculate_species_heat_flux',
+            'calculate_species_diffusion_flux',
+            'calculate_species_velocity_moments'
         ]
         
         print(f"Enhanced Baseline Profiler initialized")
@@ -161,11 +161,25 @@ class EnhancedBaselineProfiler:
             self.last_memory_peak = peak / 1024 / 1024  # MB
     
     def get_system_metrics(self) -> SystemMetrics:
-        """Capture system-level performance metrics."""
+        """Capture system-level performance metrics with error handling."""
+        # Safely get CPU usage
+        cpu_start = 0
+        try:
+            cpu_start = psutil.cpu_percent()
+        except:
+            pass
+        
+        # Safely get memory info
+        memory_start = 0
+        try:
+            memory_start = psutil.virtual_memory().available / 1024 / 1024
+        except:
+            pass
+        
         return SystemMetrics(
-            cpu_usage_start=psutil.cpu_percent(),
+            cpu_usage_start=cpu_start,
             cpu_usage_end=0,  # Will be updated
-            memory_available_start=psutil.virtual_memory().available / 1024 / 1024,
+            memory_available_start=memory_start,
             memory_available_end=0,  # Will be updated
             gc_collections_start={i: gc.get_count()[i] for i in range(3)},
             gc_collections_end={i: 0 for i in range(3)}  # Will be updated
@@ -216,8 +230,16 @@ class EnhancedBaselineProfiler:
             memory_deltas.append(self.last_memory_delta)
         
         # System metrics after
-        sys_metrics.cpu_usage_end = psutil.cpu_percent()
-        sys_metrics.memory_available_end = psutil.virtual_memory().available / 1024 / 1024
+        try:
+            sys_metrics.cpu_usage_end = psutil.cpu_percent()
+        except:
+            sys_metrics.cpu_usage_end = sys_metrics.cpu_usage_start
+            
+        try:
+            sys_metrics.memory_available_end = psutil.virtual_memory().available / 1024 / 1024
+        except:
+            sys_metrics.memory_available_end = sys_metrics.memory_available_start
+            
         sys_metrics.gc_collections_end = {i: gc.get_count()[i] for i in range(3)}
         
         self.system_metrics[method_name] = sys_metrics
@@ -310,7 +332,14 @@ class EnhancedBaselineProfiler:
         
         report_file = self.dirs['reports'] / f'detailed_{method_name}_report.txt'
         with open(report_file, 'w') as f:
-            stats.print_stats(file=f)
+            # Redirect stdout to file
+            import sys
+            old_stdout = sys.stdout
+            sys.stdout = f
+            try:
+                stats.print_stats()
+            finally:
+                sys.stdout = old_stdout
         
         print(f"  Detailed profile saved: {profile_file}")
         print(f"  Report saved: {report_file}")

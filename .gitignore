@@ -11,11 +11,13 @@
 Simulations/
 SarkasSimulations/
 .DS_Store
-
+refactoring_plan/
+complete_simulation_profiling/
 
 # IDE folders
 *.vscode
 *.idea
+*.VSCodeCounter/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

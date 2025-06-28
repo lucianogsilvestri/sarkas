@@ -119,7 +119,14 @@ class SimulationProfiler:
         
         start_time = time.perf_counter()
         start_memory = self.process.memory_info().rss / 1024 / 1024  # MB
-        start_cpu = psutil.cpu_percent()
+        
+        # Safely get CPU usage
+        start_cpu = 0
+        try:
+            start_cpu = psutil.cpu_percent()
+        except:
+            pass
+            
         gc_start = {i: gc.get_count()[i] for i in range(3)}
         
         try:
@@ -131,7 +138,14 @@ class SimulationProfiler:
             # Final measurements
             end_time = time.perf_counter()
             end_memory = self.process.memory_info().rss / 1024 / 1024  # MB
-            end_cpu = psutil.cpu_percent()
+            
+            # Safely get CPU usage
+            end_cpu = start_cpu  # Default to start value
+            try:
+                end_cpu = psutil.cpu_percent()
+            except:
+                pass
+                
             gc_end = {i: gc.get_count()[i] for i in range(3)}
             
             current_mem, peak_mem = tracemalloc.get_traced_memory()
@@ -263,7 +277,6 @@ class SimulationProfiler:
             # Phase 4: Finalization and I/O
             with self.phase_profiler("Finalization", 0):
                 # Any final I/O operations, cleanup, etc.
-                sim.timer.stop()
                 final_memory = self.process.memory_info().rss / 1024 / 1024
                 
         except Exception as e:
@@ -298,9 +311,11 @@ class SimulationProfiler:
             if hasattr(sim, 'equilibrate') and self.equilibration_steps > 0:
                 sim.equilibrate()
         elif phase == "production":
-            # Run production phase
-            sim.produce()
-    
+            # Check if production is needed
+            if hasattr(sim, 'produce') and self.production_steps > 0:   
+                # Run production phase
+                sim.produce()
+        
     def detailed_phase_profiling(self, sim, phase: str):
         """Run detailed profiling during simulation phases."""
         # Create detailed profiler
@@ -328,21 +343,48 @@ class SimulationProfiler:
                 old_stdout = sys.stdout
                 sys.stdout = f
                 try:
-                    stats.print_stats()  # Now prints to file
+                    stats.print_stats()  # ✅ Now prints to file
                 finally:
-                    sys.stdout = old_stdout  # Always restore stdout
+                    sys.stdout = old_stdout  # ✅ Always restore stdout
             
             print(f"   Detailed profile saved: {profile_file}")
     
     def get_system_info(self):
-        """Collect system information."""
+        """Collect system information with error handling."""
+        # Safely get CPU frequency info
+        cpu_freq_info = None
+        try:
+            cpu_freq = psutil.cpu_freq()
+            if cpu_freq:
+                cpu_freq_info = cpu_freq._asdict()
+        except (FileNotFoundError, PermissionError, AttributeError):
+            # CPU frequency info not available on this system
+            cpu_freq_info = None
+        
+        # Safely get CPU count
+        cpu_count = None
+        try:
+            cpu_count = psutil.cpu_count()
+        except:
+            cpu_count = None
+        
+        # Safely get memory info
+        memory_total = None
+        memory_available = None
+        try:
+            vm = psutil.virtual_memory()
+            memory_total = vm.total / 1024 / 1024 / 1024  # GB
+            memory_available = vm.available / 1024 / 1024 / 1024  # GB
+        except:
+            pass
+        
         return {
             'python_version': os.sys.version,
             'numpy_version': np.__version__,
-            'cpu_count': psutil.cpu_count(),
-            'cpu_freq': psutil.cpu_freq()._asdict() if psutil.cpu_freq() else None,
-            'memory_total': psutil.virtual_memory().total / 1024 / 1024 / 1024,  # GB
-            'memory_available': psutil.virtual_memory().available / 1024 / 1024 / 1024,  # GB
+            'cpu_count': cpu_count,
+            'cpu_freq': cpu_freq_info,
+            'memory_total': memory_total,
+            'memory_available': memory_available,
             'platform': os.sys.platform,
             'timestamp': datetime.now().isoformat()
         }

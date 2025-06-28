@@ -1,21 +1,17 @@
 """
 Module containing the basic class for handling particles properties.
-
-This module has been updated to use the optimized thermodynamics calculator
-while maintaining 100% backward compatibility.
 """
 
 import csv
 from copy import deepcopy
 from h5py import File as h5File
 from numba import float64, int64, jit, njit, void
-from numpy import arange, array, empty, exp, floor, full, histogram, int64, log, pi
+from numpy import arange, array, empty, exp, floor, full, histogram, int64, log, newaxis, pi
 from numpy import load as np_load
 from numpy import (
     loadtxt,
     meshgrid,
     ndarray,
-    newaxis,
     outer,
     rint,
     savetxt,
@@ -35,72 +31,6 @@ from warnings import warn
 
 from .utilities.exceptions import ParticlesError, ParticlesWarning
 
-# Performance toggle for gradual migration
-_USE_FAST_THERMODYNAMICS = True
-_USE_FAST_TRANSPORT = True
-_USE_FAST_MECHANICAL = True
-
-# Import the new thermodynamics calculator
-try:
-    from .physics.thermodynamics import (
-        kinetic_energy as fast_kinetic_energy,
-        temperature_from_velocities as fast_temperature_from_velocities,
-        enthalpy as fast_enthalpy,
-        species_enthalpy as fast_species_enthalpy
-    )
-    _THERMODYNAMICS_AVAILABLE = True
-except ImportError:
-    # Fallback if new module is not available
-    _THERMODYNAMICS_AVAILABLE = False
-    _USE_FAST_THERMODYNAMICS = False
-    warn(
-        "Fast thermodynamics calculator not available. Using legacy implementation.",
-        category=UserWarning
-    )
-
-# Import the new transport calculator
-try:
-    from .physics.transport import (
-        electric_current_vector as fast_electric_current_vector,
-        electric_current_density as fast_electric_current_density,
-        heat_flux_vector as fast_heat_flux_vector,
-        heat_flux_tensor as fast_heat_flux_tensor,
-        diffusion_flux as fast_diffusion_flux,
-        calculate_electric_current as fast_calculate_electric_current,
-        calculate_species_electric_current as fast_calculate_species_electric_current
-    )
-    _TRANSPORT_AVAILABLE = True
-except ImportError:
-    # Fallback if new module is not available
-    _TRANSPORT_AVAILABLE = False
-    _USE_FAST_TRANSPORT = False
-    warn(
-        "Fast transport calculator not available. Using legacy implementation.",
-        category=UserWarning
-    )
-
-# Import the new mechanical calculator
-try:
-    from .physics.mechanical import (
-        momentum as fast_momentum,
-        center_of_mass_velocity as fast_center_of_mass_velocity,
-        remove_center_of_mass_motion as fast_remove_center_of_mass_motion,
-        angular_momentum as fast_angular_momentum,
-        pressure_tensor_kinetic as fast_pressure_tensor_kinetic,
-        pressure_tensor_virial as fast_pressure_tensor_virial,
-        pressure_scalar as fast_pressure_scalar,
-        stress_tensor as fast_stress_tensor,
-        calculate_species_pressure_tensor as fast_calculate_species_pressure_tensor
-    )
-    _MECHANICAL_AVAILABLE = True
-except ImportError:
-    # Fallback if new module is not available
-    _MECHANICAL_AVAILABLE = False
-    _USE_FAST_MECHANICAL = False
-    warn(
-        "Fast mechanical calculator not available. Using legacy implementation.",
-        category=UserWarning
-    )
 class Particles:
     """
     Class handling particles' properties.
@@ -241,29 +171,37 @@ class Particles:
         self.species_temperature = None
         self.species_thermostat_temperatures = None
 
+        
         self.no_grs = None
         self.rdf_hist = None
 
         self.observables_list = ["Radial Distribution Function"]
         self.observables_arrays_list = ['rdf_hist']
-        self.thermodynamics_list = ['total_energy', 'kinetic_energy', 'potential_energy', 'temperature']
+        self.thermodynamics_list = ['total_energy', 'kinetic_energy', 'potential_energy', 'temperature'] # 'pressure', 'enthalpy']
         
-        self.species_thermodynamics_data = {}
+        self.species_thermodynamics_data = {} # Associated method to initialize it
         self.species_thermodynamics_method_map = {}
         
         self.species_observables_method_map = {
             "Momentum": self.calculate_species_momentum,
             "Velocity Moments": self.calculate_species_velocity_moments,
+            "KL Divergence": self.calculate_species_kl_divergence,
+            "Electric Current": self.calculate_species_electric_current,
+            "Pressure Tensor": self.calculate_species_pressure_tensor,
+            "Heat Flux": self.calculate_species_heat_flux,
+            "Diffusion Flux": self.calculate_species_diffusion_flux,
         }
-
         self.qmc_sequence = None
         self.available_qmc_sequences = ["halton", "sobol", "poissondisk", "latinhypercube"]
         self.max_velocity_distribution_moment = 4
-        
-        # Performance toggle attribute for gradual migration
-        self._use_fast_thermodynamics = _USE_FAST_THERMODYNAMICS and _THERMODYNAMICS_AVAILABLE
-        self._use_fast_transport = _USE_FAST_TRANSPORT and _TRANSPORT_AVAILABLE
-        self._use_fast_mechanical = _USE_FAST_MECHANICAL and _MECHANICAL_AVAILABLE
+
+    # def __repr__(self):
+    #     sortedDict = dict(sorted(self.__dict__.items(), key=lambda x: x[0].lower()))
+    #     disp = "Particles( \n"
+    #     for key, value in sortedDict.items():
+    #         disp += "\t{} : {}\n".format(key, value)
+    #     disp += ")"
+    #     return disp
 
     def __copy__(self):
         """
@@ -624,7 +562,6 @@ class Particles:
         self.dipole_energy = zeros(self.total_num_ptcls)
         self.temperature = zeros(self.total_num_ptcls)
 
-        self.species_concentrations = self.species_num/ self.species_num.sum()
         self.species_initial_velocity = zeros((self.num_species, 3))
         self.species_thermal_velocity = zeros((self.num_species, 3))
         
@@ -640,7 +577,6 @@ class Particles:
         self.species_thermostat_temperatures = zeros(self.num_species)
         
         self.no_grs = int64(self.num_species * (self.num_species + 1) / 2)
-
         if "Radial Distribution Function" in self.observables_list:
             self.rdf_hist = zeros((self.num_species, self.num_species, self.rdf_nbins))
             if 'rdf_hist' not in self.observables_arrays_list:
@@ -689,14 +625,9 @@ class Particles:
                 self.observables_arrays_list.append('species_velocity_moments')
 
         if "Diffusion Flux" in self.observables_list:
-            self.species_diffusion_flux = zeros((self.num_species, 3))
+            self.species_diffusion_flux = zeros((self.num_species - 1, 3))
             if 'species_diffusion_flux' not in self.observables_arrays_list:
                 self.observables_arrays_list.append('species_diffusion_flux')
-            
-        if "Inter Diffusion Flux" in self.observables_list:
-            self.interdiffusion_fluxes = zeros((self.num_species - 1, 3))
-            if 'interdiffusion_flux' not in self.observables_arrays_list:
-                self.observables_arrays_list.append('interdiffusion_flux')
                 
     def initialize_positions(self, species: list = None):
         """
@@ -984,795 +915,8 @@ class Particles:
 
                 species_start += sp.num
 
-    # =============================================================================
-    # THERMODYNAMICS METHODS - UPDATED TO USE NEW CALCULATOR
-    # =============================================================================
-
-    def calculate_kinetic_energy(self, use_fast=None):
-        """
-        Calculate the kinetic energy of each particle.
-
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized thermodynamics calculator. If None, uses the class default.
-            This parameter provides a migration path for gradual adoption.
-
-        Returns
-        -------
-        kin : numpy.ndarray
-            Total kinetic energy. Shape = (:attr:`total_num_ptcls`)
-
-        Notes
-        -----
-        This method now delegates to the optimized thermodynamics calculator by default
-        while maintaining full backward compatibility. The legacy implementation is
-        still available via the use_fast=False parameter.
-        """
-        # Determine which implementation to use
-        if use_fast is None:
-            use_fast = self._use_fast_thermodynamics
-        
-        if use_fast and _THERMODYNAMICS_AVAILABLE:
-            # Use the new optimized calculator
-            self.kinetic_energy = fast_kinetic_energy(self.vel, self.masses)
-        else:
-            # Use the legacy implementation
-            self.kinetic_energy = 0.5 * self.masses * (self.vel * self.vel).sum(axis=-1)
-
-    def calculate_species_kinetic_energy(self, use_fast=None):
-        """
-        Calculate the kinetic energy of each species and store it into :attr:`species_kinetic_energy`.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized thermodynamics calculator. If None, uses the class default.
-        """
-        self.calculate_kinetic_energy(use_fast=use_fast)
-        self.species_kinetic_energy = scalar_species_loop(self.kinetic_energy, self.species_num)
-
-    def calculate_species_kinetic_temperature(self, use_fast=None):
-        """
-        Calculate the kinetic energy and temperature of each species.
-
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized thermodynamics calculator. If None, uses the class default.
-
-        Returns
-        -------
-        K : numpy.ndarray
-            Kinetic energy of each species. Shape=(:attr:`num_species`).
-
-        T : numpy.ndarray
-            Temperature of each species. Shape=(:attr:`num_species`).
-
-        Notes
-        -----
-        This method now uses the optimized thermodynamics calculator for improved performance
-        while maintaining the exact same interface and behavior.
-        """
-        # Determine which implementation to use
-        if use_fast is None:
-            use_fast = self._use_fast_thermodynamics
-
-        if use_fast and _THERMODYNAMICS_AVAILABLE:
-            # Use the new optimized calculator
-            self.kinetic_energy = fast_kinetic_energy(self.vel, self.masses)
-            self.species_kinetic_energy = scalar_species_loop(self.kinetic_energy, self.species_num)
-            
-            # Calculate temperature using optimized function
-            particle_temperatures = fast_temperature_from_velocities(
-                self.vel, self.masses, self.dimensions, self.kB
-            )
-            # Aggregate by species using the same logic as before
-            self.species_temperature = scalar_species_loop(particle_temperatures, self.species_num) / self.species_num
-        else:
-            # Use the legacy implementation
-            const = 2.0 / (self.kB * self.species_num * self.dimensions)
-            self.calculate_kinetic_energy(use_fast=False)
-            self.species_kinetic_energy = scalar_species_loop(self.kinetic_energy, self.species_num)
-            self.species_temperature = const * self.species_kinetic_energy
-
-    def calculate_species_temperature(self, use_fast=None):
-        """
-        Calculate the temperature of each species and store it into :attr:`species_temperature`.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized thermodynamics calculator. If None, uses the class default.
-        
-        Note
-        ----
-        Redundant with :meth:`calculate_species_kinetic_temperature`.
-        """
-        self.calculate_species_kinetic_temperature(use_fast=use_fast)
-
-    def calculate_total_kinetic_energy(self, use_fast=None):
-        """
-        Calculate the total kinetic energy by summing the :attr:`kinetic_energy` array and store it into :attr:`total_kinetic_energy`.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized thermodynamics calculator. If None, uses the class default.
-        """
-        self.calculate_species_kinetic_temperature(use_fast=use_fast)
-        self.total_kinetic_energy = self.species_kinetic_energy.sum()
-
-    def calculate_species_momentum(self, use_fast=None):
-        """
-        Calculate momentum of each species.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized thermodynamics calculator. If None, uses the class default.
-        """
-        # Determine which implementation to use
-        if use_fast is None:
-            use_fast = self._use_fast_mechanical
-
-        if use_fast and _MECHANICAL_AVAILABLE:
-            # Use the new optimized calculator
-            particle_momenta = fast_momentum(self.vel, self.masses)
-            # Aggregate by species
-            self.species_momentum = vector_species_loop(particle_momenta, self.species_num)
-        else:
-            # Use the legacy implementation
-            velocity = vector_species_loop(self.vel, self.species_num)
-            self.species_momentum = self.species_masses[:, newaxis] * velocity
-
-    def calculate_total_momentum(self, use_fast=None):
-        """
-        Calculate total momentum of the system.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized thermodynamics calculator. If None, uses the class default.
-        """
-        self.calculate_species_momentum(use_fast=use_fast)
-        self.total_momentum = self.species_momentum.sum()
-
-    # =============================================================================
-    # TRANSPORT METHODS
-    # =============================================================================
-
-    def calculate_electric_current(self, use_fast=None):
-        """
-        Calculate the electric current of each particle and store it into :attr:`electric_current`.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized transport calculator. If None, uses the class default.
-        
-        Notes
-        -----
-        This method now delegates to the optimized transport calculator by default
-        while maintaining full backward compatibility.
-        """
-        # Determine which implementation to use
-        if use_fast is None:
-            use_fast = self._use_fast_transport
-        
-        if use_fast and _TRANSPORT_AVAILABLE:
-            # Use the new optimized calculator
-            self.electric_current = fast_calculate_electric_current(self.vel, self.charges)
-        else:
-            # Use the legacy implementation
-            self.electric_current = self.charges[:, None] * self.vel
-
-    def calculate_species_electric_current(self, use_fast=None):
-        """
-        Calculate the electric current of each species from :attr:`vel` and stores it into :attr:`species_electric_current`.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized transport calculator. If None, uses the class default.
-        """
-        # Determine which implementation to use
-        if use_fast is None:
-            use_fast = self._use_fast_transport
-
-        if use_fast and _TRANSPORT_AVAILABLE:
-            # Use the new optimized calculator
-            self.species_electric_current = fast_calculate_species_electric_current(
-                self.vel, self.charges, self.species_num
-            )
-        else:
-            # Use the legacy implementation
-            self.species_electric_current = self.species_charges[:, None] * vector_species_loop(self.vel, self.species_num)
-
-    def calculate_total_electric_current(self, use_fast=None):
-        """
-        Calculate the total electric current of the system.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized transport calculator. If None, uses the class default.
-        """
-        # Determine which implementation to use
-        if use_fast is None:
-            use_fast = self._use_fast_transport
-
-        if use_fast and _TRANSPORT_AVAILABLE:
-            # Use the new optimized calculator - direct total calculation
-            self.total_electric_current = fast_electric_current_vector(self.vel, self.charges)
-        else:
-            # Use the legacy implementation via species calculation
-            self.calculate_species_electric_current(use_fast=False)
-            self.total_electric_current = self.species_electric_current.sum(axis=0)
-
-    def calculate_species_heat_flux(self, use_fast=None):
-        """
-        Calculate the energy current of each species and stores it into :attr:`species_heat_flux`.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized transport calculator. If None, uses the class default.
-        
-        Notes
-        -----
-        This method now uses the optimized transport calculator for improved performance.
-        The heat flux calculation includes convective energy transport.
-        """
-        # Determine which implementation to use
-        if use_fast is None:
-            use_fast = self._use_fast_transport
-
-        if use_fast and _TRANSPORT_AVAILABLE:
-            # Calculate kinetic energy first
-            self.calculate_kinetic_energy(use_fast=use_fast)
-            
-            # Use the new optimized calculator for heat flux
-            # Calculate total heat flux and then distribute by species
-            total_heat_flux = fast_heat_flux_vector(self.vel, self.kinetic_energy, volume=1.0)
-            
-            # For species-specific heat flux, we need to aggregate properly
-            # This is a more complex calculation that requires species-wise aggregation
-            species_start = 0
-            species_heat_flux = zeros((self.num_species, 3))
-            
-            for sp in range(self.num_species):
-                species_end = species_start + self.species_num[sp]
-                sp_vel = self.vel[species_start:species_end]
-                sp_ke = self.kinetic_energy[species_start:species_end]
-                
-                if sp_vel.size > 0:
-                    species_heat_flux[sp] = fast_heat_flux_vector(sp_vel, sp_ke, volume=1.0)
-                
-                species_start = species_end
-            
-            self.species_heat_flux = species_heat_flux
-        else:
-            # Use the legacy implementation
-            if hasattr(self, 'heat_flux_species_tensor') and self.heat_flux_species_tensor is not None:
-                self.species_heat_flux = self.heat_flux_species_tensor.sum(axis=0)
-            else:
-                # Fallback calculation
-                self.calculate_kinetic_energy(use_fast=False)
-                species_start = 0
-                species_heat_flux = zeros((self.num_species, 3))
-                
-                for sp in range(self.num_species):
-                    species_end = species_start + self.species_num[sp]
-                    sp_vel = self.vel[species_start:species_end]
-                    sp_ke = self.kinetic_energy[species_start:species_end]
-                    
-                    # Simple convective heat flux: sum of ke * v
-                    if sp_vel.size > 0:
-                        species_heat_flux[sp] = (sp_ke[:, None] * sp_vel).sum(axis=0)
-                    
-                    species_start = species_end
-                
-                self.species_heat_flux = species_heat_flux
-
-    def calculate_species_diffusion_flux(self, use_fast=None):
-        """
-        Calculate the diffusion fluxes.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized transport calculator. If None, uses the class default.
-        """
-        # Determine which implementation to use
-        if use_fast is None:
-            use_fast = self._use_fast_transport
-
-        if use_fast and _TRANSPORT_AVAILABLE:
-            # Use the new optimized calculator
-            # Calculate species average velocities
-            species_velocities = vector_species_loop(self.vel, self.species_num)
-            
-            self.species_diffusion_flux = fast_diffusion_flux(
-                species_velocities, self.species_concentrations, self.species_masses
-            )
-        else:
-            # Use the legacy implementation
-            self.species_diffusion_flux = calc_species_diffusion_flux(
-                self.vel, self.species_masses, self.species_num
-            )
-
-    # =============================================================================
-    # TRANSPORT UTILITY METHODS
-    # =============================================================================
-
-    def calculate_current_density(self, use_fast=None):
-        """
-        Calculate electric current density of the system.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized transport calculator. If None, uses the class default.
-            
-        Returns
-        -------
-        numpy.ndarray
-            Current density vector. Shape: (3,).
-            Units: A/m²
-        """
-        # Determine which implementation to use
-        if use_fast is None:
-            use_fast = self._use_fast_transport
-
-        if use_fast and _TRANSPORT_AVAILABLE:
-            volume = getattr(self, 'box_volume', 1.0)
-            return fast_electric_current_density(self.vel, self.charges, volume)
-        else:
-            # Legacy calculation
-            total_current = self.charges[:, None] * self.vel
-            current_vector = total_current.sum(axis=0)
-            volume = getattr(self, 'box_volume', 1.0)
-            return current_vector / volume
-
-    def calculate_heat_flux_tensor(self, use_fast=None):
-        """
-        Calculate the full heat flux tensor including convective and stress contributions.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized transport calculator. If None, uses the class default.
-            
-        Returns
-        -------
-        numpy.ndarray
-            Heat flux tensor. Shape: (3, 3).
-            Units: W/m²
-        """
-        # Determine which implementation to use
-        if use_fast is None:
-            use_fast = self._use_fast_transport
-
-        if use_fast and _TRANSPORT_AVAILABLE:
-            # Calculate kinetic energy first
-            self.calculate_kinetic_energy(use_fast=use_fast)
-            
-            # Use stress tensor if available
-            stress_tensor = getattr(self, 'stress_tensor', None)
-            volume = getattr(self, 'box_volume', 1.0)
-            
-            return fast_heat_flux_tensor(
-                self.vel, self.kinetic_energy, stress_tensor, volume
-            )
-        else:
-            # Legacy implementation - simplified version
-            self.calculate_kinetic_energy(use_fast=False)
-            
-            # Simple convective heat flux tensor
-            heat_flux_tensor = zeros((3, 3))
-            for i in range(self.total_num_ptcls):
-                for α in range(3):
-                    for β in range(3):
-                        heat_flux_tensor[α, β] += self.kinetic_energy[i] * self.vel[i, α] * self.vel[i, β]
-            
-            volume = getattr(self, 'box_volume', 1.0)
-            return heat_flux_tensor / volume
-
-    # =============================================================================
-    # MECHANICAL METHODS - UPDATED TO USE NEW CALCULATOR
-    # =============================================================================
-
-    def calculate_species_pressure_tensor(self, use_fast=None):
-        """
-        Calculate the pressure, the kinetic part of the pressure tensor, the potential part of the pressure tensor of each species.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized mechanical calculator. If None, uses the class default.
-        """
-        # Determine which implementation to use
-        if use_fast is None:
-            use_fast = self._use_fast_mechanical
-
-        if use_fast and _MECHANICAL_AVAILABLE:
-            # Use the new optimized calculator
-            volume = getattr(self, 'box_volume', 1.0)
-            
-            self.species_pressure, self.species_pressure_kin_tensor, self.species_pressure_pot_tensor = (
-                fast_calculate_species_pressure_tensor(
-                    self.vel, self.virial_species_tensor, self.species_num, self.masses, volume
-                )
-            )
-            self.species_pressure_tensor = self.species_pressure_kin_tensor + self.species_pressure_pot_tensor
-        else:
-            # Use the legacy implementation
-            self.species_pressure, self.species_pressure_kin_tensor, self.species_pressure_pot_tensor = calc_pressure_tensor(
-                self.vel, self.virial_species_tensor, self.species_masses, self.species_num, 
-                getattr(self, 'box_volume', 1.0), self.dimensions
-            )
-            self.species_pressure_tensor = self.species_pressure_kin_tensor + self.species_pressure_pot_tensor
-
-    def calculate_species_pressure(self, use_fast=None):
-        """
-        Calculate the pressure of each species.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized mechanical calculator. If None, uses the class default.
-        """
-        self.calculate_species_pressure_tensor(use_fast=use_fast)
-
-    def calculate_total_pressure(self, use_fast=None):
-        """
-        Calculate the total pressure of the system.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized mechanical calculator. If None, uses the class default.
-        """
-        self.calculate_species_pressure_tensor(use_fast=use_fast)
-        self.total_pressure = self.species_pressure.sum()
-
-    def calculate_species_enthalpy(self, use_fast=None):
-        """
-        Calculate the enthalpy of each species.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized thermodynamics calculator. If None, uses the class default.
-        """
-        # Determine which implementation to use
-        if use_fast is None:
-            use_fast = self._use_fast_thermodynamics
-
-        if use_fast and _THERMODYNAMICS_AVAILABLE:
-            # Ensure we have all required quantities
-            self.calculate_kinetic_energy(use_fast=use_fast)
-            self.calculate_species_potential_energy()
-            self.calculate_species_pressure_tensor(use_fast=self._use_fast_mechanical)
-            
-            volume = getattr(self, 'box_volume', 1.0)
-            
-            # Use the new optimized calculator
-            self.species_enthalpy = fast_species_enthalpy(
-                self.kinetic_energy, self.potential_energy, 
-                self.species_pressure, volume, self.species_num
-            )
-        else:
-            # Use the legacy implementation
-            self.calculate_kinetic_energy(use_fast=False)
-            self.calculate_species_potential_energy()
-            self.calculate_species_pressure_tensor(use_fast=False)
-            
-            # Legacy calculation
-            energy = scalar_species_loop(self.kinetic_energy + self.potential_energy, self.species_num)
-            volume = getattr(self, 'box_volume', 1.0)
-            self.species_enthalpy = energy + self.species_pressure * volume
-
-    def calculate_total_enthalpy(self, use_fast=None):
-        """
-        Calculate the total enthalpy of the system.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized thermodynamics calculator. If None, uses the class default.
-        """
-        self.calculate_species_enthalpy(use_fast=use_fast)
-        self.total_enthalpy = self.species_enthalpy.sum()
-
-    # =============================================================================
-    # NEW MECHANICAL UTILITY METHODS
-    # =============================================================================
-
-    def calculate_angular_momentum(self, origin=None, use_fast=None):
-        """
-        Calculate total angular momentum of the system.
-        
-        Parameters
-        ----------
-        origin : numpy.ndarray, optional
-            Origin point for angular momentum calculation. If None, uses (0,0,0).
-        use_fast : bool, optional
-            Use the optimized mechanical calculator. If None, uses the class default.
-            
-        Returns
-        -------
-        numpy.ndarray
-            Total angular momentum vector. Shape: (3,).
-        """
-        # Determine which implementation to use
-        if use_fast is None:
-            use_fast = self._use_fast_mechanical
-
-        if use_fast and _MECHANICAL_AVAILABLE:
-            return fast_angular_momentum(self.pos, self.vel, self.masses, origin)
-        else:
-            # Legacy implementation
-            if origin is None:
-                origin = zeros(3)
-            
-            r = self.pos - origin
-            p = self.masses[:, None] * self.vel
-            
-            # L = r × p
-            L = zeros(3)
-            for i in range(len(self.masses)):
-                L[0] += r[i, 1] * p[i, 2] - r[i, 2] * p[i, 1]
-                L[1] += r[i, 2] * p[i, 0] - r[i, 0] * p[i, 2]
-                L[2] += r[i, 0] * p[i, 1] - r[i, 1] * p[i, 0]
-            
-            return L
-
-    def calculate_pressure_tensor_kinetic(self, use_fast=None):
-        """
-        Calculate kinetic contribution to pressure tensor.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized mechanical calculator. If None, uses the class default.
-            
-        Returns
-        -------
-        numpy.ndarray
-            Kinetic pressure tensor. Shape: (3, 3).
-        """
-        # Determine which implementation to use
-        if use_fast is None:
-            use_fast = self._use_fast_mechanical
-
-        if use_fast and _MECHANICAL_AVAILABLE:
-            volume = getattr(self, 'box_volume', 1.0)
-            return fast_pressure_tensor_kinetic(self.vel, self.masses, volume)
-        else:
-            # Legacy implementation
-            pressure_tensor = zeros((3, 3))
-            for i in range(len(self.masses)):
-                for α in range(3):
-                    for β in range(3):
-                        pressure_tensor[α, β] += self.masses[i] * self.vel[i, α] * self.vel[i, β]
-            
-            volume = getattr(self, 'box_volume', 1.0)
-            return pressure_tensor / volume
-        
-    # =============================================================================
-    # NEW UTILITY METHODS FOR CENTER OF MASS
-    # =============================================================================
-
-    def calculate_center_of_mass_velocity(self, use_fast=None):
-        """
-        Calculate the center of mass velocity of the system.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized mechanical calculator. If None, uses the class default.
-            
-        Returns
-        -------
-        numpy.ndarray
-            Center of mass velocity. Shape: (3,).
-        """
-        # Determine which implementation to use
-        if use_fast is None:
-            use_fast = self._use_fast_mechanical
-
-        if use_fast and _MECHANICAL_AVAILABLE:
-            return fast_center_of_mass_velocity(self.vel, self.masses)
-        else:
-            # Legacy implementation
-            total_momentum = (self.masses[:, None] * self.vel).sum(axis=0)
-            total_mass = self.masses.sum()
-            return total_momentum / total_mass if total_mass > 0 else zeros(3)
-
-    def remove_center_of_mass_motion(self, use_fast=None):
-        """
-        Remove center of mass motion from particle velocities.
-        
-        Parameters
-        ----------
-        use_fast : bool, optional
-            Use the optimized thermodynamics calculator. If None, uses the class default.
-            
-        Notes
-        -----
-        This method modifies self.vel in place to remove center of mass motion,
-        enforcing conservation of total momentum.
-        """
-        # Determine which implementation to use
-        if use_fast is None:
-            use_fast = self._use_fast_mechanical
-
-        if use_fast and _MECHANICAL_AVAILABLE:
-            self.vel = fast_remove_center_of_mass_motion(self.vel, self.masses)
-        else:
-            # Legacy implementation
-            cm_velocity = self.calculate_center_of_mass_velocity(use_fast=False)
-            self.vel -= cm_velocity
-
-    # =============================================================================
-    # PERFORMANCE CONTROL METHODS
-    # =============================================================================
-
-    def set_fast_thermodynamics(self, enabled=True):
-        """
-        Enable or disable the fast thermodynamics calculator.
-        
-        Parameters
-        ----------
-        enabled : bool, optional
-            Whether to use the fast thermodynamics calculator. Default: True.
-            
-        Notes
-        -----
-        This method provides a runtime toggle for the thermodynamics implementation,
-        useful for testing, debugging, or gradual migration.
-        """
-        if enabled and not _THERMODYNAMICS_AVAILABLE:
-            warn(
-                "Fast thermodynamics calculator is not available. "
-                "Install the sarkas.physics.thermodynamics module.",
-                category=UserWarning
-            )
-            self._use_fast_thermodynamics = False
-        else:
-            self._use_fast_thermodynamics = enabled
-
-    def get_fast_thermodynamics_status(self):
-        """
-        Get the current status of the fast thermodynamics calculator.
-        
-        Returns
-        -------
-        dict
-            Dictionary containing status information:
-            - 'available': Whether the fast calculator is available
-            - 'enabled': Whether it's currently enabled
-            - 'active': Whether it's both available and enabled
-        """
-        return {
-            'available': _THERMODYNAMICS_AVAILABLE,
-            'enabled': self._use_fast_thermodynamics,
-            'active': self._use_fast_thermodynamics and _THERMODYNAMICS_AVAILABLE
-        }
-
-    def set_fast_transport(self, enabled=True):
-        """
-        Enable or disable the fast transport calculator.
-        
-        Parameters
-        ----------
-        enabled : bool, optional
-            Whether to use the fast transport calculator. Default: True.
-            
-        Notes
-        -----
-        This method provides a runtime toggle for the transport implementation,
-        useful for testing, debugging, or gradual migration.
-        """
-        if enabled and not _TRANSPORT_AVAILABLE:
-            warn(
-                "Fast transport calculator is not available. "
-                "Install the sarkas.physics.transport module.",
-                category=UserWarning
-            )
-            self._use_fast_transport = False
-        else:
-            self._use_fast_transport = enabled
-
-    def get_fast_transport_status(self):
-        """
-        Get the current status of the fast transport calculator.
-        
-        Returns
-        -------
-        dict
-            Dictionary containing status information:
-            - 'available': Whether the fast calculator is available
-            - 'enabled': Whether it's currently enabled
-            - 'active': Whether it's both available and enabled
-        """
-        return {
-            'available': _TRANSPORT_AVAILABLE,
-            'enabled': self._use_fast_transport,
-            'active': self._use_fast_transport and _TRANSPORT_AVAILABLE
-        }
-
-    def set_fast_mechanical(self, enabled=True):
-        """
-        Enable or disable the fast mechanical calculator.
-        
-        Parameters
-        ----------
-        enabled : bool, optional
-            Whether to use the fast mechanical calculator. Default: True.
-        """
-        if enabled and not _MECHANICAL_AVAILABLE:
-            warn(
-                "Fast mechanical calculator is not available. "
-                "Install the sarkas.physics.mechanical module.",
-                category=UserWarning
-            )
-            self._use_fast_mechanical = False
-        else:
-            self._use_fast_mechanical = enabled
-
-    def get_fast_mechanical_status(self):
-        """
-        Get the current status of the fast mechanical calculator.
-        
-        Returns
-        -------
-        dict
-            Dictionary containing status information.
-        """
-        return {
-            'available': _MECHANICAL_AVAILABLE,
-            'enabled': self._use_fast_mechanical,
-            'active': self._use_fast_mechanical and _MECHANICAL_AVAILABLE
-        }
-
-    def set_fast_physics(self, enabled=True):
-        """
-        Enable or disable all fast physics calculators.
-        
-        Parameters
-        ----------
-        enabled : bool, optional
-            Whether to use fast calculators. Default: True.
-        """
-        self.set_fast_thermodynamics(enabled)
-        self.set_fast_transport(enabled)
-        self.set_fast_mechanical(enabled)
-
-    def get_fast_physics_status(self):
-        """
-        Get comprehensive status of all fast physics calculators.
-        
-        Returns
-        -------
-        dict
-            Dictionary with status for all physics modules.
-        """
-        return {
-            'thermodynamics': self.get_fast_thermodynamics_status(),
-            'transport': self.get_fast_transport_status(),
-            'mechanical': self.get_fast_mechanical_status()
-        }
-
-    # =============================================================================
-    # BACKWARD COMPATIBILITY METHODS - UNCHANGED INTERFACE
-    # =============================================================================
-
     def kinetic_temperature(self):
-        """
-        Calculate the kinetic energy and temperature of each species.
+        """Calculate the kinetic energy and temperature of each species.
 
         Returns
         -------
@@ -1786,220 +930,15 @@ class Particles:
         ------
             : DeprecationWarning
         """
+
         warn(
             "Deprecated feature. It will be removed in a future release. \n"
             "Use particles.calculate_species_kinetic_temperature()",
             category=DeprecationWarning,
         )
         self.calculate_species_kinetic_temperature()
+
         return self.species_kinetic_energy, self.species_temperature
-
-    # =============================================================================
-    # VALIDATION AND TESTING METHODS
-    # =============================================================================
-
-    def validate_thermodynamics_consistency(self, rtol=1e-12, atol=1e-15):
-        """
-        Validate that fast and legacy thermodynamics implementations give identical results.
-        
-        Parameters
-        ----------
-        rtol : float, optional
-            Relative tolerance for comparison. Default: 1e-12.
-        atol : float, optional
-            Absolute tolerance for comparison. Default: 1e-15.
-            
-        Returns
-        -------
-        dict
-            Dictionary with validation results for each method tested.
-            
-        Raises
-        ------
-        AssertionError
-            If results differ beyond specified tolerances.
-            
-        Notes
-        -----
-        This method is useful for testing and validation during migration.
-        It compares results from both implementations to ensure numerical consistency.
-        """
-        if not _THERMODYNAMICS_AVAILABLE:
-            return {"error": "Fast thermodynamics not available for comparison"}
-        
-        import numpy as np
-        results = {}
-        
-        # Test kinetic energy calculation
-        try:
-            # Calculate with fast method
-            ke_fast = fast_kinetic_energy(self.vel, self.masses)
-            
-            # Calculate with legacy method
-            ke_legacy = 0.5 * self.masses * (self.vel * self.vel).sum(axis=-1)
-            
-            # Compare results
-            np.testing.assert_allclose(ke_fast, ke_legacy, rtol=rtol, atol=atol)
-            results['kinetic_energy'] = 'PASS'
-        except Exception as e:
-            results['kinetic_energy'] = f'FAIL: {str(e)}'
-        
-        # Test temperature calculation if possible
-        if hasattr(self, 'kB') and self.kB is not None:
-            try:
-                # Calculate temperatures with fast method
-                T_fast = fast_temperature_from_velocities(
-                    self.vel, self.masses, self.dimensions, self.kB
-                )
-                
-                # Calculate with legacy method via kinetic energy
-                ke = 0.5 * self.masses * (self.vel * self.vel).sum(axis=-1)
-                T_legacy = 2.0 * ke / (self.dimensions * self.kB)
-                
-                # Compare results
-                np.testing.assert_allclose(T_fast, T_legacy, rtol=rtol, atol=atol)
-                results['temperature'] = 'PASS'
-            except Exception as e:
-                results['temperature'] = f'FAIL: {str(e)}'
-        
-        return results
-
-    # =============================================================================
-    # REMAINING METHODS - UNCHANGED FROM ORIGINAL
-    # =============================================================================
-
-    def calculate_observables(self):
-        """Calculate the observables in :attr:`observables_list`."""
-        for key in self.species_observables_method_map.keys():
-            self.species_observables_method_map[key]()
-
-    def calculate_species_total_energy(self):
-        """Calculate the total energy of each species and store it into :attr:`species_total_energy`."""
-        self.calculate_species_kinetic_energy()
-        self.calculate_species_potential_energy()
-        self.species_total_energy = scalar_species_loop(self.kinetic_energy + self.potential_energy, self.species_num)
-
-    def calculate_species_velocity_moments(self):
-        """Calculate the moments of the velocity distribution using the velocity of each species and stores them into :attr:`species_velocity_moments`."""
-        species_start = 0
-        species_end = 0
-
-        for i, num in enumerate(self.species_num):
-            species_end += num
-            for mom in range(self.max_velocity_distribution_moment):
-                self.species_velocity_moments[i, mom, :] = moment(
-                    self.vel[species_start:species_end, :], moment=mom + 1, axis=0
-                )
-            species_start += num
-
-    def calculate_species_kl_divergence(self):
-        """Calculate the Kullback-Leibler divergence of the velocity distribution of each species and stores it into :attr:`species_kl_divergence`."""
-        nbins = self.total_num_ptcls // 10
-        self.species_kl_divergence = kl_divergence(self.vel, self.species_num, self.species_thermal_velocity, nbins)
-
-    def calculate_species_potential_energy(self):
-        """Calculate the potential energy of each species from :attr:`potential_energy`, calculated in the force loop, and stores it into :attr:`species_potential_energy`."""
-        self.species_potential_energy = scalar_species_loop(self.potential_energy, self.species_num)
-
-    def calculate_total_potential_energy(self):
-        """Calculate the total potential energy by summing the :attr:`potential_energy` array. The total potential energy is store in :attr:`total_potential_energy`."""
-        self.calculate_species_potential_energy()
-        self.total_potential_energy = self.species_potential_energy.sum()
-
-    def make_species_observables_method_map(self, observables_list=None):
-        """Make a dictionary where each key is an element of observables_list and each value is a method of Particles."""
-        if observables_list is None:
-            observables_list = self.observables_list
-        else:
-            for obs in observables_list:
-                if obs not in self.observables_list:
-                    self.observables_list.append(obs)
-            observables_list = self.observables_list
-
-        key_list = list(self.species_observables_method_map.keys())
-        for key in key_list:
-            if key not in observables_list:
-                del self.species_observables_method_map[key]
-
-    def make_species_thermodynamics_dictionary(self, thermodynamics_list=None):
-        """
-        Put the main thermodynamic quantities into a dictionary. This is used for saving data while running.
-
-        Returns
-        -------
-        data : dict
-            Thermodynamics data. In case of multiple species, it returns thermodynamics quantities per species.
-        """
-        if thermodynamics_list is None:
-            thermodynamics_list = self.thermodynamics_list
-
-        for property in thermodynamics_list:
-            if property not in self.species_thermodynamics_method_map.keys():
-                self.species_thermodynamics_method_map[property] = getattr(self, f"calculate_species_{property}")
-    
-    def make_species_thermodynamics_method_map(self, thermodynamics_list):
-        """
-        Make the dictionary :attr:`species_thermodynamics_method_map` with the new thermodynamic quantities.
-        
-        Parameters
-        ----------
-        thermodynamics_list : list
-            List of thermodynamic quantities to calculate for each species.
-        
-        Notes
-        -----
-        This is used to make the dictionary :attr:`species_thermodynamics_method_map` with the new thermodynamic quantities. 
-        The dictionary is a map of the thermodynamic quantities to the method to calculate them.
-
-        """
-        if thermodynamics_list is None:
-            thermodynamics_list = self.thermodynamics_list
-
-        for property in thermodynamics_list:
-            if not hasattr(self, f"calculate_species_{property}"):
-                raise ParticlesError(f"Method calculate_species_{property} not found in Particles.")
-            else:
-                self.species_thermodynamics_method_map[property] = getattr(self, f"calculate_species_{property}")
-
-    def calculate_species_thermodynamics(self):
-        """Calculate thermodynamics quantities for each species."""
-        for key in self.species_thermodynamics_method_map.keys():
-            self.species_thermodynamics_method_map[key]()
-
-    def calculate_species_observables(self):
-        """Calculate the observables for each species."""
-        for key in self.species_observables_method_map.keys():
-            self.species_observables_method_map[key]()
-
-    def load_from_checkpoint(self, phase, it):
-        """
-        Load particles' data from a checkpoint of a previous run
-
-        Parameters
-        ----------
-        it : int
-            Timestep.
-        phase: str
-            Restart phase.
-        """
-        if phase == "equilibration":
-            file_name = self.process_h5md_filepath_dict["equilibration"]
-            dump_step = self.eq_dump_step
-        elif phase == "production":
-            file_name = self.process_h5md_filepath_dict["production"]
-            dump_step = self.prod_dump_step
-        elif phase == "magnetization":
-            file_name = self.process_h5md_filepath_dict["magnetization"]
-            dump_step = self.mag_dump_step
-
-        # Calculate the index of the time step
-        index = self.restart_step // dump_step
-
-        with h5py.File(file_name, "r") as file:
-            self.pos = file["particles/pos"][index]
-            self.vel = file["particles/vel"][index]
-            if 'rdf_hist' in file["observables"].keys():
-                self.rdf_hist = file["observables/rdf_hist/value"][index]
 
     def lattice(self, perturb: float = 0.05):
         """
@@ -2295,6 +1234,239 @@ class Particles:
             if 'rdf_hist' in file["observables"].keys():
                 self.rdf_hist = file["observables/rdf_hist/value"][index]
 
+    def calculate_electric_current(self):
+        """Calculate the electric current of each particle and store it into :attr:`electric_current`."""
+        self.electric_current = self.charges[:, newaxis] * self.vel
+
+    def calculate_kinetic_energy(self):
+        """Calculate the kinetic energy of each particle.
+
+        Return
+        ------
+        kin : numpy.ndarray
+            Total kinetic energy. Shape = (:attr:`total_num_ptcls`)
+
+        """
+        self.kinetic_energy = 0.5 * self.masses * (self.vel * self.vel).sum(axis=-1)
+
+    def calculate_observables(self):
+        """Calculate the observables in :attr:`observables_list`."""
+        for key in self.species_observables_method_map.keys():
+            self.species_observables_method_map[key]()      
+
+    def calculate_species_electric_current(self):
+        """Calculate the electric current of each species from :attr:`vel` and stores it into :attr:`species_electric_current`."""
+        self.species_electric_current = self.species_charges * vector_species_loop(self.vel, self.species_num)
+
+    def calculate_species_heat_flux(self):
+        """Calculate the energy current of each species from :attr:`heat_flux_species_tensor` and stores it into :attr:`species_heat_flux`.\n
+        Note that :attr:`heat_flux_species_tensor` is calculated in the force loop if requested."""
+        self.species_heat_flux = self.heat_flux_species_tensor.sum(axis=0) # vector_cross_species_loop(self.heat_flux_species_tensor)
+
+    def calculate_species_diffusion_flux(self):
+        """Calculate the diffusion fluxes."""
+        self.species_diffusion_flux = calc_species_diffusion_flux(self.vel, self.species_masses, self.species_num)
+        
+    def calculate_species_enthalpy(self):
+        energy = scalar_species_loop(self.kinetic_energy + self.potential_energy, self.species_num)
+        self.enthalpy = energy + self.species_pressure * self.box_volume
+
+        self.species_enthalpy = scalar_species_loop(self.enthalpy, self.species_num)
+
+    def calculate_species_kinetic_energy(self):
+        """Calculate the kinetic energy of each species and store it into :attr:`species_kinetic_energy`."""
+        self.calculate_kinetic_energy()
+        self.species_kinetic_energy = scalar_species_loop(self.kinetic_energy, self.species_num)
+    
+    def calculate_species_total_energy(self):
+        """Calculate the total energy of each species and store it into :attr:`species_total_energy`."""
+        self.calculate_species_kinetic_energy()
+        self.calculate_species_potential_energy()
+        self.species_total_energy = scalar_species_loop(self.kinetic_energy + self.potential_energy, self.species_num)
+
+    def calculate_species_kinetic_temperature(self):
+        """
+        Calculate the kinetic energy and temperature of each species.
+
+        Returns
+        -------
+        K : numpy.ndarray
+            Kinetic energy of each species. Shape=(:attr:`num_species`).
+
+        T : numpy.ndarray
+            Temperature of each species. Shape=(:attr:`num_species`).
+
+        """
+        const = 2.0 / (self.kB * self.species_num * self.dimensions)
+        self.calculate_kinetic_energy()
+        self.species_kinetic_energy = scalar_species_loop(self.kinetic_energy, self.species_num)
+        self.species_temperature = const * self.species_kinetic_energy
+
+
+    def calculate_species_temperature(self):
+        """Calculate the temperature of each species and store it into :attr:`species_temperature`.
+        
+        Note
+        ----
+        Redundant with :meth:`calculate_species_kinetic_temperature`.
+        """
+        self.calculate_species_kinetic_temperature()
+
+    def calculate_species_momentum(self):
+        velocity = vector_species_loop(self.vel, self.species_num)
+        self.species_momentum = self.species_masses[:, newaxis] * velocity
+
+    def calculate_species_velocity_moments(self):
+        """Calculate the moments of the velocity distribution using the velocity of each species and stores them into :attr:`species_velocity_moments`."""
+        species_start = 0
+        species_end = 0
+
+        for i, num in enumerate(self.species_num):
+            species_end += num
+            for mom in range(self.max_velocity_distribution_moment):
+                self.species_velocity_moments[i, mom, :] = moment(
+                    self.vel[species_start:species_end, :], moment=mom + 1, axis=0
+                )
+            species_start += num
+
+    def calculate_species_kl_divergence(self):
+        """Calculate the Kullback-Leibler divergence of the velocity distribution of each species and stores it into :attr:`species_kl_divergence`."""
+        
+        # TODO: this is a temporary solution. The number of bins should be user defined. Maybe?
+        nbins = self.total_num_ptcls // 10
+
+        self.species_kl_divergence = kl_divergence(self.vel, self.species_num, self.species_thermal_velocity, nbins)
+
+    def calculate_species_potential_energy(self):
+        """Calculate the potential energy of each species from :attr:`potential_energy`, calculated in the force loop, and stores it into :attr:`species_potential_energy`."""
+        self.species_potential_energy = scalar_species_loop(self.potential_energy, self.species_num)
+
+    def calculate_species_pressure_tensor(self):
+        """Calculate the pressure, the kinetic part of the pressure tensor, the potential part of the kinetic tensor of each species and store them into :attr:`species_pressure`, :attr:`species_pressure_kin_tensor`, :attr:`species_pressure_pot_tensor`."""
+        self.species_pressure, self.species_pressure_kin_tensor, self.species_pressure_pot_tensor = calc_pressure_tensor(
+            self.vel, self.virial_species_tensor, self.species_masses, self.species_num, self.box_volume, self.dimensions
+        )
+        self.species_pressure_tensor = self.species_pressure_kin_tensor + self.species_pressure_pot_tensor
+        
+    def calculate_species_pressure(self):
+        """
+        Calculate the pressure, the kinetic part of the pressure tensor, the potential part of the kinetic tensor of each species and store them into :attr:`species_pressure`, :attr:`species_pressure_kin_tensor`, :attr:`species_pressure_pot_tensor`.
+        Redundant with :meth:`calculate_species_pressure_tensor`.
+        """
+        self.species_pressure, self.species_pressure_kin_tensor, self.species_pressure_pot_tensor = calc_pressure_tensor(
+            self.vel, self.virial_species_tensor, self.species_masses, self.species_num, self.box_volume, self.dimensions
+        )
+
+    def calculate_total_electric_current(self):
+        """Calculate the total electric current of the system, by summing the electric current of each species and store it into :attr:`total_electric_current`."""
+        self.calculate_species_electric_current()
+        self.total_electric_current = self.species_electric_current.sum()
+
+    def calculate_total_enthalpy(self):
+        """Calculate the total enthalpy of the system, by summing the enthalpy of each species and store it into :attr:`total_enthalpy`."""
+
+        self.calculate_species_enthalpy()
+        self.total_enthalpy = self.species_enthalpy.sum()
+
+    def calculate_total_kinetic_energy(self):
+        """Calculate the total kinetic energy by summing the :attr:`kinetic_energy` array and store it into :attr:`total_kinetic_energy`."""
+        self.calculate_species_kinetic_temperature()
+        self.total_kinetic_energy = self.species_kinetic_energy.sum()
+
+    def calculate_total_momentum(self):
+        self.calculate_species_momentum()
+        self.total_momentum = self.species_momentum.sum()
+
+    def calculate_total_potential_energy(self):
+        """Calculate the total potential energy by summing the :attr:`potential_energy` array. The total potential energy is store in :attr:`total_potential_energy`."""
+        self.calculate_species_potential_energy()
+        self.total_potential_energy = self.species_potential_energy.sum()
+
+    def calculate_total_pressure(self):
+        self.calculate_species_pressure_tensor()
+        self.total_pressure = self.species_pressure.sum()
+
+    def make_species_observables_method_map(self, observables_list = None):
+        """Make a dictionary where each key is an element of observables_list and each value is a method of Particles."""
+        
+        if observables_list is None:
+            observables_list = self.observables_list
+        else:
+            for obs in observables_list:
+                if obs not in self.observables_list:
+                    self.observables_list.append(obs)
+            observables_list = self.observables_list
+        
+        key_list = list(self.species_observables_method_map.keys())
+        for key in key_list:
+            if key not in observables_list:
+                del self.species_observables_method_map[key]
+
+    def make_species_thermodynamics_dictionary(self, thermodynamics_list=None):
+        """
+        Put the main thermodynamic quantities into a dictionary. This is used for saving data while running.
+
+        Return
+        ------
+
+        data : dict
+            Thermodynamics data. In case of multiple species, it returns thermodynamics quantities per species.
+            keys = [`Total Energy`, `Total Kinetic Energy`, `Total Potential Energy`, `Total Temperature`]
+        """
+        # Check that tehrmodynamics_list is not None
+        if thermodynamics_list is None:
+            thermodynamics_list = self.thermodynamics_list # ['total_energy', 'kinetic_energy', 'potential_energy', 'temperature']
+        else:
+            for prop in thermodynamics_list:
+                if prop not in self.thermodynamics_list:
+                    self.thermodynamics_list.append(prop)
+            thermodynamics_list = self.thermodynamics_list
+        
+        # Create a dictionary where each key is an element of thermodynamics_list and each value is None
+        thermo_keys = {key: None for key in thermodynamics_list}
+
+        # Create a new dictionary where each key is a species name and each value is a copy of thermodynamics_data
+        self.species_thermodynamics_data = {
+            species: thermo_keys.copy() for species in self.species_names
+        }
+
+        self.make_species_thermodynamics_method_map(thermodynamics_list)
+
+    def make_species_thermodynamics_method_map(self, thermodynamics_list):
+        """
+        Make the dictionary :attr:`species_thermodynamics_method_map` with the new thermodynamic quantities.
+        
+        Parameters
+        ----------
+        thermodynamics_list : list
+            List of thermodynamic quantities to calculate for each species.
+        
+        Notes
+        -----
+        This is used to make the dictionary :attr:`species_thermodynamics_method_map` with the new thermodynamic quantities. 
+        The dictionary is a map of the thermodynamic quantities to the method to calculate them.
+
+        """
+        if thermodynamics_list is None:
+            thermodynamics_list = self.thermodynamics_list
+
+        for property in thermodynamics_list:
+            if not hasattr(self, f"calculate_species_{property}"):
+                raise ParticlesError(f"Method calculate_species_{property} not found in Particles.")
+            else:
+                self.species_thermodynamics_method_map[property] = getattr(self, f"calculate_species_{property}")
+
+    def calculate_species_thermodynamics(self):
+        # Fill the dictionary
+        for key in self.species_thermodynamics_method_map.keys():
+            # Call the method to calculate the thermodynamics quantity for the species
+            self.species_thermodynamics_method_map[key]()
+
+    def calculate_species_observables(self):
+        """Calculate the observables for each species."""
+        for key in self.species_observables_method_map.keys():
+            self.species_observables_method_map[key]()
+
     def random_reject(self, r_reject):
         """
         Place particles by sampling a uniform distribution from 0 to LP (the initial particle box length)
@@ -2532,10 +1704,76 @@ class Particles:
                 species_start += sp.num
 
 
-# =============================================================================
-# HELPER FUNCTIONS - UPDATED AND EXISTING
-# =============================================================================
+@njit
+def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num, box_volume, dimensions):
+    """
+    Calculate the pressure tensor of each species.
 
+    Parameters
+    ----------
+    vel : numpy.ndarray
+        Particles' velocities.
+
+    virial_species_tensor : numpy.ndarray
+        Virial tensor of each particle. Shape= (:attr:`num_species`, :attr:`num_species`, 3, 3).
+        Note that the size of the last two axis is 3 even if the system is 2D.
+
+    species_masses : numpy.ndarray
+        Mass of each species. Shape = (:attr:`num_species`)
+
+    species_np : numpy.ndarray
+        Number of particles of each species.
+
+    box_volume : float
+        Volume of simulation's box.
+
+    dimensions : int
+        Number of dimensions.
+
+    Returns
+    -------
+    pressure : float
+        Scalar Pressure i.e. trace of the pressure tensor
+
+    pressure_kin : numpy.ndarray
+        Kinetic part of the Pressure tensor. Shape(:attr:`num_species`, :attr:`dimensions`,:attr:`dimensions`)
+
+    pressure_pot : numpy.ndarray
+        Potential energy part of the Pressure tensor. Shape(attr:`num_species`, :attr:`dimensions`,:attr:`dimensions`)
+
+    """
+    # Rescale vel of each particle by their individual mass
+    num_species = species_num.shape[0]
+    pressure = zeros(species_num.shape[0])
+    pressure_kin = zeros((species_num.shape[0], 3, 3 ))
+    pressure_pot = zeros((species_num.shape[0], 3, 3))
+    temp_kin_tensor = zeros((3, 3, vel.shape[0]))
+
+    # TODO: There must be a faster way to do this tensor product
+    # for ip in range(vel.shape[0]):
+    #     temp_kin_tensor[:, :, ip] = outer(vel[ip, :], vel[ip, :])
+
+    # The following appears to be 9 times faster than the outer product
+    for i in range(3):
+        for j in range(3):
+            temp_kin_tensor[i, j, :] = vel[:, i] * vel[:, j]
+
+    # Hack becuse numba does not support broadcasting
+    temp_tensor = tensor_species_loop(temp_kin_tensor, species_num) / box_volume
+    for isp in range(num_species):
+        pressure_kin[isp, :, :] = species_masses[isp] * temp_tensor[isp, :, :]
+
+    # pressure_kin = species_masses.reshape( (num_species,3, 3)) * 
+    # Sum over the species
+    pressure_pot =  virial_species_tensor.sum(axis = 0)/box_volume # tensor_cross_species_loop(virial_species_tensor, species_num) / box_volume
+    pressure_tensor = pressure_kin + pressure_pot
+    for isp in range(species_num.shape[0]):
+        pressure[isp] += (pressure_tensor[isp, 0, 0] + pressure_tensor[isp, 1, 1] + pressure_tensor[isp, 2, 2]) / dimensions
+
+    return pressure, pressure_kin, pressure_pot
+
+
+# Dev note: Because I want to use numba I need to separate between a scalar and a vector quantity. Numba compiles the function to return either a scalar or a vector. not all.
 @njit
 def scalar_species_loop(observable, species_num):
     """
@@ -2593,6 +1831,11 @@ def vector_species_loop(observable, species_num):
 
 
 @njit
+def vector_cross_species_loop(observable):
+    return sum(observable, axis=1)
+
+
+@njit
 def tensor_species_loop(observable, species_num):
     """
     Calculate the sum over species of the given observable tensor.
@@ -2611,7 +1854,7 @@ def tensor_species_loop(observable, species_num):
     """
     sp_start = 0
     sp_end = 0
-    sp_obs = zeros((species_num.shape[0], 3, 3))
+    sp_obs = zeros(( species_num.shape[0], 3, 3))
     for sp, sp_num in enumerate(species_num):
         sp_end += sp_num
         sp_obs[sp, :, :] = observable[:, :, sp_start:sp_end].sum(axis=-1)
@@ -2621,18 +1864,48 @@ def tensor_species_loop(observable, species_num):
 
 
 @njit
+def tensor_cross_species_loop(observable, species_num):
+    """
+    Calculate the sum over species of the given observable tensor.
+
+    Parameters
+    ----------
+    observable : numpy.ndarray
+        The observable tensor array of shape (`num_species`, 3, 3).
+    species_num : numpy.ndarray
+        The array of shape (`num_species`,) containing the number of particles for each species.
+
+    Returns
+    -------
+    sp_obs: numpy.ndarray
+        An array of shape (`num_species`, 3, 3) with the sum over species of the observable tensor.
+    """
+    # sp_obs = zeros(( species_num.shape[0], 3, 3))
+    # for sp in range(species_num.shape[0]):
+    #     sp_obs[sp, :, :] = observable[sp, :, :, :].sum(axis=0)
+
+    return sum(observable, axis = 0)
+
+
+@njit
 def remove_drift_nb(vel, nums):
     """
     Numba'd function to enforce conservation of total linear momentum.
-    It updates velocities by removing center of mass motion for each species.
+    It updates :attr:`sarkas.particles.Particles.vel`.
 
     Parameters
     ----------
     vel: numpy.ndarray
         Particles' velocities.
+
     nums: numpy.ndarray
         Number of particles of each species.
+
+    masses: numpy.ndarray
+        Mass of each species.
+
     """
+
     species_start = 0
     species_end = 0
     for ic, sp_num in enumerate(nums):
@@ -2640,8 +1913,7 @@ def remove_drift_nb(vel, nums):
         vel[species_start:species_end, :] -= vel[species_start:species_end, :].sum(axis=0) / sp_num
         species_start += sp_num
 
-
-@njit
+@njit   
 def calc_species_diffusion_flux(vel, species_masses, species_num):
     """
     Calculates the diffusion flux for each species based on their velocities, masses, and concentrations.
@@ -2652,19 +1924,28 @@ def calc_species_diffusion_flux(vel, species_masses, species_num):
         Array of shape (N, 3) representing the velocities of N particles.
     species_masses : numpy.ndarray
         Array of shape (M,) representing the masses of M species.
-    species_num : numpy.ndarray
-        Number of particles of each species.
+
+    species_num : int
+        Number of species.
 
     Returns
     -------
     numpy.ndarray
         Array of shape (M-1, 3) representing the diffusion flux for each species.
+
+    Notes
+    -----
+    - The diffusion flux is calculated using the formula from eq.(3.5) in Zhou J Phys Chem 100 5516 (1996).
+    - The shape of the arrays are as follows:
+        - vel: (N, 3)
+        - species_masses: (M,)
+        - species_concentrations: (M,)
+        - species_diffusion_flux: (M-1, 3)
     """
     species_net_velocity = vector_species_loop(vel, species_num)
     species_concentrations = species_num / species_num.sum()
     m_bar = species_masses @ species_concentrations
     species_diffusion_flux = zeros((len(species_num) - 1, 3))
-    
     for i, m_alpha in enumerate(species_masses[:-1]):
         for j, m_beta in enumerate(species_masses):
             delta_ab = 1 * (m_alpha == m_beta)
@@ -2674,182 +1955,60 @@ def calc_species_diffusion_flux(vel, species_masses, species_num):
     return species_diffusion_flux
 
 
+
 @jit(nopython=True)
 def kl_divergence(vel, species_num, species_thermal_velocity, n_bins=100):
     """
     Calculate KL divergence between samples and a standard normal distribution.
-
-    Parameters
-    ----------
+    Manually calculates probability density from histogram counts.
+    
+    Parameters:
+    -----------
     vel : numpy.ndarray
-        Particle velocities.
+        Array of particle velocities, shape=(num_particles, 3)
+    
     species_num : numpy.ndarray
-        Number of particles per species.
+        Number of particles for each species, shape=(num_species,)
+
     species_thermal_velocity : numpy.ndarray
-        Thermal velocities for each species.
+        Thermal velocity of each species, shape=(num_species, 3)
+
     n_bins : int
-        Number of bins for histogram.
-
-    Returns
-    -------
-    numpy.ndarray
-        KL divergence for each species.
+        Number of bins for histogram estimation
+        
+    Returns:
+    --------
+    float
+        KL divergence value
     """
-    kl_div = zeros(len(species_num))
+    # Set fixed range for standard normal: ±4 sigma covers 99.993% of distribution
+    range_min, range_max = -5.0, 5.0
+    
+    species_kl_div = zeros( (len(species_num), vel.shape[1]) )
     species_start = 0
-    
-    for isp, sp_num in enumerate(species_num):
-        species_end = species_start + sp_num
+    species_end = 0
+    for ic, sp_num in enumerate(species_num):
+        species_end += sp_num
         
-        for d in range(vel.shape[1]):  # Loop over dimensions
-            v_normalized = vel[species_start:species_end, d] / species_thermal_velocity[isp, d]
-            
-            # Create histogram
-            hist_range = (-4.0, 4.0)  # Reasonable range for normalized velocities
-            hist, bin_edges = histogram(v_normalized, bins=n_bins, range=hist_range)
-            
-            # Calculate bin centers and widths
+        for d in range(vel.shape[1]):
+            samples = vel[species_start:species_end, d]/ species_thermal_velocity[ic,d]
+            # Calculate histogram counts (not density)
+            hist, bin_edges = histogram(samples, bins=n_bins, range=(range_min, range_max))    
+            # Calculate bin width and centers
+            bin_width = (range_max - range_min) / n_bins
             bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-            bin_width = bin_edges[1] - bin_edges[0]
             
-            # Calculate probabilities (normalize histogram)
-            p_empirical = hist / (hist.sum() * bin_width)
+            # Convert counts to probability density
+            # density = count / (N * bin_width) where N is total number of samples
+            hist = hist / (len(samples) * bin_width)
             
-            # Calculate theoretical probabilities (standard normal)
-            p_theoretical = exp(-0.5 * bin_centers**2) / sqrt(2 * pi)
+            # Calculate standard normal PDF at bin centers
+            # Using the simplified formula since mean=0, std=1
+            normal_pdf = exp(-0.5 * bin_centers**2) / sqrt(2 * pi)
             
-            # Calculate KL divergence
-            for i in range(len(p_empirical)):
-                if p_empirical[i] > 1e-10 and p_theoretical[i] > 1e-10:
-                    kl_div[isp] += p_empirical[i] * log(p_empirical[i] / p_theoretical[i]) * bin_width
-        
-        species_start = species_end
-    
-    return kl_div
+            # Calculate KL divergence only where hist > 0 to avoid log(0)
+            mask = hist > 0
+            species_kl_div[ic,d] = sum(hist[mask] * log(hist[mask] / normal_pdf[mask]))
+        species_start += sp_num
 
-
-@njit
-def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num, box_volume, dimensions):
-    """
-    Calculate the species pressure tensor.
-
-    Parameters
-    ----------
-    vel : numpy.ndarray
-        Particles' velocities.
-    virial_species_tensor : numpy.ndarray
-        Virial tensor for each species pair.
-    species_masses : numpy.ndarray
-        Mass of each species.
-    species_num : numpy.ndarray
-        Number of particles of each species.
-    box_volume : float
-        Volume of simulation's box.
-    dimensions : int
-        Number of dimensions.
-
-    Returns
-    -------
-    pressure : numpy.ndarray
-        Scalar pressure for each species.
-    pressure_kin : numpy.ndarray
-        Kinetic part of pressure tensor.
-    pressure_pot : numpy.ndarray
-        Potential part of pressure tensor.
-    """
-    pressure = zeros(species_num.shape[0])
-    pressure_kin = zeros((species_num.shape[0], 3, 3))
-    pressure_pot = zeros((species_num.shape[0], 3, 3))
-    temp_kin_tensor = zeros((3, 3, vel.shape[0]))
-
-    # Calculate kinetic tensor
-    for i in range(3):
-        for j in range(3):
-            temp_kin_tensor[i, j, :] = vel[:, i] * vel[:, j]
-
-    pressure_kin = species_masses * tensor_species_loop(temp_kin_tensor, species_num) / box_volume
-    pressure_pot = virial_species_tensor.sum(axis=0) / box_volume
-    pressure_tensor = pressure_kin + pressure_pot
-    
-    for isp in range(species_num.shape[0]):
-        pressure[isp] += (pressure_tensor[isp, 0, 0] + pressure_tensor[isp, 1, 1] + pressure_tensor[isp, 2, 2]) / dimensions
-
-    return pressure, pressure_kin, pressure_pot
-
-
-# =============================================================================
-# MIGRATION UTILITIES
-# =============================================================================
-
-def validate_particles_thermodynamics(particles_instance, rtol=1e-12, atol=1e-15):
-    """
-    Standalone function to validate thermodynamics consistency for a Particles instance.
-    
-    Parameters
-    ----------
-    particles_instance : Particles
-        The Particles instance to validate.
-    rtol : float, optional
-        Relative tolerance for comparison. Default: 1e-12.
-    atol : float, optional
-        Absolute tolerance for comparison. Default: 1e-15.
-        
-    Returns
-    -------
-    dict
-        Validation results.
-    """
-    return particles_instance.validate_thermodynamics_consistency(rtol=rtol, atol=atol)
-
-
-def benchmark_thermodynamics_performance(particles_instance, n_iterations=100):
-    """
-    Benchmark the performance difference between fast and legacy thermodynamics.
-    
-    Parameters
-    ----------
-    particles_instance : Particles
-        The Particles instance to benchmark.
-    n_iterations : int, optional
-        Number of iterations for timing. Default: 100.
-        
-    Returns
-    -------
-    dict
-        Performance comparison results.
-    """
-    import time
-    import numpy as np
-    
-    if not _THERMODYNAMICS_AVAILABLE:
-        return {"error": "Fast thermodynamics not available for benchmarking"}
-    
-    # Warm up both implementations
-    particles_instance.calculate_kinetic_energy(use_fast=True)
-    particles_instance.calculate_kinetic_energy(use_fast=False)
-    
-    results = {}
-    
-    # Benchmark kinetic energy calculation
-    # Fast implementation
-    start_time = time.time()
-    for _ in range(n_iterations):
-        particles_instance.calculate_kinetic_energy(use_fast=True)
-    fast_time = (time.time() - start_time) / n_iterations
-    
-    # Legacy implementation
-    start_time = time.time()
-    for _ in range(n_iterations):
-        particles_instance.calculate_kinetic_energy(use_fast=False)
-    legacy_time = (time.time() - start_time) / n_iterations
-    
-    speedup = legacy_time / fast_time if fast_time > 0 else float('inf')
-    
-    results['kinetic_energy'] = {
-        'fast_time': fast_time,
-        'legacy_time': legacy_time,
-        'speedup': speedup,
-        'n_particles': particles_instance.total_num_ptcls
-    }
-    
-    return results
+    return species_kl_div
