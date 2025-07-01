@@ -6,8 +6,8 @@ calculations including electric current, heat flux, diffusion flux,
 and velocity moments.
 """
 
-import numpy as np  # type: ignore
-from numba import jit  # type: ignore
+from numpy import ndarray, ones_like, zeros, sum, sqrt, array
+from numba import jit  
 from typing import Union, Tuple
 
 from .aggregation import (
@@ -17,7 +17,7 @@ from .aggregation import (
 
 
 @jit(nopython=True)
-def electric_current(velocities: np.ndarray, charges: np.ndarray) -> np.ndarray:
+def electric_current(velocities: ndarray, charges: ndarray) -> ndarray:
     """Calculate electric current per particle.
     
     The electric current density per particle is calculated as:
@@ -66,8 +66,8 @@ def electric_current(velocities: np.ndarray, charges: np.ndarray) -> np.ndarray:
     return j
 
 
-def species_electric_current(velocities: np.ndarray, charges: np.ndarray, 
-                           species_id: np.ndarray, num_species: int) -> np.ndarray:
+def species_electric_current(velocities: ndarray, charges: ndarray, 
+                           species_id: ndarray, num_species: int) -> ndarray:
     """Calculate total electric current for each species.
     
     The total electric current for species :math:`s` is calculated as:
@@ -116,8 +116,8 @@ def species_electric_current(velocities: np.ndarray, charges: np.ndarray,
     return fast_species_sum(per_particle_current, species_id, num_species)
 
 
-def diffusion_flux(velocities: np.ndarray, concentrations: np.ndarray,
-                   weights: np.ndarray) -> np.ndarray:
+def diffusion_flux(velocities: ndarray, concentrations: ndarray,
+                   weights: ndarray) -> ndarray:
     """
     Calculate generalized diffusion flux for multi-species systems.
 
@@ -127,26 +127,32 @@ def diffusion_flux(velocities: np.ndarray, concentrations: np.ndarray,
     volume-based diffusion fluxes depending on the weights provided.
 
     The flux is computed as:
-        Jᵢ = ρᵢ * (vᵢ - v_ref)
     
+    .. math::
+        J_i = \\rho_i (v_i - v_{ref})
+
+    where the reference velocity :math:`v_{ref}` is defined as:
+
+    .. math::
+        v_{ref} = \\frac{\\sum_i \\rho_i v_i}{\\sum_i \\rho_i}
+
     where:
-        - ρᵢ is the species-specific weighting factor times concentration
-        - vᵢ is the average velocity of species i
-        - v_ref is the reference velocity, computed as the weighted average 
-          over all species velocities
+        - :math:`\\rho_i` is the species-specific weighting factor times concentration
+        - :math:`v_i` is the average velocity of species i
+        - :math:`v_{ref}` is the reference velocity, computed as the weighted average over all species velocities
 
     Parameters
     ----------
     velocities : ndarray
-        Average velocities for each species. Shape: (N_species, 3).
+        Average velocities for each species. Shape: ``(num_species, 3)``.
 
     concentrations : ndarray
         Number density (or another additive concentration-like measure) 
-        of each species. Shape: (N_species,).
+        of each species. Shape: ``(num_species,)``.
 
     weights : ndarray
         Weighting property of each species used to compute the reference 
-        velocity. Shape: (N_species,). Examples:
+        velocity. Shape: ``(num_species,)``. Examples:
             - species masses for barycentric (mass-based) flux
             - unity or molar masses for molar diffusion flux
             - partial molar volumes for volume-based flux
@@ -154,7 +160,7 @@ def diffusion_flux(velocities: np.ndarray, concentrations: np.ndarray,
     Returns
     -------
     ndarray
-        Diffusion flux for each species. Shape: (N_species, 3).
+        Diffusion flux for each species. Shape: ``(num_species, 3)``.
 
     Examples
     --------
@@ -171,15 +177,13 @@ def diffusion_flux(velocities: np.ndarray, concentrations: np.ndarray,
     - The choice of weights determines the reference frame.
     - This function generalizes to molar or volume-based fluxes by adjusting `weights`.
     """
-    if velocities.size == 0:
-        return np.array([]).reshape(0, 3)
-    
+
     return _diffusion_flux_kernel(velocities, concentrations, weights)
 
 
 @jit(nopython=True)
-def _diffusion_flux_kernel(velocities: np.ndarray, concentrations: np.ndarray,
-                          weights: np.ndarray) -> np.ndarray:
+def _diffusion_flux_kernel(velocities: ndarray, concentrations: ndarray,
+                          weights: ndarray) -> ndarray:
     """
     Numba-compiled kernel for diffusion flux calculation.
     
@@ -198,7 +202,7 @@ def _diffusion_flux_kernel(velocities: np.ndarray, concentrations: np.ndarray,
         Diffusion flux for each species. Shape: (N_species, 3).
     """
     n_species = velocities.shape[0]
-    diffusion_flux = np.zeros((n_species, 3))
+    diffusion_flux = zeros((n_species, 3))
     
     # Calculate total weights density
     total_weights_density = 0.0
@@ -206,13 +210,13 @@ def _diffusion_flux_kernel(velocities: np.ndarray, concentrations: np.ndarray,
         total_weights_density += concentrations[i] * weights[i]
     
     # Calculate center of weights velocity
-    cm_velocity = np.zeros(3)
+    cm_velocity = zeros(3)
     if total_weights_density > 0:
         for i in range(n_species):
             weights_fraction = (concentrations[i] * weights[i]) / total_weights_density
             for j in range(3):
                 cm_velocity[j] += weights_fraction * velocities[i, j]
-    
+        
     # Calculate diffusion flux: ρᵢ * (vᵢ - v_cm)
     for i in range(n_species):
         weights_density_i = concentrations[i] * weights[i]
@@ -221,10 +225,10 @@ def _diffusion_flux_kernel(velocities: np.ndarray, concentrations: np.ndarray,
     
     return diffusion_flux
 
-
-def diffusion_flux_from_particles(velocities: np.ndarray, species_id: np.ndarray, 
-                                 num_species: int, weights: np.ndarray = None,
-                                 ) -> np.ndarray:
+@jit(nopython=True)
+def diffusion_flux_from_particles(velocities: ndarray, species_id: ndarray, 
+                                 num_species: int, weights: ndarray = None,
+                                 ) -> ndarray:
     """Calculate diffusion flux from particle-level data.
     
     This is a convenience function that aggregates particle velocities to species
@@ -251,17 +255,17 @@ def diffusion_flux_from_particles(velocities: np.ndarray, species_id: np.ndarray
     species_velocities = fast_species_sum(velocities, species_id, num_species)
     
     # Get species counts for normalization
-    species_counts = np.bincount(species_id, minlength=num_species)
+    species_counts = species_sum(species_id, ones_like(species_id), num_species)
 
-    concentrations = species_counts / np.sum(species_counts)
+    concentrations = species_counts / sum(species_counts)
 
     # Call the main diffusion flux function
-    return diffusion_flux(species_velocities, concentrations, weights)
+    return _diffusion_flux_kernel(species_velocities, concentrations, weights)
 
 
 @jit(nopython=True)
-def velocity_moments(velocities: np.ndarray, species_id: np.ndarray, 
-                    num_species: int, max_moments: int = 4) -> np.ndarray:
+def velocity_moments(velocities: ndarray, species_id: ndarray, 
+                    num_species: int, max_moments: int = 4) -> ndarray:
     """Calculate velocity moments for each species.
     
     The :math:`n`-th velocity moment for species :math:`s` is calculated as:
@@ -303,21 +307,21 @@ def velocity_moments(velocities: np.ndarray, species_id: np.ndarray,
         assert moments.shape == (2, 4)
     """
     # Calculate velocity magnitudes
-    speed = np.sqrt(np.sum(velocities**2, axis=1))
+    speed = sqrt(sum(velocities**2, axis=1))
     
     # Initialize result array
-    result = np.zeros((num_species, max_moments))
+    result = zeros((num_species, max_moments))
     
     # Calculate moments for each species
     for sp in range(num_species):
         # Get particles belonging to this species
         mask = species_id == sp
-        if np.any(mask):
+        if any(mask):
             species_speeds = speed[mask]
-            species_count = np.sum(mask)
+            species_count = sum(mask)
             
             # Calculate moments
             for moment in range(max_moments):
-                result[sp, moment] = np.sum(species_speeds**(moment + 1)) / species_count
+                result[sp, moment] = sum(species_speeds**(moment + 1)) / species_count
     
     return result

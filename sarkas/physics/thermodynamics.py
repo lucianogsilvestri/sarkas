@@ -9,9 +9,9 @@ extracted from the Particles class. All functions are designed to be:
 - Well-documented with MyST format
 """
 
-import numpy as np
 from numba import jit
-from numpy import ndarray
+from numpy import ndarray, zeros, sum, isnan, isinf
+from numpy.linalg import norm
 from .aggregation import species_sum, fast_species_sum
 
 
@@ -154,12 +154,12 @@ def pressure_kinetic_contribution(velocities: ndarray, masses: ndarray,
         assert np.allclose(P_kin, P_kin.T)  # Should be symmetric
     """
     N = velocities.shape[0]
-    P_kin = np.zeros((3, 3))
+    P_kin = zeros((3, 3))
     
     # Calculate outer products efficiently
     for i in range(3):
         for j in range(3):
-            P_kin[i, j] = np.sum(masses * velocities[:, i] * velocities[:, j])
+            P_kin[i, j] = sum(masses * velocities[:, i] * velocities[:, j])
     
     return P_kin / volume
 
@@ -295,7 +295,9 @@ def pressure_scalar(pressure_tensor: ndarray, dimensions: int) -> float:
         P_scalar = pressure_scalar(P_tensor, dimensions=3)
         assert np.isclose(P_scalar, 1.0)
     """
-    return np.trace(pressure_tensor) / dimensions
+    for i in range(3):
+        P_scalar += pressure_tensor[i, i]
+    return P_scalar / dimensions
 
 
 # Species-level thermodynamic calculations
@@ -344,7 +346,7 @@ def species_kinetic_energy(kinetic_energy: ndarray, species_id: ndarray,
         assert np.isclose(species_ke.sum(), ke.sum())  # Conservation
     """
     # Use numpy.bincount for efficient aggregation
-    return np.bincount(species_id, weights=kinetic_energy, minlength=num_species)
+    return species_sum(kinetic_energy, species_id, num_species)
 
 
 def species_temperature(kinetic_energy: ndarray, species_id: ndarray,
@@ -740,18 +742,18 @@ def validate_thermodynamic_inputs(velocities: ndarray, masses: ndarray) -> bool:
         return False
     
     # Check for valid values
-    if np.any(masses <= 0):
+    if any(masses <= 0):
         return False
     
-    if np.any(np.isnan(velocities)) or np.any(np.isnan(masses)):
+    if any(isnan(velocities)) or any(isnan(masses)):
         return False
     
-    if np.any(np.isinf(velocities)) or np.any(np.isinf(masses)):
+    if any(isinf(velocities)) or any(isinf(masses)):
         return False
     
     # Check for reasonable velocity magnitudes (less than speed of light)
-    velocity_magnitudes = np.linalg.norm(velocities, axis=1)
-    if np.any(velocity_magnitudes > 3e8):  # Speed of light
+    velocity_magnitudes = norm(velocities, axis=1)
+    if any(velocity_magnitudes > 3e8):  # Speed of light
         return False
     
     return True

@@ -1,357 +1,405 @@
-r"""
+"""
 Module for handling Yukawa potential.
+
+The Yukawa potential is a screened Coulomb potential commonly used in plasma physics
+for modeling interactions between charged particles in a screening medium.
 
 Potential
 *********
 
-The Yukawa potential between two charges :math:`q_i` and :math:`q_j` at distant :math:`r` is defined as
+The Yukawa potential between two charges :math:`q_i` and :math:`q_j` at distance :math:`r` is defined as
 
 .. math::
-    U_{ab}(r) = \frac{q_a q_b}{4 \pi \epsilon_0} \frac{e^{- \kappa r} }{r}.
+    U_{ab}(r) = \\frac{q_a q_b}{4 \\pi \\epsilon_0} \frac{e^{- \\kappa r} }{r}
 
-where :math:`\kappa = 1/\lambda` is the screening parameter.
+where :math:`\\kappa = 1/\\lambda` is the screening parameter and :math:`\\lambda` is the screening length.
 
-Potential Attributes
-********************
+Potential Matrix Structure
+**************************
 
-The elements of the :attr:`sarkas.potentials.core.Potential.matrix` are:
+The elements of the :attr:`matrix` are:
 
 .. code-block:: python
 
-    pot_matrix[0] = q_iq_j^2/(4 pi eps0)
-    pot_matrix[1] = 1/lambda
-    pot_matrix[2] = Ewald screening parameter
+    matrix[i, j, 0] = q_i * q_j / (4 * pi * eps0)  # Charge product
+    matrix[i, j, 1] = kappa = 1 / screening_length  # Screening parameter
+    matrix[i, j, 2] = alpha                         # Ewald parameter (PPPM only)
+    matrix[i, j, 3] = a_rs                          # Short-range cutoff
 
 """
+
 from math import erfc
+from tokenize import OP
 from numba import jit
-from numba.core.types import float64, UniTuple
-from numpy import exp, inf, pi, sqrt, zeros
+from numpy import exp, inf, pi, sqrt, zeros, array
 from scipy.integrate import quad
+from scipy.special import gamma
 from warnings import warn
+from typing import Any, Callable, Optional
 
-from ..utilities.maths import force_error_analytic_lcl, force_error_analytic_pp
+from .base import PotentialBase
 
 
-@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
-def yukawa_force_pppm(r_in, pot_matrix):
+@jit(nopython=True)
+def yukawa_force_pppm(r_in: float, pot_matrix: Any) -> tuple[float, float]:
     """
-    Numba'd function to calculate Potential and Force between two particles when the pppm algorithm is chosen.
+    Calculate Yukawa potential and force with PPPM decomposition.
 
     Parameters
     ----------
     r_in : float
         Distance between two particles.
-
     pot_matrix : numpy.ndarray
-        It contains potential dependent variables. \n
-        Shape = (4, :attr:`sarkas.core.Parameters.num_species`, :attr:`sarkas.core.Parameters.num_species`)
+        Potential parameters for a specific species pair.
+        pot_matrix[0] = q_i * q_j / (4 * pi * eps0)
+        pot_matrix[1] = kappa (screening parameter)
+        pot_matrix[2] = alpha (Ewald parameter)
+        pot_matrix[3] = a_rs (short-range cutoff)
 
     Returns
     -------
     u_r : float
-        Potential value
-
+        Short-range potential value.
     f_r : float
-        Force between two particles calculated using eq.(22) in :cite:`Dharuman2017`.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> r = 2.0
-    >>> pot_matrix = np.array([ 1.0, 0.5, 0.25,  0.0001])
-    >>> yukawa_force_pppm(r, pot_matrix)
-    (0.16287410244138842, 0.18025091684402375)
-
+        Short-range force magnitude.
     """
     kappa = pot_matrix[1]
-    alpha = pot_matrix[2]  # Ewald parameter alpha
-
-    # Short-range cutoff to deal with divergence of the Coulomb potential
-    rs = pot_matrix[-1]
-    # Branchless programming
+    alpha = pot_matrix[2]
+    rs = pot_matrix[3]
     r = r_in * (r_in >= rs) + rs * (r_in < rs)
-
     kappa_alpha = kappa / alpha
     alpha_r = alpha * r
     kappa_r = kappa * r
-    u_r = (
-        pot_matrix[0]
-        * (0.5 / r)
-        * (exp(kappa_r) * erfc(alpha_r + 0.5 * kappa_alpha) + exp(-kappa_r) * erfc(alpha_r - 0.5 * kappa_alpha))
-    )
-    # Derivative of the exponential term and 1/r
-    f1 = (0.5 / r) * exp(kappa * r) * erfc(alpha_r + 0.5 * kappa_alpha) * (1.0 / r - kappa)
-    f2 = (0.5 / r) * exp(-kappa * r) * erfc(alpha_r - 0.5 * kappa_alpha) * (1.0 / r + kappa)
-    # Derivative of erfc(a r) = 2a/sqrt(pi) e^{-a^2 r^2}* (x/r)
-    f3 = (alpha / sqrt(pi) / r) * (
-        exp(-((alpha_r + 0.5 * kappa_alpha) ** 2)) * exp(kappa_r)
-        + exp(-((alpha_r - 0.5 * kappa_alpha) ** 2)) * exp(-kappa_r)
+    exp_pos = exp(kappa_r)
+    exp_neg = exp(-kappa_r)
+    erfc_pos = erfc(alpha_r + 0.5 * kappa_alpha)
+    erfc_neg = erfc(alpha_r - 0.5 * kappa_alpha)
+    u_r = (pot_matrix[0] * 0.5 / r) * (exp_pos * erfc_pos + exp_neg * erfc_neg)
+    f1 = (0.5 / r) * exp_pos * erfc_pos * (1.0 / r - kappa)
+    f2 = (0.5 / r) * exp_neg * erfc_neg * (1.0 / r + kappa)
+    sqrt_pi_inv = 1.0 / sqrt(pi)
+    f3 = (alpha * sqrt_pi_inv / r) * (
+        exp(-((alpha_r + 0.5 * kappa_alpha) ** 2)) * exp_pos
+        + exp(-((alpha_r - 0.5 * kappa_alpha) ** 2)) * exp_neg
     )
     f_r = pot_matrix[0] * (f1 + f2 + f3)
-
     return u_r, f_r
 
 
-@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
-def yukawa_force(r_in, pot_matrix):
+@jit(nopython=True)
+def yukawa_force(r_in: float, pot_matrix: Any) -> tuple[float, float]:
     """
-    Numba'd function to calculate Potential and Force between two particles.
+    Calculate Yukawa potential and force (direct, no Ewald decomposition).
 
     Parameters
     ----------
     r_in : float
         Distance between two particles.
-
     pot_matrix : numpy.ndarray
-        It contains potential dependent variables. \n
-        Shape = (3, :attr:`sarkas.core.Parameters.num_species`, :attr:`sarkas.core.Parameters.num_species`)
-
+        Potential parameters for a specific species pair.
+        pot_matrix[0] = q_i * q_j / (4 * pi * eps0)
+        pot_matrix[1] = kappa (screening parameter)
+        pot_matrix[2] = unused (for compatibility)
+        pot_matrix[3] = a_rs (short-range cutoff)
 
     Returns
     -------
     u_r : float
-        Potential.
-
+        Potential value.
     f_r : float
-        Force between two particles.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> r = 2.0
-    >>> pot_matrix = np.array([ 1.0, 1.0, 0.0001])
-    >>> yukawa_force(r, pot_matrix)
-    (0.06766764161830635, 0.10150146242745953)
-
+        Force magnitude.
     """
-    # Short-range cutoff to deal with divergence of the Coulomb potential
-    rs = pot_matrix[-1]
-    # Branchless programming
+    rs = pot_matrix[3]
     r = r_in * (r_in >= rs) + rs * (r_in < rs)
-
-    u_r = pot_matrix[0] * exp(-pot_matrix[1] * r) / r
+    kappa_r = pot_matrix[1] * r
+    u_r = pot_matrix[0] * exp(-kappa_r) / r
     f_r = u_r * (1.0 / r + pot_matrix[1])
-
     return u_r, f_r
 
 
-def force_deriv(r, pot_matrix):
-    """Calculate the second derivative of the potential.
-
-    Parameters
-    ----------
-    r : float
-        Distance between particles
-
-    pot_matrix : numpy.ndarray
-        Values of the potential constants. \n
-        Shape = (3, :attr:`sarkas.core.Parameters.num_species`, :attr:`sarkas.core.Parameters.num_species`)
-
-    Returns
-    -------
-
-    d2v_dr2 : float, numpy.ndarray
-        Second derivative of the potential.
-
-    Raises
-    ------
-       : DeprecationWarning
-    """
-
-    warn(
-        "Deprecated feature. It will be removed in a future release. \n" "Use potential_derivatives.",
-        category=DeprecationWarning,
-    )
-
-    _, _, d2v_dr2 = potential_derivatives(r, pot_matrix)
-
-    return d2v_dr2
-
-
-def potential_derivatives(r, pot_matrix):
-    """Calculate the first and second derivative of the potential.
-
-    Parameters
-    ----------
-    r_in : float
-        Distance between two particles.
-
-    pot_matrix : numpy.ndarray
-        It contains potential dependent variables.
-
-    Returns
-    -------
-    U : float, numpy.ndarray
-        Potential value.
-
-    dv_dr : float, numpy.ndarray
-        First derivative of the potential.
-
-    d2v_dr2 : float, numpy.ndarray
-        Second derivative of the potential.
-
-    """
-    kappa = pot_matrix[1]
-    kappa_r = kappa * r
-    u_r = exp(-kappa_r) / r
-    du_dr = -(1.0 + kappa_r) * u_r / r
-    d2u_dr2 = -(1.0 / r + kappa) * du_dr + u_r / r**2
-
-    u_r *= pot_matrix[0]
-    du_dr *= pot_matrix[0]
-    d2u_dr2 *= pot_matrix[0]
-
-    return u_r, du_dr, d2u_dr2
-
-
-def pretty_print_info(potential):
-    """
-    Print potential specific parameters in a user-friendly way.
-
-    Parameters
-    ----------
-    potential : :class:`sarkas.potentials.core.Potential`
-        Class handling potential form.
-
-    """
-    msg = (
-        f"screening type : {potential.screening_length_type}\n"
-        f"screening length = {potential.screening_length:.6e} {potential.units_dict['length']}\n"
-        f"kappa = {potential.a_ws / potential.screening_length:.4f}\n"
-        f"Gamma_eff = {potential.coupling_constant:.2f}"
-    )
-    print(msg)
-
-
-def update_params(potential, species):
-    """
-    Assign potential dependent simulation's parameters.
-
-    Parameters
-    ----------
-    potential : :class:`sarkas.potentials.core.Potential`
-        Class handling potential form.
-
-    """
-    if potential.method == "pppm":
-        potential.matrix = zeros((potential.num_species, potential.num_species, 4))
-    else:
-        potential.matrix = zeros((potential.num_species, potential.num_species, 3))
-
-    potential.matrix[:, :, 1] = 1.0 / potential.screening_length
-
-    # potential.matrix[:, :, 0] = potential.species_charges.reshape((len(potential.species_charge), 1))
-    # * potential.species_charges / potential.fourpie0
-    # the above line is the Python version of the for loops below. I believe that the for loops are easier to understand
-    for i, q1 in enumerate(potential.species_charges):
-        for j, q2 in enumerate(potential.species_charges):
-            potential.matrix[i, j, 0] = q1 * q2 / potential.fourpie0
-
-    potential.matrix[:, :, -1] = potential.a_rs
-
-    potential.potential_derivatives = potential_derivatives
-
-    if potential.method == "pp":
-        # The rescaling constant is sqrt ( na^4 ) = sqrt( 3 a/(4pi) )
-        potential.force = yukawa_force
-
-        # potential.force_error = force_error_analytic_lcl(
-        #     potential.type, potential.rc, potential.matrix, sqrt(3.0 * potential.a_ws / (4.0 * pi))
-        # )
-        potential.force_error = calc_force_error_quad(potential.a_ws, potential.rc, potential.matrix[0, 0])
-
-        # # Force error calculated from eq.(43) in Ref.[1]_
-        # potential.force_error = sqrt( TWOPI / potential.electron_TF_wavelength) * exp(- potential.rc / potential.electron_TF_wavelength)
-        # # Renormalize
-        # potential.force_error *= potential.a_ws ** 2 * sqrt(potential.total_num_ptcls / potential.pbox_volume)
-
-    elif potential.method == "pppm":
-        potential.force = yukawa_force_pppm
-        potential.matrix[:, :, 2] = potential.pppm_alpha_ewald
-        rescaling_constant = sqrt(potential.total_num_ptcls) * potential.a_ws**2 / sqrt(potential.pbox_volume)
-
-        potential.pppm_pp_err = force_error_analytic_pp(
-            potential.type, potential.rc, potential.screening_length, potential.pppm_alpha_ewald, rescaling_constant
-        )
-
-        # PP force error calculation. Note that the equation was derived for a single component plasma.
-        # kappa_over_alpha = -0.25 * (potential.matrix[0, 0, 1] / potential.matrix[0, 0, 2]) ** 2
-        # alpha_times_rcut = -((potential.matrix[0, 0, 2] * potential.rc) ** 2)
-        # potential.pppm_pp_err = 2.0 * exp(kappa_over_alpha + alpha_times_rcut) / sqrt(potential.rc)
-        # potential.pppm_pp_err *= sqrt(potential.total_num_ptcls) * potential.a_ws ** 2 / sqrt(potential.pbox_volume)
-
-
-def force_error_integrand(r, pot_matrix):
-    r"""Auxiliary function to be used in `scipy.integrate.quad` to calculate the integrand.
-
-    Parameters
-    ----------
-    r_in : float
-        Distance between two particles.
-
-    pot_matrix : numpy.ndarray
-        Slice of the `sarkas.potentials.Potential.matrix` containing the necessary potential parameters.
-
-    Returns
-    -------
-    _ : float
-        Integrand :math:`4\pi r^2 ( d r\phi(r)/dr )^2`
-
-    """
-
-    _, dv_dr, _ = potential_derivatives(r, pot_matrix)
-
-    return 4.0 * pi * r**2 * dv_dr**2
-
-
-def calc_force_error_quad(a, rc, pot_matrix):
+def calc_force_error_quad(potential):
     r"""
-    Calculate the force error by integrating the square modulus of the force over the neglected volume.\n
-    The force error is calculated from
-
+    Calculate the force error by integrating over the neglected volume.
+    
+    The force error is calculated from:
+    
     .. math::
-        \Delta F =  \left [ 4 \pi \int_{r_c}^{\infty} dr \, r^2  \left ( \frac{d\phi(r)}{r} \right )^2 ]^{1/2}
-
-    where :math:`\phi(r)` is only the radial part of the potential, :math:`r_c` is the cutoff radius, and :math:`r` is scaled by the input parameter `a`.\n
-    The integral is calculated using `scipy.integrate.quad`. The derivative of the potential is obtained from :meth:`potential_derivatives`.
-
+        \Delta F = \left[ 4\pi \int_{r_c}^{\infty} dr \, r^2 \left(\frac{dU(r)}{dr}\right)^2 \right]^{1/2}
+    
+    where :math:`U(r)` is the Yukawa potential, :math:`r_c` is the cutoff radius.
+    
     Parameters
     ----------
-    a : float
-        Rescaling length. Usually it is the Wigner-Seitz radius.
-
-    rc : float
-        Cutoff radius to be used as the lower limit of the integral. The lower limit is actually `rc /a`.
-
-    pot_matrix: numpy.ndarray
-        Slice of the `sarkas.potentials.Potential.matrix` containing the parameters of the potential. It must be a 1D-array.
-
+    potential : Yukawa
+        Yukawa potential instance with all parameters set
+        
     Returns
     -------
-    f_err: float
-        Force error. It is the sqrt root of the integral. It is calculated using `scipy.integrate.quad`  and :func:`potential_derivatives`.
-
+    f_err : float
+        Force error estimate
+        
     Examples
     --------
-    >>> import numpy as np
-    >>> potential_matrix = np.zeros(2)
-    >>> a = 1.0 # Wigner-seitz radius
-    >>> kappa = 2.0 # in units of a_ws
-    >>> potential_matrix[1] = kappa
-    >>> rc = 6.0 # in units of a_ws
-    >>> calc_force_error_quad(a, rc, potential_matrix)
-    6.636507826720378e-06
-
+    >>> # Assuming a properly set up Yukawa potential instance
+    >>> f_err = calc_force_error_quad(yukawa_potential)
+    >>> print(f"Force error: {f_err:.2e}")
     """
-
-    params = pot_matrix.copy()
-    params[0] = 1
-    # Un-dimensionalize the screening length.
-    params[1] *= a
-    r_c = rc / a
-    result, _ = quad(force_error_integrand, a=r_c, b=inf, args=(params,))
-
-    f_err = sqrt(result)
-
+    if potential.matrix is None or potential.rc is None:
+        raise ValueError("Potential matrix and cutoff radius must be set")
+    
+    # Create normalized parameter matrix for integration
+    params = potential.matrix.copy()
+    
+    # Rescale parameters to avoid numerical issues in quad
+    params[:, :, 0] /= potential.matrix[0, 0, 0]  # Normalize charge factor
+    params[:, :, 1] *= potential.a_ws              # Scale kappa
+    params[:, :, 3] /= potential.a_ws              # Scale short-range cutoff
+    
+    # Scaled cutoff radius
+    r_c = potential.rc / potential.a_ws
+    
+    # Solid angle factor for different dimensions
+    solid_angle = 2 * pi**(potential.dimensions / 2) / gamma(potential.dimensions / 2)
+    
+    def integrand(r):
+        """Integrand for force error calculation."""
+        _, f_r = potential.force(r, params[0, 0])
+        return solid_angle * r**(potential.dimensions - 1) * f_r**2
+    
+    # Perform integration
+    result, _ = quad(integrand, a=r_c, b=inf)
+    
+    # Calculate normalization factor
+    if potential.dimensions == 3:
+        normalization = sqrt(result * 3 / (4 * pi))
+    elif potential.dimensions == 2:
+        normalization = sqrt(result / (2 * pi))
+    else:  # 1D
+        normalization = sqrt(result / 2)
+    
+    # Apply charge and density factors
+    charge_factor = potential.QFactor / (potential.matrix[0, 0, 0] * potential.total_num_ptcls)
+    f_err = normalization * charge_factor
+    
     return f_err
+
+
+class Yukawa(PotentialBase):
+    """
+    Yukawa (screened Coulomb) potential implementation.
+
+    The Yukawa potential is widely used in plasma physics to model interactions
+    between charged particles in a screening medium such as a plasma or electrolyte.
+
+    Attributes
+    ----------
+    screening_length : float
+        Characteristic screening length (Debye length in plasmas).
+    kappa : float
+        Screening parameter (1/screening_length).
+    coupling_constant : float
+        Effective coupling strength.
+    screening_length_type : str
+        Type of screening length calculation.
+    yukawa_params : list or ndarray
+        yukawa_params[i][j][0] = q_i * q_j / (4π ε₀)
+        yukawa_params[i][j][1] = kappa (screening parameter)
+        (User can override before setup)
+    pppm_alpha_ewald : float
+        Algorithm-specific parameter for PPPM.
+    a_rs : float
+        Algorithm-specific short-range cutoff.
+
+    Extensibility
+    -------------
+    To implement a custom Yukawa-like potential, subclass Yukawa and override
+    the relevant methods (e.g., initialize_potential_parameters, create_parameter_matrix,
+    set_force_function).
+
+    Usage Example
+    -------------
+    >>> y = Yukawa()
+    >>> # Optionally override potential-specific parameters before setup:
+    >>> y.yukawa_params = [[[1.0, 2.0], [1.0, 2.0]], [[1.0, 2.0], [1.0, 2.0]]]  # shape (num_species, num_species, 2)
+    >>> y.pppm_alpha_ewald = 0.25
+    >>> y.a_rs = 0.1
+    >>> y.setup(params, species_list)
+    """
+    _aliases = ['yukawa', 'screened_coulomb', 'debye_huckel']
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.name = 'yukawa'
+        self.screening_length: Optional[float] = None
+        self.screening_length_type: str = 'thomas_fermi'
+        self.kappa: Optional[float] = None
+        self.coupling_constant: Optional[float] = None
+        self.params = None
+        self.force = yukawa_force_pppm
+    
+    def setup(self, params, species, **kwargs):
+        """
+        Setup the Yukawa potential with simulation parameters and species.
+        
+        Parameters
+        ----------
+        params : object
+            Simulation parameters containing physical constants, screening length, etc.
+        species : list
+            List of species objects containing charge, mass, number, etc.
+        **kwargs : dict
+            Additional Yukawa-specific parameters:
+            - screening_length : float, screening length
+            - screening_length_type : str, type of screening
+            - kappa : float, screening parameter (alternative to screening_length)
+        """
+        
+        # Update common parameters
+        self.update_common_params(params, species)
+        
+        # Setup screening parameters
+        self.setup_screening(params, **kwargs)
+        
+        # Validate screening length
+        if self.screening_length is None and 'kappa' in kwargs:
+            self.kappa = kwargs['kappa']
+            self.screening_length = 1.0 / self.kappa
+        elif self.screening_length is None:
+            raise ValueError("Either screening_length or kappa must be specified")
+        
+        # Allocate parameter matrix (4 parameters per species pair)
+        self.allocate_matrix(species, 4)
+        
+        # Setup charge interaction matrix
+        self.setup_charge_matrix(species, param_index=0)
+        
+        # Set screening parameter for all species pairs
+        self.matrix[:, :, 1] = 1.0 / self.screening_length
+        
+        # Store kappa value for convenience
+        if self.kappa is None:
+            self.kappa = self.matrix[0, 0, 1] * self.a_ws
+        
+        # Set short-range cutoff
+        self.set_short_range_cutoff()
+        
+        # Setup force calculation functions based on method
+        self._setup_force_functions()
+        
+        # Set potential derivatives function
+        self.potential_derivatives = potential_derivatives
+        
+        # Set force error calculation function
+        self.calc_force_error_quad = lambda: calc_force_error_quad(self)
+        
+        # Calculate effective coupling constant if not provided
+        if self.coupling_constant is None and hasattr(params, 'coupling_constant'):
+            self.coupling_constant = params.coupling_constant
+    
+    def set_force_functions(self):
+        """Setup appropriate force calculation functions based on method."""
+        if self.algorithm_type == "pp":
+            self.force = yukawa_force
+        elif self.algorithm_type == "pppm":
+            if self.pppm_alpha_ewald is None:
+                raise ValueError("PPPM method requires pppm_alpha_ewald parameter")
+            self.force = yukawa_force_pppm
+        else:
+            raise ValueError(f"Unsupported method '{self.algorithm_type}' for Yukawa potential")
+    
+    def pretty_print_info(self):
+        """Print Yukawa-specific parameters in a user-friendly way."""
+
+        #TODO: Add more information about the potential
+        msg = f"Yukawa potential:\n"
+        msg += f"Screening length: {self.screening_length}\n"
+        msg += f"Screening length type: {self.screening_length_type}\n"
+        msg += f"Kappa: {self.kappa}\n"
+        msg += f"Coupling constant: {self.coupling_constant}\n"
+        msg += f"PPPM alpha Ewald: {self.pppm_alpha_ewald}\n"
+        msg += f"Short-range cutoff: {self.a_rs}\n"     
+        return msg
+    
+    def initialize_potential_parameters(self, species_list: list[Any]) -> None:
+        """
+        Initialize Yukawa-specific parameters for all species pairs.
+        If self.yukawa_params is set by the user, use those values.
+        Otherwise, compute defaults.
+        """
+        if self.params is not None:
+            return
+
+        fourpie0 = self.fourpie0 if self.fourpie0 is not None else 1.0
+        kappa = self.kappa if self.kappa is not None else (1.0 / self.screening_length if self.screening_length is not None else raise ValueError("Screening length must be set"))
+
+        self.params = array([
+            [
+                [sp1.charge * sp2.charge / fourpie0, kappa]
+                for sp2 in species_list
+            ]
+            for sp1 in species_list
+        ])
+
+    def set_algorithm_parameters(self, algorithm_type: Optional[str], **kwargs):
+        """Set algorithm-specific parameters.
+        
+        Parameters
+        ----------
+        algorithm_type : Optional[str]
+            Algorithm type
+        **kwargs : dict
+            Additional parameters
+        """
+        if algorithm_type is not None:
+            self.algorithm_type = algorithm_type
+
+        if algorithm_type is not None and algorithm_type == "pppm":
+            if 'pppm_alpha_ewald' in kwargs:
+                self.pppm_alpha_ewald = kwargs['pppm_alpha_ewald']
+            else:
+                raise ValueError("pppm_alpha_ewald must be provided in kwargs")
+
+        if 'a_rs' in kwargs:
+            self.a_rs = kwargs['a_rs']
+
+    def create_parameter_matrix(self, species_list: list[Any]) -> None:
+        """
+        Create parameter matrix for Yukawa interactions from self.yukawa_params and algorithm-specific parameters.
+        """
+        num_species = len(species_list)
+        self.matrix = zeros((num_species, num_species, 4))
+        for i in range(num_species):
+            for j in range(num_species):
+                self.matrix[i, j, 0] = self.params[i][j][0]
+                self.matrix[i, j, 1] = self.params[i][j][1]
+                self.matrix[i, j, 2] = self.pppm_alpha_ewald if hasattr(self, 'pppm_alpha_ewald') and self.pppm_alpha_ewald is not None else 0.0
+                self.matrix[i, j, 3] = self.a_rs
+
+    def potential_derivatives(self, r: float, pot_matrix: Any) -> tuple[float, float, float]:
+        """
+        Calculate the first and second derivatives of the Yukawa potential.
+
+        Parameters
+        ----------
+        r : float
+            Distance between particles.
+        pot_matrix : numpy.ndarray
+            Potential parameters.
+
+        Returns
+        -------
+        U : float
+            Potential value.
+        dU_dr : float
+            First derivative of the potential.
+        d2U_dr2 : float
+            Second derivative of the potential.
+        """
+        kappa = pot_matrix[1]
+        kappa_r = kappa * r
+        exp_term = exp(-kappa_r)
+        u_base = exp_term / r
+        du_dr = -(1.0 + kappa_r) * u_base / r
+        d2u_dr2 = -(1.0 / r + kappa) * du_dr + u_base / r**2
+        # Apply charge factor if needed in context
+        return u_base, du_dr, d2u_dr2

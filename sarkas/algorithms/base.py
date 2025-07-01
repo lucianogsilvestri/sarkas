@@ -1,21 +1,55 @@
 from abc import ABC, abstractmethod
+from typing import Any, Dict, Optional
+from numpy import zeros
 
 
 class InteractionSolverBase(ABC):
     """
     Abstract base class for particle interaction solvers in molecular dynamics simulations.
     
-    All interaction solvers must implement the setup() and update() methods to handle
+    All interaction solvers must implement the `setup` and `update` methods to handle
     the computation of forces, energies, and other particle interaction properties.
+    
+    Required Particle Attributes
+    ---------------------------
+    pos : ndarray
+        (N, 3) array of particle positions.
+    vel : ndarray
+        (N, 3) array of particle velocities.
+    id : ndarray
+        (N,) array of particle IDs.
+    species_masses : ndarray
+        (N,) array of particle masses.
+    
+    Required Potential Attributes
+    ----------------------------
+    force : callable
+        Force function.
+    matrix : ndarray
+        Parameter matrix for species pairs.
+    
+    Examples
+    --------
+    Subclassing the base class::
+
+        class MyCustomSolver(InteractionSolverBase):
+            def setup(self, params, **kwargs):
+                # Custom setup logic
+                pass
+            def update(self, ptcls, potential):
+                # Custom force calculation logic
+                pass
     """
     
-    def __init__(self):
-        """Initialize the interaction solver."""
-        self.type = None
-        self.box_lengths = None
+    def __init__(self) -> None:
+        """
+        Initialize the interaction solver.
+        """
+        self.type: Optional[str] = None
+        self.box_lengths: Any = None
     
     @abstractmethod
-    def setup(self, params, **kwargs):
+    def setup(self, params: Any, **kwargs: Any) -> None:
         """
         Initialize the solver with simulation parameters.
         
@@ -24,21 +58,20 @@ class InteractionSolverBase(ABC):
         params : object
             Simulation parameters object containing box_lengths, cutoff_radius, etc.
         **kwargs : dict
-            Additional solver-specific parameters (e.g., precision for FMM, 
-            optimization flags for PPPM, etc.)
+            Additional solver-specific parameters (e.g., precision for FMM, optimization flags for PPPM, etc.)
         """
         pass
     
     @abstractmethod
-    def update(self, ptcls, potential):
+    def update(self, ptcls: Any, potential: Any) -> None:
         """
         Compute particle interactions and update particle properties.
         
         This method should compute and update the following particle properties:
-        - ptcls.potential_energy : particle potential energies
-        - ptcls.acc : particle accelerations
-        - ptcls.virial_species_tensor : virial tensor (if applicable)
-        - ptcls.heat_flux_species_tensor : heat flux tensor (if applicable)
+            - ptcls.potential_energy : particle potential energies
+            - ptcls.acc : particle accelerations
+            - ptcls.virial_species_tensor : virial tensor (if applicable)
+            - ptcls.heat_flux_species_tensor : heat flux tensor (if applicable)
         
         Parameters
         ----------
@@ -49,7 +82,7 @@ class InteractionSolverBase(ABC):
         """
         pass
     
-    def pretty_print(self):
+    def pretty_print(self) -> None:
         """
         Print solver information and parameters.
         
@@ -60,21 +93,21 @@ class InteractionSolverBase(ABC):
         if self.box_lengths is not None:
             print(f"Box lengths: {self.box_lengths}")
     
-    def validate_inputs(self, ptcls, potential):
+    def validate_inputs(self, ptcls: Any, potential: Any) -> None:
         """
         Validate input parameters before computation.
         
         Parameters
         ----------
         ptcls : object
-            Particles object
+            Particles object.
         potential : object
-            Potential object
-            
+            Potential object.
+        
         Raises
         ------
         ValueError
-            If required attributes are missing or have incompatible dimensions
+            If required attributes are missing or have incompatible dimensions.
         """
         required_ptcl_attrs = ['pos', 'vel', 'id', 'species_masses']
         for attr in required_ptcl_attrs:
@@ -93,7 +126,7 @@ class InteractionSolverBase(ABC):
         if ptcls.pos.shape[1] != 3:
             raise ValueError("Position array must have shape (N, 3)")
     
-    def allocate_output_arrays(self, ptcls, potential):
+    def allocate_output_arrays(self, ptcls: Any, potential: Any) -> Dict[str, Any]:
         """
         Allocate output arrays for computed quantities.
         
@@ -103,29 +136,25 @@ class InteractionSolverBase(ABC):
         Parameters
         ----------
         ptcls : object
-            Particles object
+            Particles object.
         potential : object
-            Potential object
-            
+            Potential object.
+        
         Returns
         -------
         dict
             Dictionary containing allocated arrays for:
-            - 'potential_energy' : per-particle potential energies
-            - 'acceleration' : per-particle accelerations  
-            - 'virial_species_tensor' : species-pair virial tensor
-            - 'heat_flux_species_tensor' : species-pair heat flux tensor
+                - 'potential_energy': per-particle potential energies
+                - 'acceleration': per-particle accelerations
+                - 'virial_species_tensor': species-pair virial tensor
+                - 'heat_flux_species_tensor': species-pair heat flux tensor
         """
-        from numpy import zeros
-        
         N = ptcls.pos.shape[0]
         num_species = potential.matrix.shape[0]
-        
         arrays = {
             'potential_energy': zeros(N),
             'acceleration': zeros((N, 3)),
-            'virial_species_tensor': zeros((3, 3, num_species, num_species)),
-            'heat_flux_species_tensor': zeros((3, num_species, num_species))
+            'virial_species_tensor': zeros((num_species, num_species, 3, 3)),
+            'heat_flux_species_tensor': zeros((num_species, num_species, 3))
         }
-        
         return arrays

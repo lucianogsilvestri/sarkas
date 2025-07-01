@@ -9,10 +9,10 @@ extracted from the Particles class. All functions are designed to be:
 - Well-documented with MyST format
 """
 
-import numpy as np
 from numba import jit
-from numpy import ndarray
-from .aggregation import species_sum, fast_species_sum
+from numpy import ndarray, zeros, zeros_like, cross, sum, allclose
+from numpy.linalg import norm
+from .aggregation import fast_species_sum, species_sum
 
 
 @jit(nopython=True)
@@ -59,7 +59,11 @@ def momentum(velocities: ndarray, masses: ndarray) -> ndarray:
         assert p.shape == (1000, 3)
         assert np.allclose(p, velocities * masses[:, None])
     """
-    return masses[:, np.newaxis] * velocities
+    momentum_array = zeros_like(velocities)
+    for i in range(velocities.shape[1]):
+        momentum_array[:, i] = velocities[:, i] * masses
+
+    return momentum_array
 
 
 @jit(nopython=True)
@@ -98,9 +102,9 @@ def center_of_mass_velocity(velocities: ndarray, masses: ndarray) -> ndarray:
         v_cm = center_of_mass_velocity(velocities, masses)
         assert v_cm.shape == (3,)
     """
-    total_mass = np.sum(masses)
-    weighted_velocities = masses[:, np.newaxis] * velocities
-    return np.sum(weighted_velocities, axis=0) / total_mass
+    total_mass = sum(masses)
+    momenta = momentum(velocities, masses)
+    return sum(momenta, axis=0) / total_mass
 
 
 @jit(nopython=True)
@@ -133,10 +137,10 @@ def remove_center_of_mass_motion(velocities: ndarray, masses: ndarray) -> ndarra
     
         import numpy as np
         from sarkas.physics.mechanical import remove_center_of_mass_motion
-        
+
         velocities = np.random.randn(1000, 3)
         masses = np.ones(1000)
-        
+
         v_prime = remove_center_of_mass_motion(velocities, masses)
         
         # Verify total momentum is zero
@@ -181,18 +185,18 @@ def angular_momentum(positions: ndarray, velocities: ndarray, masses: ndarray) -
     
         import numpy as np
         from sarkas.physics.mechanical import angular_momentum
-        
+
         positions = np.random.randn(1000, 3)
         velocities = np.random.randn(1000, 3)
         masses = np.ones(1000)
-        
+
         L = angular_momentum(positions, velocities, masses)
         assert L.shape == (1000, 3)
     """
     # Calculate cross product for each particle
-    L = np.zeros_like(positions)
+    L = zeros_like(positions)
     for i in range(positions.shape[0]):
-        L[i] = masses[i] * np.cross(positions[i], velocities[i])
+        L[i] = masses[i] * cross(positions[i], velocities[i])
     return L
 
 
@@ -227,16 +231,16 @@ def total_angular_momentum(positions: ndarray, velocities: ndarray, masses: ndar
     
         import numpy as np
         from sarkas.physics.mechanical import total_angular_momentum
-        
+
         positions = np.random.randn(1000, 3)
         velocities = np.random.randn(1000, 3)
         masses = np.ones(1000)
-        
+
         L_total = total_angular_momentum(positions, velocities, masses)
         assert L_total.shape == (3,)
     """
     L_per_particle = angular_momentum(positions, velocities, masses)
-    return np.sum(L_per_particle, axis=0)
+    return sum(L_per_particle, axis=0)
 
 
 @jit(nopython=True)
@@ -271,17 +275,17 @@ def force_torque(positions: ndarray, forces: ndarray) -> ndarray:
     
         import numpy as np
         from sarkas.physics.mechanical import force_torque
-        
+
         positions = np.random.randn(1000, 3)
         forces = np.random.randn(1000, 3)
-        
+
         tau = force_torque(positions, forces)
         assert tau.shape == (1000, 3)
     """
     # Calculate cross product for each particle
-    tau = np.zeros_like(positions)
+    tau = zeros_like(positions)
     for i in range(positions.shape[0]):
-        tau[i] = np.cross(positions[i], forces[i])
+        tau[i] = cross(positions[i], forces[i])
     return tau
 
 
@@ -320,7 +324,7 @@ def stress_tensor(positions: ndarray, forces: ndarray, volume: float) -> ndarray
     
         import numpy as np
         from sarkas.physics.mechanical import stress_tensor
-        
+
         positions = np.random.randn(1000, 3)
         forces = np.random.randn(1000, 3)
         volume = 1000.0
@@ -328,7 +332,7 @@ def stress_tensor(positions: ndarray, forces: ndarray, volume: float) -> ndarray
         sigma = stress_tensor(positions, forces, volume)
         assert sigma.shape == (3, 3)
     """
-    sigma = np.zeros((3, 3))
+    sigma = zeros((3, 3), dtype=positions.dtype)
     for i in range(positions.shape[0]):
         for alpha in range(3):
             for beta in range(3):
@@ -372,11 +376,11 @@ def species_momentum(velocities: ndarray, masses: ndarray, species_id: ndarray,
     
         import numpy as np
         from sarkas.physics.mechanical import species_momentum
-        
+
         velocities = np.random.randn(1000, 3)
         masses = np.ones(1000)
         species_id = np.random.randint(0, 2, 1000)
-        
+
         P_species = species_momentum(velocities, masses, species_id, num_species=2)
         assert P_species.shape == (2, 3)
     """
@@ -421,12 +425,12 @@ def species_angular_momentum(positions: ndarray, velocities: ndarray, masses: nd
     
         import numpy as np
         from sarkas.physics.mechanical import species_angular_momentum
-        
+
         positions = np.random.randn(1000, 3)
         velocities = np.random.randn(1000, 3)
         masses = np.ones(1000)
         species_id = np.random.randint(0, 2, 1000)
-        
+
         L_species = species_angular_momentum(positions, velocities, masses,
                                            species_id, num_species=2)
         assert L_species.shape == (2, 3)
@@ -436,7 +440,7 @@ def species_angular_momentum(positions: ndarray, velocities: ndarray, masses: nd
     # Aggregate by species using fast vector aggregation
     return fast_species_sum(L_per_particle, species_id, num_species)
 
-
+@jit(nopython=True)
 def species_center_of_mass_velocity(velocities: ndarray, masses: ndarray,
                                   species_id: ndarray, num_species: int) -> ndarray:
     """Calculate center of mass velocity for each species.
@@ -470,23 +474,23 @@ def species_center_of_mass_velocity(velocities: ndarray, masses: ndarray,
     
         import numpy as np
         from sarkas.physics.mechanical import species_center_of_mass_velocity
-        
+
         velocities = np.random.randn(1000, 3)
         masses = np.ones(1000)
         species_id = np.random.randint(0, 2, 1000)
-        
+
         v_cm_species = species_center_of_mass_velocity(velocities, masses,
                                                      species_id, num_species=2)
         assert v_cm_species.shape == (2, 3)
     """
-    v_cm_species = np.zeros((num_species, 3))
+    v_cm_species = zeros((num_species, 3), dtype=velocities.dtype)
+    
+    species_masses = species_sum(masses, species_id, num_species)
+    per_particle_momenta = momentum(velocities, masses)
+    species_momenta = fast_species_sum(per_particle_momenta, species_id, num_species)
     
     for s in range(num_species):
-        mask = species_id == s
-        if np.any(mask):
-            species_velocities = velocities[mask]
-            species_masses = masses[mask]
-            v_cm_species[s] = center_of_mass_velocity(species_velocities, species_masses)
+        v_cm_species[s] = species_momenta[s] / species_masses[s]
     
     return v_cm_species
 
@@ -529,13 +533,13 @@ def validate_momentum_conservation(velocities: ndarray, masses: ndarray,
         print(f"Total momentum: {result['total_momentum']}")
         print(f"Conserved: {result['conserved']}")
     """
-    total_momentum = np.sum(momentum(velocities, masses), axis=0)
-    conserved = np.allclose(total_momentum, 0.0, atol=tolerance)
+    total_momentum = sum(momentum(velocities, masses), axis=0)
+    conserved = allclose(total_momentum, 0.0, atol=tolerance)
     
     return {
         'total_momentum': total_momentum,
         'conserved': conserved,
-        'magnitude': np.linalg.norm(total_momentum)
+        'magnitude': norm(total_momentum)
     }
 
 
@@ -570,63 +574,20 @@ def validate_angular_momentum_conservation(positions: ndarray, velocities: ndarr
     
         import numpy as np
         from sarkas.physics.mechanical import validate_angular_momentum_conservation
-        
+
         positions = np.random.randn(1000, 3)
         velocities = np.random.randn(1000, 3)
         masses = np.ones(1000)
-        
+
         result = validate_angular_momentum_conservation(positions, velocities, masses)
         print(f"Total angular momentum: {result['total_angular_momentum']}")
         print(f"Conserved: {result['conserved']}")
     """
     total_angular_momentum_vec = total_angular_momentum(positions, velocities, masses)
-    conserved = np.allclose(total_angular_momentum_vec, 0.0, atol=tolerance)
+    conserved = allclose(total_angular_momentum_vec, 0.0, atol=tolerance)
     
     return {
         'total_angular_momentum': total_angular_momentum_vec,
         'conserved': conserved,
-        'magnitude': np.linalg.norm(total_angular_momentum_vec)
+        'magnitude': norm(total_angular_momentum_vec)
     }
-
-
-# Backward compatibility wrappers
-def calculate_momentum(velocities: ndarray, masses: ndarray) -> ndarray:
-    """Backward compatibility wrapper for momentum calculation.
-    
-    This function maintains the same interface as the original Particles
-    class method for backward compatibility.
-    
-    Parameters
-    ----------
-    velocities : numpy.ndarray
-        Particle velocities with shape ``(N, 3)``
-    masses : numpy.ndarray
-        Particle masses with shape ``(N,)``
-        
-    Returns
-    -------
-    numpy.ndarray
-        Per-particle momentum with shape ``(N, 3)``
-    """
-    return momentum(velocities, masses)
-
-
-def calculate_center_of_mass_velocity(velocities: ndarray, masses: ndarray) -> ndarray:
-    """Backward compatibility wrapper for center of mass velocity calculation.
-    
-    This function maintains the same interface as the original Particles
-    class method for backward compatibility.
-    
-    Parameters
-    ----------
-    velocities : numpy.ndarray
-        Particle velocities with shape ``(N, 3)``
-    masses : numpy.ndarray
-        Particle masses with shape ``(N,)``
-        
-    Returns
-    -------
-    numpy.ndarray
-        Center of mass velocity with shape ``(3,)``
-    """
-    return center_of_mass_velocity(velocities, masses) 
