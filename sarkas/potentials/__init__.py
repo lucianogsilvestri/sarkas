@@ -1,5 +1,5 @@
 """
-Potential energy functions for molecular dynamics simulations.
+Potential energy functions for molecular dynamics and plasma physics simulations.
 
 This module provides a comprehensive collection of potential energy functions
 commonly used in molecular dynamics and plasma physics simulations, including
@@ -11,21 +11,31 @@ The module supports multiple computational methods:
 - Ewald summation: Alternative long-range method
 
 Usage:
-    from potentials import get_potential, list_potentials
+    from sarkas.potentials import get_potential, list_potentials
     
     potential_class = get_potential('yukawa')
     potential = potential_class()
     potential.setup(params, species)
 
 Available Potentials:
-    - Yukawa: Screened Coulomb potential
-    - Coulomb: Pure Coulomb potential (when implemented)
-    - Lennard-Jones: Short-range potential (when implemented)
-    - Morse: Anharmonic potential (when implemented)
+    - Yukawa: Screened Coulomb potential (Debye-Hückel)
+    - Coulomb: Pure Coulomb potential for charged particles
+    - Quantum Statistical Potentials: Deutsch, Kelbg, Hansen formulations
+    - Mie potential: Generalized Lennard-Jones potential
+    - Exact Gradient Screened (EGS): Density gradient corrected potential
+    - Yukawa-Friedel Tail (YFT): Yukawa with oscillatory Friedel tail
 """
 
-from .base import PotentialBase, PairPotentialBase, LongRangePotentialBase
-from .yukawa import Yukawa, yukawa_force, yukawa_force_pppm, potential_derivatives
+# Import base classes
+from .base import PotentialBase
+
+# Import all potential implementations
+from .yukawa import Yukawa
+from .coulomb import Coulomb
+from .qsp import QuantumStatisticalPotential
+from .mie import MiePotential
+from .egs import ExactGradientScreened
+from .yukawa_ft import YukawaFriedelTail
 
 # Potential registry for factory pattern
 POTENTIAL_REGISTRY = {}
@@ -161,30 +171,26 @@ def get_potentials_by_type(potential_type):
     dict
         Dictionary of potential names and classes of the specified type
     """
-    type_mapping = {
-        'pair': PairPotentialBase,
-        'long_range': LongRangePotentialBase,
-        'short_range': PairPotentialBase,  # Most short-range are pair potentials
-        'screened': LongRangePotentialBase  # Screened potentials support long-range methods
+    # Define potential categories based on physics and implementation
+    type_categories = {
+        'pair': ['mie', 'miepotential'],  # Short-range pair potentials
+        'long_range': ['coulomb', 'yukawa', 'qsp', 'quantumstatisticalpotential'],  # Long-range electrostatic
+        'short_range': ['mie', 'miepotential'],  # Short-range interactions
+        'screened': ['yukawa', 'egs', 'exactgradientscreened', 'yukawa_ft', 'yukawafriedeltail'],  # Screened potentials
+        'quantum': ['qsp', 'quantumstatisticalpotential'],  # Quantum statistical potentials
+        'oscillatory': ['egs', 'exactgradientscreened', 'yukawa_ft', 'yukawafriedeltail']  # Oscillatory tails
     }
     
-    if potential_type not in type_mapping:
+    if potential_type not in type_categories:
         raise ValueError(f"Unknown potential type '{potential_type}'. "
-                        f"Available types: {list(type_mapping.keys())}")
+                        f"Available types: {list(type_categories.keys())}")
     
-    base_class = type_mapping[potential_type]
     filtered_potentials = {}
+    target_names = type_categories[potential_type]
     
     for name, potential_class in POTENTIAL_REGISTRY.items():
-        if potential_type == 'short_range':
-            # Short-range = PairPotentialBase but not LongRangePotentialBase
-            if (issubclass(potential_class, PairPotentialBase) and 
-                not issubclass(potential_class, LongRangePotentialBase)):
-                filtered_potentials[name] = potential_class
-        else:
-            # For other types, direct subclass check
-            if issubclass(potential_class, base_class):
-                filtered_potentials[name] = potential_class
+        if name in target_names:
+            filtered_potentials[name] = potential_class
     
     return filtered_potentials
 
@@ -225,41 +231,15 @@ def get_potentials_by_method(method):
     return supported_potentials
 
 
-def _auto_register():
-    """
-    Automatically register all PotentialBase subclasses.
-    
-    This function is called automatically when the module is imported.
-    It discovers all classes that inherit from PotentialBase and registers them.
-    """
-    def get_all_subclasses(cls):
-        """Recursively get all subclasses."""
-        subclasses = set(cls.__subclasses__())
-        for subclass in list(subclasses):
-            subclasses.update(get_all_subclasses(subclass))
-        return subclasses
-    
-    # Get all subclasses of PotentialBase
-    all_potentials = get_all_subclasses(PotentialBase)
-    
-    for potential_class in all_potentials:
-        # Skip abstract base classes
-        if potential_class.__name__.endswith('Base'):
-            continue
-            
-        # Get class name for registration
-        class_name = potential_class.__name__.lower()
-        
-        # Register the class
-        register_potential(class_name, potential_class)
-        
-        # Register aliases if defined
-        if hasattr(potential_class, '_aliases'):
-            register_potential(class_name, potential_class, potential_class._aliases)
 
-
-# Auto-register all potentials when module is imported
-_auto_register()
+# Auto-register all implemented potentials when module is imported
+# Register manually since auto-discovery can be unreliable
+register_potential('yukawa', Yukawa, ['screened_coulomb', 'debye_huckel'])
+register_potential('coulomb', Coulomb, ['coulombic'])
+register_potential('qsp', QuantumStatisticalPotential, ['quantumstatisticalpotential', 'deutsch', 'kelbg', 'hansen'])
+register_potential('mie', MiePotential, ['miepotential', 'lj', 'lennard_jones'])
+register_potential('egs', ExactGradientScreened, ['exactgradientscreened'])
+register_potential('yukawa_ft', YukawaFriedelTail, ['yukawafriedeltail', 'yft'])
 
 
 # Utility functions for backward compatibility and convenience
@@ -332,17 +312,15 @@ def validate_potential_method_compatibility(potential_name, method):
 __all__ = [
     # Base classes
     'PotentialBase', 
-    'PairPotentialBase', 
-    'LongRangePotentialBase',
     
     # Potential implementations
     'Yukawa',
-    
-    # Force functions (for advanced users)
-    'yukawa_force',
-    'yukawa_force_pppm',
-    'potential_derivatives',
-    
+    'Coulomb', 
+    'QuantumStatisticalPotential',
+    'MiePotential',
+    'ExactGradientScreened',
+    'YukawaFriedelTail',
+        
     # Factory functions
     'register_potential', 
     'get_potential', 

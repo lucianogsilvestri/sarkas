@@ -23,7 +23,7 @@ from warnings import warn
 from .base import PotentialBase
 
 @jit(nopython=True)
-def coulomb_force(r_in: float, pot_matrix: Any) -> tuple[float, float]:
+def coulomb_force(r_in, pot_matrix):
     """
     Calculate the pure Coulomb potential and force.
 
@@ -49,7 +49,7 @@ def coulomb_force(r_in: float, pot_matrix: Any) -> tuple[float, float]:
     return coulomb_force_pppm(r_in, pot_matrix_copy)
 
 @jit(nopython=True)
-def coulomb_force_pppm(r_in: float, pot_matrix: Any) -> tuple[float, float]:
+def coulomb_force_pppm(r_in, pot_matrix):
     """
     Calculate the short-range part of the Coulomb potential and force (PPPM/Ewald).
 
@@ -103,13 +103,20 @@ class Coulomb(PotentialBase):
     >>> c.a_rs = 0.1
     >>> c.setup(params, species_list)
     """
-    def __init__(self) -> None:
+    def __init__(self, testing_mode: bool = False) -> None:
         super().__init__()
         self.type = "coulomb"
-        self.pppm_alpha_ewald: Optional[float] = None
+        self.pppm_alpha_ewald: 0.0
         self.algorithm_type: str = "pppm"
         self.params = None
-        self.force = coulomb_force_pppm
+        self.force_function = coulomb_force_pppm
+
+        if testing_mode:
+            self.params = array([[ self.qe**2/self.fourpie0]])
+            self.matrix = zeros((1, 1, 3))
+            self.matrix[0, 0, 0] = self.params[0, 0]
+            self.matrix[0, 0, 1] = self.pppm_alpha_ewald
+            self.matrix[0, 0, 2] = self.a_rs
 
     def initialize_potential_parameters(self, species_list: list[Any]) -> None:
         """

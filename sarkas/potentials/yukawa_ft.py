@@ -12,16 +12,16 @@ Dharma-Wardana, M.W.C., Stanek, L.J., Murillo, M.S., Yukawa-Friedel-tail pair po
 
 """
 
-from math import cos, sin, erfc
+
 from numba import jit
-from numpy import exp, zeros
+from numpy import array, exp, zeros, cos, sin
 from typing import Any, Callable, Optional
 from warnings import warn
 
 from .base import PotentialBase
 
 @jit(nopython=True)
-def yukawa_ft_force(r_in: float, pot_matrix: Any) -> tuple[float, float]:
+def yukawa_ft_force(r_in, pot_matrix):
     """
     Calculate Yukawa-Friedel Tail potential and force.
 
@@ -71,19 +71,24 @@ class YukawaFriedelTail(PotentialBase):
 
     Usage Example
     -------------
-    >>> yft = YukawaFriedelTail()
-    >>> # Optionally override potential-specific parameters before setup:
-    >>> yft.yft_params = [[[1,2,3,4,5,6], [1,2,3,4,5,6]], [[1,2,3,4,5,6], [1,2,3,4,5,6]]]  # shape (num_species, num_species, 6)
-    >>> yft.a_rs = 0.1
-    >>> yft.setup(params, species_list)
+    >>> yft = YukawaFriedelTail(testing_mode=True)
+    >>> print(yft.pretty_print_info())
     """
-    def __init__(self) -> None:
+    def __init__(self, testing_mode: bool = False) -> None:
         super().__init__()
         self.type = "yukawa_friedel_tail"
         self.screening_length_type = "yft"
         self.params: Optional[list[float]] = None  # [A_Y, kappa_Y, B_F, kappa_F, Q_F, phi_F]
-        self.force = yukawa_ft_force
-        
+        self.force_function = yukawa_ft_force
+
+        if testing_mode:
+            self._set_physical_constants(units = 'cgs')  # Set physical constants in CGS units
+            # Al rho = 2.7 g/cm^3, T = 1 eV from Dharma-Wardana et al. 2022
+            self.params = array([5.643048e-17, 3.449355e+08, 3.529030e-36, 0.000000e+00, 3.742168e+08, -6.724320e+00])
+            self.matrix = zeros((1, 1, 7))
+            self.matrix[0, 0, :6] = self.params
+            self.matrix[0, 0, 6] = 0.1  #
+
     def initialize_potential_parameters(self, species_list: list[Any], **kwargs: Any) -> None:
         """
         Initialize YFT-specific parameters for all species pairs.

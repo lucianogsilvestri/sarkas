@@ -87,7 +87,7 @@ def yukawa_force_pppm(r_in: float, pot_matrix: Any) -> tuple[float, float]:
 
 
 @jit(nopython=True)
-def yukawa_force(r_in: float, pot_matrix: Any) -> tuple[float, float]:
+def yukawa_force_pp(r_in: float, pot_matrix: Any) -> tuple[float, float]:
     """
     Calculate Yukawa potential and force (direct, no Ewald decomposition).
 
@@ -109,11 +109,9 @@ def yukawa_force(r_in: float, pot_matrix: Any) -> tuple[float, float]:
     f_r : float
         Force magnitude.
     """
-    rs = pot_matrix[3]
-    r = r_in * (r_in >= rs) + rs * (r_in < rs)
-    kappa_r = pot_matrix[1] * r
-    u_r = pot_matrix[0] * exp(-kappa_r) / r
-    f_r = u_r * (1.0 / r + pot_matrix[1])
+    pot_matrix_copy = pot_matrix.copy()
+    pot_matrix_copy[-2] = 0.0 # Set alpha_ewald to zero for direct calculation
+    u_r, f_r = yukawa_force_pppm(r_in, pot_matrix_copy)
     return u_r, f_r
 
 
@@ -330,7 +328,12 @@ class Yukawa(PotentialBase):
             return
 
         fourpie0 = self.fourpie0 if self.fourpie0 is not None else 1.0
-        kappa = self.kappa if self.kappa is not None else (1.0 / self.screening_length if self.screening_length is not None else raise ValueError("Screening length must be set"))
+        if self.kappa is not None:
+            kappa = self.kappa
+        elif self.screening_length is not None:
+            kappa = 1.0 / self.screening_length
+        else:
+            raise ValueError("Screening length must be set")
 
         self.params = array([
             [

@@ -85,12 +85,14 @@ class PotentialBase(ABC):
 
 
         # Physical constants (copied from simulation params)
+        self.qe = physical_constants["elementary charge"][0]
         self.eps0 = physical_constants["vacuum electric permittivity"][0]
         self.fourpie0 = 4.0 * pi * self.eps0
         self.kB = physical_constants["Boltzmann constant"][0]
         self.eV2J = physical_constants["electron volt-joule relationship"][0]
         self.eV2K = physical_constants["electron volt-kelvin relationship"][0]
-
+        self.J2erg = 1.0e7  # erg/J
+        self.eV2erg = self.eV2J * self.J2erg  # erg/J J/eV
         # System properties
         self.total_num_ptcls: Optional[int] = None
         self.total_net_charge: Optional[float] = None
@@ -148,6 +150,11 @@ class PotentialBase(ABC):
             self.eps0 = 1.0
             J2erg = 1.0e7  # erg/J
             self.kB = self.kB * J2erg
+            # Coulomb to statCoulomb conversion factor. See https://en.wikipedia.org/wiki/Statcoulomb
+            c0 = physical_constants["speed of light in vacuum"][0] * 1.0e2  # cm/s
+            C2statC = 1.0e-01 * c0
+            self.qe = self.qe * C2statC
+
         elif self.units in ['si', 'mks']:
             self.eps0 = physical_constants["vacuum electric permittivity"][0]
             self.fourpie0 = 4.0 * pi * self.eps0

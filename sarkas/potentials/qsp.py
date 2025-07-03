@@ -45,7 +45,7 @@ The parameter matrix has shape (num_species, num_species, 8):
 from math import erfc, log
 from numba import jit
 from numba.core.types import float64, UniTuple
-from numpy import array, exp, inf, pi, sqrt, zeros, isclose, ndarray
+from numpy import array, array2string, exp, inf, pi, sqrt, zeros, isclose, ndarray
 from scipy.integrate import quad
 from scipy.special import gamma
 from warnings import warn
@@ -192,11 +192,6 @@ class QuantumStatisticalPotential(PotentialBase):
             eV2J = physical_constants["electron volt-joule relationship"][0]
             self.hbar *= eV2J
             self.a0 *= 1e2
-        elif self.units == "custom":
-            # Check if kwargs has been passed
-            kwargs_dict = kwargs.get('kwargs', {}) if kwargs is not None else raise ValueError("No kwargs passed")
-            self.hbar = kwargs_dict["hbar"]
-            self.a0 = kwargs_dict["a0"]
 
         self.deBroglie_const = TWOPI * self.hbar**2 / self.kB
 
@@ -453,19 +448,23 @@ class QuantumStatisticalPotential(PotentialBase):
         -------
         None
         """
-        num_species = self.matrix.shape[0]
+        # Better formatting for arrays
+        ee_params_str = array2string(self.ee_pauli_params, precision=6, separator=', ', floatmode='scientific')
+        lambda_ei_str = array2string(self.lambda_ei, precision=6, separator=', ', floatmode='scientific')
+        lambda_ii_str = array2string(self.lambda_ii, precision=6, separator=', ', floatmode='scientific')
+        ei_diffraction_lengths = array2string(self.matrix[0, :, 1], precision=6, separator=', ', floatmode='scientific')
         msg = f"QSP type: {self.qsp_type}\n"
         msg += f"Pauli term: {self.qsp_pauli}\n"
-        msg += f"Electron Pauli parameters: {[k:.6e for k in self.ee_pauli_params]}\n"
+        msg += f"Electron Pauli parameters: {ee_params_str}\n"
         msg += f"Electron de Broglie wavelength: {self.lambda_ee:.6e}\n"
         msg += f"Electron screening length: {self.matrix[0, 0, 1]:.6e}\n"
-        msg += f"Electron-ion de Broglie wavelength: {[k:.6e for k in self.lambda_ei]}\n"
-        msg += f"Electron-ion screening length: {[self.matrix[0, j, 1] for j in range(1, num_species)]}\n"
-        msg += f"Ion-ion de Broglie wavelength: {[k:.6e for k in self.lambda_ii]}\n"
+        msg += f"Electron-ion de Broglie wavelength: {lambda_ei_str}\n"
+        msg += f"Electron-ion diffraction lengths: {ei_diffraction_lengths}\n"
+        msg += f"Ion-ion de Broglie wavelength: {lambda_ii_str}\n"
         
         return msg
-    
-    def potential_derivatives(self, r_in: float, pot_matrix: Any) -> tuple[float, float, float]:
+
+    def potential_derivatives(self, r_in: float, pot_matrix: Any):
         """
         Calculate the first and second derivatives of the QSP potential.
         """
@@ -491,6 +490,7 @@ def pauli_force(r, pot_matrix):
     f_r : float
         Pauli force magnitude
     """
+
     D = pot_matrix[2]  # Pauli prefactor
     F = pot_matrix[3]  # Pauli exponent
     A = pot_matrix[4]  # Pauli amplitude
