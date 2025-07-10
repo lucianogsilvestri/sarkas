@@ -9,26 +9,56 @@ from setuptools.command.install import install
 
 # The following are needed to copy the MSU plot styles in Matplotlib folder
 # From https://stackoverflow.com/questions/20288711/post-install-script-with-python-setuptools
+
+def install_mpl_styles():
+    """Install matplotlib styles to matplotlib's stylelib directory."""
+    try:
+        import matplotlib as mpl
+        import shutil
+        
+        # Get the directory where this setup.py file is located
+        setup_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # ~ # ref  ->  matplotlib/style/core
+        BASE_LIBRARY_PATH = os.path.join(mpl.get_data_path(), "stylelib")
+        STYLE_PATH = os.path.join(setup_dir, "sarkas", "mplstyles")
+        STYLE_EXTENSION = "mplstyle"
+        
+        if not os.path.exists(STYLE_PATH):
+            print(f"Warning: Style path {STYLE_PATH} not found, skipping style installation")
+            return
+            
+        style_files = glob.glob(os.path.join(STYLE_PATH, f"*.{STYLE_EXTENSION}"))
+        
+        if not style_files:
+            print(f"Warning: No .{STYLE_EXTENSION} files found in {STYLE_PATH}")
+            return
+            
+        # Ensure the matplotlib stylelib directory exists
+        os.makedirs(BASE_LIBRARY_PATH, exist_ok=True)
+        
+        # Copy the plotting style in the matplotlib directory
+        for _path_file in style_files:
+            _, fname = os.path.split(_path_file)
+            dest = os.path.join(BASE_LIBRARY_PATH, fname)
+            try:
+                shutil.copy2(_path_file, dest)  # copy2 preserves metadata
+                print(f"✓ {fname} style installed to {dest}")
+            except (OSError, IOError) as e:
+                print(f"Warning: Failed to install {fname}: {e}")
+                
+    except ImportError:
+        print("Warning: matplotlib not available, skipping style installation")
+    except Exception as e:
+        print(f"Warning: Error during style installation: {e}")
+
+
 class PostDevelopCommand(develop):
     """Post-installation for development mode."""
 
     def run(self):
         develop.run(self)
-        import matplotlib as mpl
-        import shutil
-
-        # ~ # ref  ->  matplotlib/style/core
-        BASE_LIBRARY_PATH = os.path.join(mpl.get_data_path(), "stylelib")
-        STYLE_PATH = os.path.join(os.getcwd(), os.path.join("sarkas", "mplstyles"))
-        STYLE_EXTENSION = "mplstyle"
-        style_files = glob.glob(os.path.join(STYLE_PATH, "*.%s" % (STYLE_EXTENSION)))
-
-        # Copy the plotting style in the matplotlib directory
-        for _path_file in style_files:
-            _, fname = os.path.split(_path_file)
-            dest = os.path.join(BASE_LIBRARY_PATH, fname)
-            shutil.copy(_path_file, dest)
-            print("%s style installed" % (fname))
+        install_mpl_styles()
 
 
 class PostInstallCommand(install):
@@ -36,21 +66,7 @@ class PostInstallCommand(install):
 
     def run(self):
         install.run(self)
-        import matplotlib as mpl
-        import shutil
-
-        # ~ # ref  ->  matplotlib/style/core
-        BASE_LIBRARY_PATH = os.path.join(mpl.get_data_path(), "stylelib")
-        STYLE_PATH = os.path.join(os.getcwd(), os.path.join("sarkas", "mplstyles"))
-        STYLE_EXTENSION = "mplstyle"
-        style_files = glob.glob(os.path.join(STYLE_PATH, "*.%s" % (STYLE_EXTENSION)))
-
-        # Copy the plotting style in the matplotlib directory
-        for _path_file in style_files:
-            _, fname = os.path.split(_path_file)
-            dest = os.path.join(BASE_LIBRARY_PATH, fname)
-            shutil.copy(_path_file, dest)
-            print("%s style installed" % (fname))
+        install_mpl_styles()
 
 
 # Package Requirements
@@ -69,7 +85,8 @@ BASE_DEPENDENCIES = [
     "notebook",
     "matplotlib",
     "seaborn",
-    "fmm3dpy"
+    # "fmm3dpy",  # Architecture compatibility issue on macOS ARM - install separately if needed
+    "importlib_metadata; python_version<'3.8'"
 ]
 
 # Get some values from the setup.cfg
@@ -112,6 +129,10 @@ setuptools.setup(
     url=URL,
     scripts=scripts,
     packages=setuptools.find_packages(),
+    package_data={
+        "sarkas": ["mplstyles/*.mplstyle"],
+    },
+    include_package_data=True,
     install_requires=BASE_DEPENDENCIES,
     # dependency_links = ["https://pypi.org/"],
     classifiers=[

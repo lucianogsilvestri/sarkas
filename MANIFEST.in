@@ -1,0 +1,28 @@
+# Include matplotlib styles
+include sarkas/mplstyles/*.mplstyle
+
+# Include configuration files
+include *.cfg
+include *.toml
+include *.txt
+include *.md
+include *.rst
+include LICENSE
+
+# Include documentation
+recursive-include docs *
+prune docs/_build
+
+# Include scripts
+include scripts/*
+
+# Include test data
+recursive-include test_data *
+
+# Exclude unnecessary files
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *~
+global-exclude *.swp
+global-exclude .DS_Store
+prune **/__pycache__
