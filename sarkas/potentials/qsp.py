@@ -80,13 +80,13 @@ from ..utilities.maths import force_error_analytic_pp, TWOPI
 
 
 @jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
-def deutsch_force(r_in, pot_matrix):
+def deutsch_force(r, pot_matrix):
     """
     Calculate Deutsch QSP Force between two particles.
 
     Parameters
     ----------
-    r_in : float
+    r : float
         Distance between two particles.
 
     pot_matrix : numpy.ndarray
@@ -109,10 +109,6 @@ def deutsch_force(r_in, pot_matrix):
     D = pot_matrix[2]
     F = pot_matrix[3]
     alpha = pot_matrix[4]
-    rs = pot_matrix[5]
-
-    # Branchless programming
-    r = r_in * (r_in >= rs) + rs * (r_in < rs)
 
     a2 = alpha * alpha
     r2 = r * r
@@ -173,13 +169,13 @@ def pauli_force(r, pot_matrix):
 
 
 @jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
-def hansen_force(r_in, pot_matrix):
+def hansen_force(r, pot_matrix):
     """
     Calculate Deutsch QSP Force between two particles.
 
     Parameters
     ----------
-    r_in : float
+    r : float
         Distance between two particles.
 
     pot_matrix : numpy.ndarray
@@ -202,10 +198,6 @@ def hansen_force(r_in, pot_matrix):
     D = pot_matrix[2]
     F = pot_matrix[3]
     alpha = pot_matrix[4]
-    rs = pot_matrix[5]
-
-    # Branchless programming
-    r = r_in * (r_in >= rs) + rs * (r_in < rs)
 
     a2 = alpha * alpha
     r2 = r * r
@@ -231,13 +223,13 @@ def hansen_force(r_in, pot_matrix):
 
 
 @jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
-def kelbg_force(r_in, pot_matrix):
+def kelbg_force(r, pot_matrix):
     """
     Calculates the QSP Force between two particles when the pppm algorithm is chosen.
 
     Parameters
     ----------
-    r_in : float
+    r : float
         Distance between two particles.
 
     pot_matrix : numpy.ndarray
@@ -277,10 +269,6 @@ def kelbg_force(r_in, pot_matrix):
     F = pot_matrix[3]
     E = pot_matrix[4] # flag for diffraction term 
     alpha = pot_matrix[5]
-    rs = pot_matrix[6]
-
-    # Branchless programming
-    r = r_in * (r_in >= rs) + rs * (r_in < rs)
 
     C2 = C * C
     a2 = alpha * alpha

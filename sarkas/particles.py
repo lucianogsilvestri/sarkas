@@ -1202,17 +1202,16 @@ class Particles:
 
         self.load_from_checkpoint(phase, it)
 
-    def load_from_checkpoint(self, phase, it):
+    def load_from_checkpoint(self, phase, it= None):
         """
         Load particles' data from a checkpoint of a previous run
 
         Parameters
         ----------
-        it : int
-            Timestep.
-
         phase: str
             Restart phase.
+        it : int
+            Timestep.
 
         """
         if phase == "equilibration":
@@ -1226,7 +1225,10 @@ class Particles:
             dump_step = self.mag_dump_step
 
         # Calculate the index of the time step
-        index = self.restart_step // dump_step
+        if it is None:
+            index = self.restart_step // dump_step
+        else:
+            index = it // dump_step
         
         with h5py.File(file_name, "r") as file:
             self.pos = file["particles/pos"][index]

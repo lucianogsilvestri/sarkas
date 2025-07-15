@@ -4,7 +4,7 @@ Module of various types of time_evolution
 
 from copy import deepcopy
 from numba import float64, int64, jit, void
-from numpy import arange, array, cos, cross, log, pi, rint, sin, sqrt, zeros
+from numpy import arange, array, cos, cross, floor, log, pi, rint, sin, sqrt, zeros
 from scipy.linalg import norm
 
 
@@ -1145,18 +1145,31 @@ def enforce_pbc(pos, cntr, box_vector):
         Box Dimensions. Shape (3)
 
     """
+    # Get the number of particles and dimensions
+    N = pos.shape[0]
+    D = pos.shape[1]
+    
+    for i in range(N):
+        for j in range(D):
+            L = box_vector[j]
+            # Calculate how many times this particle crosses the boundary
+            fold_count = int(floor(pos[i, j] / L))
+            cntr[i, j] += fold_count
+            # Apply the boundary condition in-place
+            pos[i, j] -= L * fold_count
 
-    # Loop over all particles
-    for p in arange(pos.shape[0]):
-        for d in arange(pos.shape[1]):
-            # If particle is outside of box in positive direction, wrap to negative side
-            # if pos[d,p] > box_vector[d]:
-            pos[p, d] -= box_vector[d] * (pos[p, d] > box_vector[d])
-            cntr[p, d] += 1 * (pos[p, d] > box_vector[d])
-            # If particle is outside of box in negative direction, wrap to positive side
-            # if pos[d,p] < 0.0:
-            pos[p, d] += box_vector[d] * (pos[p, d] < 0.0)
-            cntr[p, d] -= 1 * (pos[p, d] < 0.0)
+
+    # # Loop over all particles
+    # for p in arange(pos.shape[0]):
+    #     for d in arange(pos.shape[1]):
+    #         # If particle is outside of box in positive direction, wrap to negative side
+    #         # if pos[d,p] > box_vector[d]:
+    #         pos[p, d] -= box_vector[d] * (pos[p, d] > box_vector[d])
+    #         cntr[p, d] += 1 * (pos[p, d] > box_vector[d])
+    #         # If particle is outside of box in negative direction, wrap to positive side
+    #         # if pos[d,p] < 0.0:
+    #         pos[p, d] += box_vector[d] * (pos[p, d] < 0.0)
+    #         cntr[p, d] -= 1 * (pos[p, d] < 0.0)
 
 
 @jit(void(float64[:, :], float64[:, :], float64[:, :], float64[:], float64[:]), nopython=True)

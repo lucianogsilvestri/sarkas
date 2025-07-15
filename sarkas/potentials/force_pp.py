@@ -443,17 +443,21 @@ def particles_interaction_loop(
                                         # These definitions are needed due to numba
                                         # see https://github.com/numba/numba/issues/5881
 
-                                        # if measure and rdf_bin < rdf_nbins:
-                                        rdf_hist[id_i, id_j,rdf_bin] += measure * (rdf_bin < rdf_nbins)
+                                        if rdf_bin < rdf_nbins:
+                                            rdf_hist[id_i, id_j,rdf_bin] += 1 
 
                                         # If below the cutoff radius, compute the force
                                         if r < rc:
                                             p_matrix = potential_matrix[id_i, id_j]
                                             # neighbors[i, j] = j
+                                            rs = p_matrix[4]
+                                            # Branchless programming to avoid division by zero
+                                            # Note that if rs =0.0 then the problem persist
+                                            r_ij = r * (r >= rs) + rs * (r < rs)
 
                                             # Compute the short-ranged force
-                                            pot, fr = force(r, p_matrix)
-                                            fr /= r
+                                            pot, fr = force(r_ij, p_matrix)
+                                            fr /= r_ij
                                             # Need to add the same pot to each particle pair.
                                             # The factor of 1/2 is to account for the fact that we are counting each pair twice
                                             # The total potential energy will be calculated from the sum of the potential energy of each particle (ptcls_pot_energy = ptcls.potential_energy)

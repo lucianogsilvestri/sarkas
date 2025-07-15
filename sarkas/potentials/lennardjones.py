@@ -60,13 +60,13 @@ from ..utilities.maths import force_error_analytic_lcl
 
 
 @jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
-def lj_force(r_in, pot_matrix):
+def lj_force(r, pot_matrix):
     """
     Numba'd function to calculate the PP force between particles using Lennard-Jones Potential.
 
     Parameters
     ----------
-    r_in : float
+    r : float
         Particles' distance.
 
     pot_matrix : numpy.ndarray
@@ -94,10 +94,6 @@ def lj_force(r_in, pot_matrix):
 
     """
 
-    rs = pot_matrix[4]
-    # Branchless programming
-    r = r_in * (r_in >= rs) + rs * (r_in < rs)
-
     epsilon = pot_matrix[0]
     sigma = pot_matrix[1]
     s_over_r = sigma / r
@@ -108,6 +104,7 @@ def lj_force(r_in, pot_matrix):
     f_r = epsilon * (pot_matrix[2] * s_over_r_high - pot_matrix[3] * s_over_r_low) / r
 
     return u_r, f_r
+
 
 
 def potential_derivatives(r, pot_matrix):
