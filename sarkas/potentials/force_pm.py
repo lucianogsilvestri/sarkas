@@ -3,14 +3,85 @@ Module for handling the Particle-Mesh part of the force and potential calculatio
 """
 
 from numba import jit
-from numba.core.types import complex128, float64, int64, Tuple, UniTuple
+from numba.core.types import float64, int64
 from numpy import arange, array, exp, mod, pi, rint, sin, sqrt, zeros, zeros_like
 from numpy.fft import fftshift, ifftshift
-from pyfftw.builders import fftn, ifftn
-
+# from pyfftw.builders import fftn, ifftn
+from pyfftw import empty_aligned, FFTW
 
 from numba import jit, float64, int64
-import numpy as np
+
+
+class FFTWObjects:
+    """Optimized FFT objects for reuse across timesteps"""
+    
+    def __init__(self, mesh_sizes, threads=None):
+        self.shape = (mesh_sizes[2], mesh_sizes[1], mesh_sizes[0])
+        self.threads = threads
+        
+        # Create aligned arrays for optimal SIMD performance
+        self.fft_input = empty_aligned(self.shape, dtype=complex)
+        self.fft_output = empty_aligned(self.shape, dtype=complex)
+        
+        # Prepare kwargs for FFTW creation
+        fftw_kwargs = {
+            'flags': ['FFTW_MEASURE'],
+            'axes': (0, 1, 2)  # FFT over all axes like fftn
+        }
+        if threads is not None:
+            fftw_kwargs['threads'] = threads
+        
+        # Create forward FFT object (for charge density)
+        self.forward = FFTW(
+            self.fft_input, self.fft_output,
+            direction='FFTW_FORWARD',
+            **fftw_kwargs
+        )
+        
+        # Create backward FFT object (for electric fields and potential) 
+        self.backward = FFTW(
+            self.fft_input, self.fft_output,
+            direction='FFTW_BACKWARD',
+            **fftw_kwargs
+        )
+    
+    def forward_transform(self, input_array, output_array):
+        """Perform forward FFT with data copy.
+                        
+        Parameters
+        ----------
+        input_array : np.ndarray
+            Input array containing data in real space. Shape must match the FFTW object.
+        output_array : np.ndarray
+            Output array to store the result in k-space. Must match the FFTW object shape.
+
+        Returns
+        -------
+        np.ndarray
+            The output array containing the transformed data in k-space.
+        """
+        self.fft_input[:] = input_array
+        result = self.forward()  # result is a VIEW of self.fft_output
+        output_array[:] = result  # Copy data INTO user's existing array
+    
+    def backward_transform(self, input_array, output_array):
+        """Perform backward FFT with data copy.
+        
+        Parameters
+        ----------
+        input_array : np.ndarray
+            Input array containing data in k-space. Shape must match the FFTW object.
+        output_array : np.ndarray
+            Output array to store the result in real space. Must match the FFTW object shape.
+
+        Returns
+        -------
+        np.ndarray
+            The output array containing the transformed data in real space.        
+        """
+        self.fft_input[:] = input_array
+        result = self.backward()  # result is a VIEW of self.fft_output
+        output_array[:] = result  # Copy data INTO user's existing array
 
 @jit(nopython=True)
 def assgnmnt_func(cao, x):
@@ -356,7 +427,7 @@ def calc_mesh_coord(pos, h_array, cao):
 @jit(nopython=True)
 def calc_pot_pm(phi_r, mesh_pos, mesh_points, charges, cao, mesh_sz, mid, pshift):
     """
-    Calculates the long range part of particles' accelerations.
+    Calculates the long range part of particles' potential energies.
 
     Parameters
     ----------
@@ -390,7 +461,7 @@ def calc_pot_pm(phi_r, mesh_pos, mesh_points, charges, cao, mesh_sz, mid, pshift
           Potential energy of each particle.
 
     """
-    pot_p = zeros_like(charges)  # potential energy for
+    pot_p = zeros_like(charges)  # potential energy for each particle
 
     for ipart, q in enumerate(charges):
         ix = mesh_points[ipart, 0]
@@ -406,53 +477,98 @@ def calc_pot_pm(phi_r, mesh_pos, mesh_points, charges, cao, mesh_sz, mid, pshift
         wy = assgnmnt_func(cao[1], y)
         wz = assgnmnt_func(cao[2], z)
 
-        izn = iz - pshift[2]  # min. index along z-axis
+        # Use modulo for periodic boundary conditions - consistent with calc_charge_dens
+        base_z = (iz - pshift[2]) % mesh_sz[2]
+        base_y = (iy - pshift[1]) % mesh_sz[1]
+        base_x = (ix - pshift[0]) % mesh_sz[0]
 
         for g in range(cao[2]):
-            #
-            # if izn < 0:
-            #     r_g = izn + mesh_sz[2]
-            # elif izn > (mesh_sz[2] - 1):
-            #     r_g = izn - mesh_sz[2]
-            # else:
-            #     r_g = izn
-
-            r_g = izn + mesh_sz[2] * (izn < 0) - mesh_sz[2] * (izn > (mesh_sz[2] - 1))
-
-            iyn = iy - pshift[1]  # min. index along y-axis
-
+            r_g = (base_z + g) % mesh_sz[2]
+            
             for i in range(cao[1]):
-                # if iyn < 0:
-                #     r_i = iyn + mesh_sz[1]
-                # elif iyn > (mesh_sz[1] - 1):
-                #     r_i = iyn - mesh_sz[1]
-                # else:
-                #     r_i = iyn
-                r_i = iyn + mesh_sz[1] * (iyn < 0) - mesh_sz[1] * (iyn > (mesh_sz[1] - 1))
-
-                ixn = ix - pshift[0]  # min. index along x-axis
-
+                r_i = (base_y + i) % mesh_sz[1]
+                
                 for j in range(cao[0]):
-                    r_j = ixn + mesh_sz[0] * (ixn < 0) - mesh_sz[0] * (ixn > (mesh_sz[0] - 1))
+                    r_j = (base_x + j) % mesh_sz[0]
 
-                    # if ixn < 0:
-                    #     r_j = ixn + mesh_sz[0]
-                    # elif ixn > (mesh_sz[0] - 1):
-                    #     r_j = ixn - mesh_sz[0]
-                    # else:
-                    #     r_j = ixn
-
-                    # q_over_m = charges[ipart] / masses[ipart]
-                    pot_p[ipart] += 0.5* q * phi_r[r_g, r_i, r_j] * wz[g] * wy[i] * wx[j]
-
-                    ixn += 1
-
-                iyn += 1
-
-            izn += 1
+                    pot_p[ipart] += 0.5 * q * phi_r[r_g, r_i, r_j] * wz[g] * wy[i] * wx[j]
 
     return pot_p
 
+
+@jit(nopython=True)
+def calc_virial_pm_per_particle(vg0, vg1, vg2, vg3, vg4, vg5,
+                                mesh_sz,
+                                mesh_pos, mesh_points, charges,
+                                cao, mid, pshift):
+    """
+    Interpolate 6 virial tensor components (in real-space) to each particle.
+
+    Parameters
+    ----------
+    rho_k : complex ndarray
+        Charge density in Fourier space.
+
+    G_k : ndarray
+        Green's function in Fourier space.
+
+    vg0..vg5 : 3D ndarrays
+        Virial coefficient fields: V_xx, V_yy, ..., V_yz
+
+    Returns
+    -------
+    virial_p : ndarray (N, 6)
+        Per-particle virial tensor components.
+    """
+
+    virial_xx = zeros_like(charges)
+    virial_yy = zeros_like(charges)
+    virial_zz = zeros_like(charges)
+    virial_xy = zeros_like(charges)
+    virial_xz = zeros_like(charges)
+    virial_yz = zeros_like(charges)
+
+    for ipart, q in enumerate(charges):
+        ix = mesh_points[ipart, 0]
+        x = mesh_pos[ipart, 0] - (ix + mid[0])
+
+        iy = mesh_points[ipart, 1]
+        y = mesh_pos[ipart, 1] - (iy + mid[1])
+
+        iz = mesh_points[ipart, 2]
+        z = mesh_pos[ipart, 2] - (iz + mid[2])
+
+        wx = assgnmnt_func(cao[0], x)
+        wy = assgnmnt_func(cao[1], y)
+        wz = assgnmnt_func(cao[2], z)
+
+        izn = iz - pshift[2]
+        for g in range(cao[2]):
+            r_g = izn + mesh_sz[2] * (izn < 0) - mesh_sz[2] * (izn > mesh_sz[2] - 1)
+
+            iyn = iy - pshift[1]
+            for j_ in range(cao[1]):
+                r_i = iyn + mesh_sz[1] * (iyn < 0) - mesh_sz[1] * (iyn > mesh_sz[1] - 1)
+
+                ixn = ix - pshift[0]
+                for k_ in range(cao[0]):
+                    r_j = ixn + mesh_sz[0] * (ixn < 0) - mesh_sz[0] * (ixn > mesh_sz[0] - 1)
+
+                    weight = wz[g] * wy[j_] * wx[k_]
+
+                    # Virial components
+                    virial_xx[ipart] += 0.5 * q * vg0[r_g, r_i, r_j] * weight
+                    virial_yy[ipart] += 0.5 * q * vg1[r_g, r_i, r_j] * weight
+                    virial_zz[ipart] += 0.5 * q * vg2[r_g, r_i, r_j] * weight
+                    virial_xy[ipart] += 0.5 * q * vg3[r_g, r_i, r_j] * weight
+                    virial_xz[ipart] += 0.5 * q * vg4[r_g, r_i, r_j] * weight
+                    virial_yz[ipart] += 0.5 * q * vg5[r_g, r_i, r_j] * weight
+
+                    ixn += 1
+                iyn += 1
+            izn += 1
+
+    return virial_xx, virial_yy, virial_zz, virial_xy, virial_xz, virial_yz
 
 @jit(nopython=True)
 def create_k_aliases(aliases, mesh_sizes, non_zero_box_lengths):
@@ -620,17 +736,20 @@ def sum_over_aliases(kx, ky, kz, kx_M, ky_M, kz_M, h_array, p, four_pi, alpha_sq
     # Sum over the aliases
     for mz, kzm in enumerate(kz_M):
         kz_M_arg = 0.5 * kzm * h_array[2]
+        kzm_sq = kzm * kzm
         U_kz_M = (sin(kz_M_arg) / kz_M_arg) ** p[2] if kz_M_arg != 0.0 else 1.0
 
         for my, kym in enumerate(ky_M):
             ky_M_arg = 0.5 * kym * h_array[1]
+            kym_sq = kym * kym
             U_ky_M = (sin(ky_M_arg) / ky_M_arg) ** p[1] if ky_M_arg != 0.0 else 1.0
 
             for mx, kxm in enumerate(kx_M):
                 kx_M_arg = 0.5 * kxm * h_array[0]
+                kxm_sq = kxm * kxm
                 U_kx_M = (sin(kx_M_arg) / kx_M_arg) ** p[0] if kx_M_arg != 0.0 else 1.0
 
-                k_M_sq = kxm * kxm + kym * kym + kzm * kzm
+                k_M_sq = kxm_sq + kym_sq + kzm_sq
 
                 U_k_M = U_kx_M * U_ky_M * U_kz_M
                 U_k_M_sq = U_k_M * U_k_M
@@ -723,43 +842,13 @@ def force_optimized_green_function(box_lengths, h_array, mesh_sizes, aliases, p,
     kx_M, ky_M, kz_M = create_k_aliases(aliases, mesh_sizes, non_zero_box_lengths)
 
     for nz, kz in enumerate(kz_v[:, 0, 0]):
+        kz_sq = kz * kz
         for ny, ky in enumerate(ky_v[:, 0]):
+            ky_sq = ky * ky
             for nx, kx in enumerate(kx_v[0, :]):
-                k_sq = kx * kx + ky * ky + kz * kz
+                kx_sq = kx * kx
+                k_sq = kx_sq + ky_sq + kz_sq
                 if k_sq != 0.0:
-                    # old code
-                    # U_k_sq = 0.0
-                    # U_G_k = 0.0
-
-                    # Sum over the aliases
-                    # for mz in range(-aliases[2], aliases[2] + 1):
-                    #     kz_M = two_pi * (nz_sh + mz * mesh_sizes[2]) / non_zero_box_lengths[2]
-                    #     kz_M_arg = 0.5 * kz_M * h_array[2]
-                    #     U_kz_M = (sin(kz_M_arg) / kz_M_arg) ** p[2] if kz_M_arg != 0.0 else 1.0
-                    #
-                    #     for my in range(-aliases[1], aliases[1] + 1):
-                    #         ky_M = two_pi * (ny_sh + my * mesh_sizes[1]) / non_zero_box_lengths[1]
-                    #         ky_M_arg = 0.5 * ky_M * h_array[1]
-                    #         U_ky_M = (sin(ky_M_arg) / ky_M_arg) ** p[1] if ky_M_arg != 0.0 else 1.0
-                    #
-                    #         for mx in range(-aliases[0], aliases[0] + 1):
-                    #             kx_M = two_pi * (nx_sh + mx * mesh_sizes[0]) / non_zero_box_lengths[0]
-                    #             kx_M_arg = 0.5 * kx_M * h_array[0]
-                    #             U_kx_M = (sin(kx_M_arg) / kx_M_arg) ** p[0] if kx_M_arg != 0.0 else 1.0
-                    #
-                    #             # print(mx, my, mz, kx_M, ky_M, kz_M)
-                    #             k_M_sq = kx_M * kx_M + ky_M * ky_M + kz_M * kz_M
-                    #
-                    #             U_k_M = U_kx_M * U_ky_M * U_kz_M
-                    #             U_k_M_sq = U_k_M * U_k_M
-                    #
-                    #             G_k_M = four_pi * exp(-0.25 * (kappa_sq + k_M_sq) / Gew_sq) / (kappa_sq + k_M_sq)
-                    #
-                    #             k_dot_k_M = kx * kx_M + ky * ky_M + kz * kz_M
-                    #
-                    #             U_G_k += U_k_M_sq * G_k_M * k_dot_k_M
-                    #             U_k_sq += U_k_M_sq
-
                     # eq.(22) of Ref.[Dharuman2017]_
                     U_G_k, U_k_sq = sum_over_aliases(
                         kx, ky, kz, kx_M[nx], ky_M[ny], kz_M[nz], h_array, p, four_pi, Gew_sq, kappa_sq
@@ -775,6 +864,70 @@ def force_optimized_green_function(box_lengths, h_array, mesh_sizes, aliases, p,
     PM_err = sqrt(abs(PM_err)) / non_zero_box_lengths.prod() ** (1.0 / len(box_lengths.nonzero()[0]))
 
     return G_k, kx_v, ky_v, kz_v, PM_err
+
+@jit(nopython=True)
+def calc_virial_coefficients(kx_v, ky_v, kz_v, mesh_sizes, constants):
+    """
+    Compute the 6 virial coefficient arrays from k-space vectors.
+
+    Parameters
+    ----------
+    kx_v, ky_v, kz_v : ndarray
+        k-space vectors (kx[1,nx], ky[ny,1], kz[nz,1,1]).
+
+    mesh_sizes : ndarray
+        Number of mesh points in x, y, z, shape (3,).
+
+    constants : ndarray
+        Array containing [screening parameter, Ewald parameter, 4πε₀], shape (3,).
+
+    Returns
+    -------
+    vg0..vg5 : 3D arrays
+        Virial coefficient fields corresponding to:
+        V_xx, V_yy, V_zz, V_xy, V_xz, V_yz
+    """
+
+    kappa = constants[0]
+    Gew = constants[1]
+    fourpie0 = constants[2]
+
+    # four_pi = 4.0 * pi if fourpie0 == 1.0 else 4.0 * pi / fourpie0
+
+    vg0 = zeros((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]))
+    vg1 = zeros((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]))
+    vg2 = zeros((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]))
+    vg3 = zeros((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]))
+    vg4 = zeros((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]))
+    vg5 = zeros((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]))
+
+    kx = kx_v[0]
+    ky = ky_v[:, 0]
+    kz = kz_v[:, 0, 0]
+
+    for i in range(mesh_sizes[2]):
+        kz_i = kz[i]
+        kz_i_sq = kz_i*kz_i
+        for j in range(mesh_sizes[1]):
+            ky_j = ky[j]
+            ky_j_sq = ky_j*ky_j
+            for k in range(mesh_sizes[0]):
+                kx_k = kx[k]
+                kx_k_sq = kx_k*kx_k
+                sqk = kx_k_sq + ky_j_sq + kz_i_sq + kappa**2
+
+                if sqk == 0.0:
+                    continue
+                vterm = -2.0 * (1.0 / sqk + 0.25 / (Gew**2))
+
+                vg0[i, j, k] = 1.0 + vterm * kx_k * kx_k  # V_xx
+                vg1[i, j, k] = 1.0 + vterm * ky_j * ky_j  # V_yy
+                vg2[i, j, k] = 1.0 + vterm * kz_i * kz_i  # V_zz
+                vg3[i, j, k] = vterm * kx_k * ky_j        # V_xy
+                vg4[i, j, k] = vterm * kx_k * kz_i        # V_xz
+                vg5[i, j, k] = vterm * ky_j * kz_i        # V_yz
+
+    return vg0, vg1, vg2, vg3, vg4, vg5
 
 
 @jit(nopython=True)
@@ -809,26 +962,127 @@ def mesh_point_shift(cao):
     return mid, pshift
 
 
-# FFTW version
-# @jit(
-#     Tuple((float64[:], float64[:, :]))(
-#         float64[:, :],  # pos
-#         float64[:],  # charges
-#         float64[:],  # masses
-#         int64[:],  # mesh_sizes
-#         float64[:],  # mesh_spacings
-#         float64,  # mesh_volume
-#         float64,  # box_volume
-#         float64[:, :, :],  # G_k
-#         float64[:, :],  # kx_v
-#         float64[:, :],  # ky_v
-#         float64[:, :, :],  # kz_v
-#         int64[:],
-#     ),
-#     nopython=False,
-#     forceobj=True,  # This is needed so that it doesn't throw an error nor warning
-# )
-def update(pos, charges, masses, mesh_sizes, mesh_spacings, mesh_volume, box_volume, G_k, kx_v, ky_v, kz_v, cao):
+@jit(nopython=True)
+def calc_pm_all(E_x_r, E_y_r, E_z_r,
+                phi_r,
+                vg0, vg1, vg2, vg3, vg4, vg5,
+                mesh_pos, mesh_points,
+                charges, masses,
+                cao, mesh_sz, mid, pshift):
+    """
+    Interpolate the electric field, potential energy, and virial coefficients to each particle.
+
+    Parameters
+    ----------
+    E_x_r : ndarray
+        Electric field in x-direction at mesh points, shape (mesh_sz[2], mesh_sz[1], mesh_sz[0]).
+    E_y_r : ndarray
+        Electric field in y-direction at mesh points, shape (mesh_sz[2], mesh_sz[1], mesh_sz[0]).
+    E_z_r : ndarray
+        Electric field in z-direction at mesh points, shape (mesh_sz[2], mesh_sz[1], mesh_sz[0]).
+    phi_r : ndarray
+        Potential energy at mesh points, shape (mesh_sz[2], mesh_sz[1], mesh_sz[0]).
+    mesh_pos : ndarray
+        Particles' positions relative to the mesh, shape (N, 3).
+    mesh_points : ndarray
+        Particles' positions on the mesh, shape (N, 3).
+    charges : ndarray
+        Particles' charges, shape (N,).
+    masses : ndarray
+        Particles' masses, shape (N,).
+    cao : ndarray
+        Charge assignment order for each direction, shape (3,).
+    mesh_sz : ndarray
+        Number of mesh points per direction, shape (3,).
+    mid : ndarray
+        Midpoint flag for the three directions, shape (3,).
+    pshift : ndarray
+        Midpoint shift in each direction, shape (3,).
+    
+    Returns
+    -------
+    acc : ndarray
+        Particle accelerations, shape (N, 3).
+    pot : ndarray
+        Particle potential energies, shape (N,).
+    virial_xx : ndarray
+        Virial xx components, shape (N,).
+    virial_yy : ndarray
+        Virial yy components, shape (N,).
+    virial_zz : ndarray
+        Virial zz components, shape (N,).
+    virial_xy : ndarray
+        Virial xy components, shape (N,).
+    virial_xz : ndarray
+        Virial xz components, shape (N,).
+    virial_yz : ndarray
+        Virial yz components, shape (N,).
+    """
+
+    N = charges.shape[0]
+    acc = zeros_like(mesh_pos)  # Particle accelerations, shape (N, 3)
+    pot = zeros_like(charges)
+    q_over_m = charges / masses
+
+    virial_xx = zeros_like(charges)
+    virial_yy = zeros_like(charges)
+    virial_zz = zeros_like(charges)
+    virial_xy = zeros_like(charges)
+    virial_xz = zeros_like(charges)
+    virial_yz = zeros_like(charges)
+
+    for ipart in range(N):
+        ix = mesh_points[ipart, 0]
+        x = mesh_pos[ipart, 0] - (ix + mid[0])
+
+        iy = mesh_points[ipart, 1]
+        y = mesh_pos[ipart, 1] - (iy + mid[1])
+
+        iz = mesh_points[ipart, 2]
+        z = mesh_pos[ipart, 2] - (iz + mid[2])
+
+        wx = assgnmnt_func(cao[0], x)
+        wy = assgnmnt_func(cao[1], y)
+        wz = assgnmnt_func(cao[2], z)
+
+        q = charges[ipart]
+        q_m = q_over_m[ipart]
+
+        # Use modulo for periodic boundary conditions - consistent with calc_charge_dens
+        base_z = (iz - pshift[2]) % mesh_sz[2]
+        base_y = (iy - pshift[1]) % mesh_sz[1]
+        base_x = (ix - pshift[0]) % mesh_sz[0]
+
+        for g in range(cao[2]):
+            r_g = (base_z + g) % mesh_sz[2]
+            
+            for i in range(cao[1]):
+                r_i = (base_y + i) % mesh_sz[1]
+                
+                for j in range(cao[0]):
+                    r_j = (base_x + j) % mesh_sz[0]
+
+                    weight = wz[g] * wy[i] * wx[j]
+
+                    # Acceleration
+                    acc[ipart, 0] += q_m * E_x_r[r_g, r_i, r_j] * weight
+                    acc[ipart, 1] += q_m * E_y_r[r_g, r_i, r_j] * weight
+                    acc[ipart, 2] += q_m * E_z_r[r_g, r_i, r_j] * weight
+
+                    # Potential energy
+                    pot[ipart] += 0.5 * q * phi_r[r_g, r_i, r_j] * weight
+
+                    # Virial components
+                    virial_xx[ipart] += 0.5 * q * vg0[r_g, r_i, r_j] * weight
+                    virial_yy[ipart] += 0.5 * q * vg1[r_g, r_i, r_j] * weight
+                    virial_zz[ipart] += 0.5 * q * vg2[r_g, r_i, r_j] * weight
+                    virial_xy[ipart] += 0.5 * q * vg3[r_g, r_i, r_j] * weight
+                    virial_xz[ipart] += 0.5 * q * vg4[r_g, r_i, r_j] * weight
+                    virial_yz[ipart] += 0.5 * q * vg5[r_g, r_i, r_j] * weight
+
+    return acc, pot, virial_xx, virial_yy, virial_zz, virial_xy, virial_xz, virial_yz
+
+def update(pos, charges, masses, mesh_sizes, mesh_spacings, mesh_volume, box_volume, G_k, kx_v, ky_v, kz_v, cao, vg0, vg1, vg2, vg3, vg4, vg5, fft_objects):
     """
     Calculate the long range part of particles' accelerations using the Particle-Mesh method.
 
@@ -861,6 +1115,10 @@ def update(pos, charges, masses, mesh_sizes, mesh_spacings, mesh_volume, box_vol
         Array of kz values, shape (mesh_sizes[2], 1, 1).
     cao : ndarray
         Charge assignment order for each direction, shape (3,).
+    vg0, vg1, vg2, vg3, vg4, vg5 : ndarray
+        Virial coefficient fields corresponding to V_xx, V_yy, V_zz, V_xy, V_xz, V_yz, shape (mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]).
+    fft_objects : FFTWObjects
+        Pre-created FFT objects for reuse across timesteps
 
     Returns
     -------
@@ -886,65 +1144,82 @@ def update(pos, charges, masses, mesh_sizes, mesh_spacings, mesh_volume, box_vol
 
     """
 
-    # Mesh spacings = h_x, h_y, h_z
-    # mesh_spacings = box_lengths / mesh_sizes
     # Calculate the necessary shifts
     mid, pshift = mesh_point_shift(cao)
+    
     # Calculate particles' position relative to the mesh points
     mesh_pos, mesh_points = calc_mesh_coord(pos, mesh_spacings, cao)
+    
     # Calculate charge density on mesh
     rho_r = calc_charge_dens(mesh_pos, mesh_points, charges, cao, mesh_sizes, mid, pshift)
-    # Prepare for fft
-    fftw_n = fftn(rho_r)
-    # Calculate fft
-    rho_k_fft = fftw_n()
+    
+    # Allocate memory for the output arrays of the FFT
+    rho_k = empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    E_x = empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    E_y = empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    E_z = empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    phi_r = empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    virial_r_xx = empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    virial_r_yy = empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    virial_r_zz = empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    virial_r_xy = empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    virial_r_xz = empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    virial_r_yz = empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+
+    # Use reusable FFT object
+    fft_objects.forward_transform(rho_r, rho_k)
 
     # Shift the DC value at the center of the ndarray
-    rho_k = fftshift(rho_k_fft)
-
+    rho_k = fftshift(rho_k)
+    
     # Potential from Poisson eq.
     phi_k = G_k * rho_k
-
-    # Charge density
-    # rho_k_real = rho_k.real
-    # rho_k_imag = rho_k.imag
-    # rho_k_sq = rho_k_real * rho_k_real + rho_k_imag * rho_k_imag
-
-    # Calculate the Electric field's component on the mesh
+    
+    # Calculate the Electric field's components on the mesh
     E_kx, E_ky, E_kz = calc_field(phi_k, kx_v, ky_v, kz_v)
-
-    # Prepare for fft. Shift the DC value back to its original position that is [0, 0, 0]
-    E_kx_unsh = ifftshift(E_kx)
-    E_ky_unsh = ifftshift(E_ky)
-    E_kz_unsh = ifftshift(E_kz)
-
-    # Prepare and compute IFFT
-    ifftw_n = ifftn(E_kx_unsh)
-    E_x = ifftw_n()
-    ifftw_n = ifftn(E_ky_unsh)
-    E_y = ifftw_n()
-    ifftw_n = ifftn(E_kz_unsh)
-    E_z = ifftw_n()
+    
+    # Prepare for IFFT and compute - using reusable objects
+    fft_objects.backward_transform(ifftshift(E_kx), E_x)
+    fft_objects.backward_transform(ifftshift(E_ky), E_y)
+    fft_objects.backward_transform(ifftshift(E_kz), E_z)
 
     # FFT normalization
-    E_x_r = E_x.real / mesh_volume
-    E_y_r = E_y.real / mesh_volume
-    E_z_r = E_z.real / mesh_volume
-
-    q_over_m = charges / masses
-    acc_f = calc_acc_pm(E_x_r, E_y_r, E_z_r, mesh_pos, mesh_points, q_over_m, cao, mesh_sizes, mid, pshift)
-
+    E_x /= mesh_volume
+    E_y /= mesh_volume
+    E_z /= mesh_volume
+    
     # Calculate the potential energy of each particle
-    phi_k_shift = ifftshift(phi_k)
-    ifftw_n = ifftn(phi_k_shift)
-    phi_r_cmplx = ifftw_n()
+    fft_objects.backward_transform(ifftshift(phi_k), phi_r)
+    phi_r /= mesh_volume
 
-    phi_r = phi_r_cmplx.real / mesh_volume
+    # Virial tensor components - all using the same reusable IFFT
+    fft_objects.backward_transform(ifftshift(phi_k * vg0), virial_r_xx)
+    virial_r_xx /= mesh_volume
 
-    # Potential of each particle
-    pot_particle = calc_pot_pm(phi_r, mesh_pos, mesh_points, charges, cao, mesh_sizes, mid, pshift)
-    # The sum of this is equal to U_f, i.e. Long range part of the potential. 
-    # I leave it here for future testing
-    # U_f = 0.5 * (rho_k_sq * G_k).sum() / box_volume
+    fft_objects.backward_transform(ifftshift(phi_k * vg1), virial_r_yy)
+    virial_r_yy /= mesh_volume
 
-    return pot_particle, acc_f
+    fft_objects.backward_transform(ifftshift(phi_k * vg2), virial_r_zz)
+    virial_r_zz /= mesh_volume
+
+    fft_objects.backward_transform(ifftshift(phi_k * vg3), virial_r_xy)
+    virial_r_xy /= mesh_volume
+
+    fft_objects.backward_transform(ifftshift(phi_k * vg4), virial_r_xz)
+    virial_r_xz /= mesh_volume
+
+    fft_objects.backward_transform(ifftshift(phi_k * vg5), virial_r_yz)
+    virial_r_yz /= mesh_volume
+
+    # Interpolate all the fields to the particles
+    acc_f, pot_particle, virial_xx, virial_yy, virial_zz, virial_xy, virial_xz, virial_yz = \
+        calc_pm_all(
+            E_x.real, E_y.real, E_z.real,
+            phi_r.real,
+            virial_r_xx.real, virial_r_yy.real, virial_r_zz.real, virial_r_xy.real, virial_r_xz.real, virial_r_yz.real,
+            mesh_pos, mesh_points,
+            charges, masses,
+            cao, mesh_sizes, mid, pshift
+        )
+
+    return pot_particle, acc_f, virial_xx, virial_yy, virial_zz, virial_xy, virial_xz, virial_yz

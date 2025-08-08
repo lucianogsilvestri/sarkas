@@ -373,61 +373,6 @@ class Process:
                 self.particles.calculate_species_kinetic_temperature()
                 self.integrator.thermostate(self.particles)
 
-    # def evolve_loop_threading(self, phase, thermalization, it_start, it_end, dump_step):
-    #     """
-    #     Evolve the system forward in time. This method is similar to :meth:`sarkas.processes.Process.evolve_loop` with
-    #     the only difference that it uses `threading` for saving data, it starts a new thread to save the data.
-    #     In the case of small number of particles this can slow down the simulation, therefore it must be chosen by setting
-    #     the parameters `threading = True` in the input file or in the :class:`sarkas.core.Parameters` class.
-
-    #     Parameters
-    #     ----------
-    #     phase: str
-    #         Indicates the stage of the simulation used for saving dumps in the right directory. \n
-    #         Choices = ("equilibration", "production", "magnetization")
-
-    #     thermalization : bool
-    #         Indicates whether to apply the thermostat or not.
-
-    #     it_start: int
-    #         Initial timestep of the loop.
-
-    #     it_end: int
-    #         Final timestep of the loop.
-
-    #     dump_step: int
-    #         Interval for dumping data.
-
-    #     """
-    #     for it in trange(it_start, it_end, disable=not self.parameters.verbose):
-    #         # Calculate the Potential energy and update particles' data
-
-    #         self.integrator.update(self.particles)
-
-    #         if (it + 1) % dump_step == 0:
-    #             th = Thread(
-    #                 target=self.io.dump,
-    #                 name=f"Sarkas_{phase.capitalize()}_Thread - {it + 1}",
-    #                 args=(
-    #                     phase,
-    #                     self.particles.__deepcopy__(),
-    #                     it + 1,
-    #                 ),
-    #             )
-
-    #             self.threads_ls.append(th)
-
-    #             th.start()
-
-    #         if thermalization and (it + 1 >= self.integrator.thermalization_timestep):
-    #             self.integrator.thermostate(self.particles)
-
-    #     # Wait for all the threads to finish
-    #     for x in self.threads_ls:
-    #         x.join()
-
-    #     self.threads_ls.clear()
-
     def initialization(self):
         """Initialize all classes."""
 
@@ -470,7 +415,7 @@ class Process:
             self.io.setup_checkpoint(self.parameters, self.particles, phase = "magnetization")
         self.io.setup_checkpoint(self.parameters, self.particles, phase = "production")
 
-        self.io.save_pickle(self)
+        self.io.save_simulation_state(self)
 
         # Print Process summary to file and screen
         self.io.simulation_summary(self)
@@ -555,9 +500,14 @@ class Process:
             self.io.make_directories()
             self.io.make_files_tree()
 
-            # Read previously stored files
-            self.io.read_pickle(self, self.io.directory_tree["simulation"]["path"])
+            # Read the parameters and species classes from saved files
+            self.io.read_simulation_state(self, self.io.directory_tree["simulation"]["path"])
             self.io.copy_params(self.parameters)
+
+            # DEV NOTE: the potential setup could take a long time if the optimal green function need be calculated
+            self.potential.setup(self.parameters, self.species)
+            self.integrator.setup(self.parameters, self.potential)
+
             # Print parameters to log file
             if not exists(self.io.log_file):
                 # if the file exists do not print the file header
@@ -570,14 +520,10 @@ class Process:
                 # Initialize the Particles class attributes by reading the last step
                 old_method = self.parameters.load_method
                 self.parameters.load_method = "production_restart"
-                no_dumps = len(listdir(self.io.prod_dump_dir))
-                last_step = self.parameters.prod_dump_step * (no_dumps - 1)
-                if no_dumps == 0:
-                    self.parameters.load_method = "equilibration_restart"
-                    no_dumps = len(listdir(self.io.eq_dump_dir))
-                    last_step = self.parameters.eq_dump_step * (no_dumps - 1)
+                last_step = self.parameters.production_steps
                 self.parameters.restart_step = last_step
                 self.particles.setup(self.parameters, self.species)
+                
                 # Restore the original value for future use
                 self.parameters.load_method = old_method
                 # Update the log file. It is set to the simulation log in the parameters class, but it is correct in the IO class.
@@ -610,9 +556,13 @@ class Process:
             self.io.make_directories()
             self.io.make_files_tree()
 
-            # Read previously stored files
-            self.io.read_pickle(self, self.io.directory_tree["simulation"]["path"])
+            # Read the parameters and species classes from saved files
+            self.io.read_simulation_state(self, self.io.directory_tree["simulation"]["path"])
             self.io.copy_params(self.parameters)
+
+            # DEV NOTE: the potential setup could take a long time if the optimal green function need be calculated
+            self.potential.setup(self.parameters, self.species)
+            self.integrator.setup(self.parameters, self.potential)
 
             # Print parameters to log file
             if not exists(self.io.log_file):
@@ -626,19 +576,14 @@ class Process:
                 # Initialize the Particles class attributes by reading the last step
                 old_method = self.parameters.load_method
                 self.parameters.load_method = "production_restart"
-                no_dumps = len(listdir(self.io.prod_dump_dir))
-                last_step = self.parameters.prod_dump_step * (no_dumps - 1)
-                if no_dumps == 0:
-                    self.parameters.load_method = "equilibration_restart"
-                    no_dumps = len(listdir(self.io.eq_dump_dir))
-                    last_step = self.parameters.eq_dump_step * (no_dumps - 1)
+                last_step = self.parameters.production_steps
                 self.parameters.restart_step = last_step
                 self.particles.setup(self.parameters, self.species)
+                
                 # Restore the original value for future use
                 self.parameters.load_method = old_method
                 # Update the log file. It is set to the simulation log in the parameters class, but it is correct in the IO class.
                 self.parameters.log_file = self.io.log_file
-
         else:
             self.initialization()
 

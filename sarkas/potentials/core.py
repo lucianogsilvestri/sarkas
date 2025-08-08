@@ -8,7 +8,8 @@ from warnings import warn
 
 from ..utilities.exceptions import AlgorithmWarning
 from ..utilities.fdints import fdm1h, invfd1h
-from .force_pm import force_optimized_green_function as gf_opt
+from .force_pm import FFTWObjects, force_optimized_green_function as gf_opt
+from .force_pm import calc_virial_coefficients
 from .force_pm import update as pm_update
 from .force_pp import update as pp_update
 from .force_pp import update_0D as pp_update_0D
@@ -90,6 +91,7 @@ class Potential:
     a_rs: float = 0.0
     box_lengths: ndarray = None
     box_volume: float = 0.0
+    background_charge_correction: float = 0.0
     force_error: float = 0.0
     fourpie0: float = 0.0
     kappa: float = None
@@ -505,6 +507,22 @@ class Potential:
         # Total Force Error
         self.force_error = sqrt(self.pppm_pm_err**2 + self.pppm_pp_err**2)
 
+        # Calculate the virial coefficients
+        self.pppm_vk_xx, self.pppm_vk_yy, self.pppm_vk_zz, self.pppm_vk_xy, self.pppm_vk_xz, self.pppm_vk_yz = calc_virial_coefficients(
+            self.pppm_kx, self.pppm_ky, self.pppm_kz, self.pppm_mesh, constants
+        )
+        
+        
+        # Uniform background charge correction
+        if self.type != "lj":
+            # The division by fourpie0 is needed for MKS units
+            self.background_charge_correction = -0.5 * pi * self.total_net_charge**2 / (self.fourpie0 * self.box_volume * self.pppm_alpha_ewald**2)
+        else:
+            # For Lennard-Jones potential, the background charge correction is zero
+            self.background_charge_correction = 0.0
+
+        self.fftw_objects = FFTWObjects(self.pppm_mesh)  # Optimized FFT objects
+
     def pretty_print(self):
         """Print potential information in a user-friendly way."""
 
@@ -652,7 +670,7 @@ class Potential:
             Particles data.
 
         """
-        ptcls.potential_energy, ptcls.acc, ptcls.virial_species_tensor, ptcls.heat_flux_species_tensor = pp_update(
+        ptcls.potential_energy, ptcls.acc, virial_xx_sr, virial_yy_sr, virial_zz_sr, virial_xy_sr, virial_xz_sr, virial_yz_sr = pp_update(
             ptcls.pos,
             ptcls.vel,
             ptcls.id,
@@ -664,6 +682,12 @@ class Potential:
             self.measure,
             ptcls.rdf_hist,
         )
+        ptcls.virial_xx = virial_xx_sr
+        ptcls.virial_xy = virial_xy_sr
+        ptcls.virial_xz = virial_xz_sr
+        ptcls.virial_yy = virial_yy_sr
+        ptcls.virial_yz = virial_yz_sr
+        ptcls.virial_zz = virial_zz_sr
 
     def update_brute(self, ptcls):
         """
@@ -697,7 +721,7 @@ class Potential:
             Particles' data
 
         """
-        U_long, acc_l_r = pm_update(
+        U_long, acc_l_r, virial_xx, virial_yy, virial_zz, virial_xy, virial_xz, virial_yz = pm_update(
             ptcls.pos,
             ptcls.charges / sqrt(self.fourpie0),  # The division by fourpie0 is needed for MKS units
             ptcls.masses,
@@ -710,19 +734,40 @@ class Potential:
             self.pppm_ky,
             self.pppm_kz,
             self.pppm_cao,
+            self.pppm_vk_xx,
+            self.pppm_vk_yy,
+            self.pppm_vk_zz,
+            self.pppm_vk_xy,
+            self.pppm_vk_xz,
+            self.pppm_vk_yz,
+            self.fftw_objects
         )
-
+        
+        ptcls.acc += acc_l_r
+        
+        # Self-energy correction to the total potential energy
+        # Add the long-range part of the potential energy
+        # The division by fourpie0 is needed for MKS units
         # Ewald self-energy of each particle
         U_long -= ptcls.charges**2 * self.pppm_alpha_ewald / sqrt(pi) / self.fourpie0
-
         ptcls.potential_energy += U_long
 
-        ptcls.acc += acc_l_r
-
-        # Self-energy correction to the total potential energy 
+        # Uniform background charge correction
+        # The division by total number of particles is needed to have the same energy per particle
+        ptcls.potential_energy += self.background_charge_correction/self.total_num_ptcls
+    
         # J-M.Caillol, J Chem Phys 101 6080 (1994) https: // doi.org / 10.1063 / 1.468422
-        dipole = ptcls.charges[:, newaxis] *  ptcls.pos
-        ptcls.dipole_energy = 2.0 * pi * abs(dipole)**2 / (3.0 * self.eps0 * self.box_volume )
+        # ptcls.calculate_dipole_energy()
+        # ptcls.potential_energy += ptcls.dipole_energy.sum(axis = 1)
+
+        # Add the long-range part of the virial tensor
+        # Virial tensor
+        ptcls.virial_xx += virial_xx
+        ptcls.virial_yy += virial_yy
+        ptcls.virial_zz += virial_zz
+        ptcls.virial_xy += virial_xy
+        ptcls.virial_xz += virial_xz
+        ptcls.virial_yz += virial_yz
 
     def update_pppm(self, ptcls):
         """Calculate particles' potential and accelerations using pppm method.

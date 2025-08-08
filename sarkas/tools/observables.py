@@ -71,7 +71,7 @@ from scipy.optimize import curve_fit
 from scipy.special import erfc, factorial
 from seaborn import histplot as sns_histplot
 
-from ..utilities.io import print_to_logger
+from ..utilities.io import print_to_logger, PortableStateSaver  # Adjust import path
 from ..utilities.maths import correlationfunction
 from ..utilities.misc import add_col_to_df, calculate_beta
 from ..utilities.timing import datetime_stamp, SarkasTimer, time_stamp
@@ -462,7 +462,19 @@ class Observable:
             max_k_harmonics=self.max_k_harmonics,
             max_aa_harmonics=self.max_aa_harmonics,
         )
+    
+    def get_save_format(self) -> str:
+        """Check which save format is available"""
+        config_filename = os_path_join(self.saving_dir, self.__long_name__.replace(" ", "") + "_config.json")
+        pickle_filename = os_path_join(self.saving_dir, self.__long_name__.replace(" ", "") + ".pickle")
         
+        if os_path_exists(config_filename):
+            return "portable_json"
+        elif os_path_exists(pickle_filename):
+            return "legacy_pickle" 
+        else:
+            return "none"
+
     def _is_valid_nkt_file(self):
         """
         Check if the nkt_hdf_file exists and contains valid k_list data.
@@ -1469,10 +1481,36 @@ class Observable:
 
     def from_pickle(self):
         """Read the observable's info from the pickle file."""
+
+        # Raise deprecation warning
+        warnings.warn("The `from_pickle` method is deprecated. Use `from_json` instead.", DeprecationWarning)
+
         self.filename_pickle = os_path_join(self.saving_dir, self.__long_name__.replace(" ", "") + ".pickle")
         with open(self.filename_pickle, "rb") as pkl_data:
             data = pickle_load(pkl_data)
         self.from_dict(data.__dict__)
+
+    def from_json(self):
+        """Read the observable's info from portable format."""
+    
+        # Try to load from new format first
+        config_filename = os_path_join(self.saving_dir, self.__long_name__.replace(" ", "") + "_config.json")
+        
+        if os_path_exists(config_filename):
+            # Load from new portable format
+            
+            saver = PortableStateSaver()
+            
+            config = saver.load_observable_config(config_filename)
+            saver.restore_observable_from_config(config, self)
+            
+        else:
+            # Fallback to old pickle format
+            old_filename = os_path_join(self.saving_dir, self.__long_name__.replace(" ", "") + ".pickle")
+            if os_path_exists(old_filename):
+               self.from_pickle()
+            else:
+                raise FileNotFoundError(f"Neither config file {config_filename} nor pickle file {old_filename} found")
 
     def ensure_multiindex(self, dataframe):
         """
@@ -1612,11 +1650,31 @@ class Observable:
 
     def save_pickle(self):
         """Save the observable's info into a pickle file."""
+
+
         self.filename_pickle = os_path_join(self.saving_dir, self.__long_name__.replace(" ", "") + ".pickle")
         with open(self.filename_pickle, "wb") as pickle_file:
             dump(self, pickle_file)
             pickle_file.close()
+    
+    def save_state(self):
+        """Save the observable's info into portable format."""
+    
+        # Create PortableStateSaver
 
+        saver = PortableStateSaver()
+        
+        # Save observable configuration
+        config_filename = os_path_join(self.saving_dir, self.__long_name__.replace(" ", "") + "_config.json")
+        saver.save_observable(self, config_filename)
+        
+        # Keep track of the config filename
+        self.filename_config = config_filename
+        
+        # Note: DataFrames are still saved via existing HDF5 methods (save_hdf)
+        # print(f"Observable configuration saved to: {config_filename}")
+        # print("Note: DataFrames should be saved separately using save_hdf() method")
+        
     def setup_init(
         self,
         params,
@@ -2011,7 +2069,7 @@ class Observable:
             self.frequencies = 2.0 * pi * fftfreq(self.block_length, dt_r)
             self.frequencies = fftshift(self.frequencies)
 
-        self.save_pickle()
+        self.save_state()
 
         self.initialize_hdf()
 
@@ -4554,7 +4612,7 @@ class RadialDistributionFunction(Observable):
         self.calc_slices_data()
         self.average_slices_data()
         self.save_hdf()
-        self.save_pickle()
+        self.save_state()
         tend = self.timer.current()
         time_stamp(self.log_file, self.__long_name__ + " Calculation", self.timer.time_division(tend - t0), self.verbose)
 
@@ -6248,7 +6306,7 @@ class VelocityDistribution(Observable):
 
         # self.prepare_histogram_args()
 
-        self.save_pickle()
+        self.save_state()
 
     def compute(self, compute_moments: bool = False, compute_Grad_expansion: bool = False):
         """

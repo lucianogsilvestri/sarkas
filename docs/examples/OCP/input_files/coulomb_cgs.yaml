@@ -4,7 +4,7 @@ Particles:
         name: H
         number_density: 1.62e+24       # /cm^3
         mass: 1.673e-24                # g, ptcl mass of ion1
-        num: 10000                    # total number of particles of ion1
+        num: 1000                    # total number of particles of ion1
         Z: 1.0                        # degree of ionization
         temperature: 3.2636325e+03
 
@@ -12,30 +12,35 @@ Potential:
     type: Coulomb                 # potential type
     method: pppm                    # Linked-cell
     rc: 3.411928e-08          # cut-off radius, meter
-    pppm_mesh: [98, 98, 98]
-    pppm_aliases: [3,3,3]
+    pppm_mesh: [32, 32, 32]
+    pppm_aliases: [2, 2, 2]
     pppm_cao: 6
-    pppm_alpha_ewald: 1.128394e+8
+    pppm_alpha_ewald: 1.041271e+08
 
 Integrator:
     type: Verlet                  # velocity integrator type
     dt: 1.193536e-17            # sec
-    equilibration_steps: 5000                      # number of timesteps for the equilibrium
-    eq_dump_step: 10
-    production_steps: 100000
-    prod_dump_step: 2
-
-Thermostat:
-    type: Berendsen               # thermostat type
-    relaxation_timestep: 100
-    berendsen_tau: 5.0
+    thermostat_type: Berendsen               # thermostat type
+    thermalization_timestep: 650
+    berendsen_tau: 136
 
 Parameters:
-    units: cgs                    # units
-    load_method: random_no_reject
-    rdf_nbins: 500
+    rand_seed: 3576516958
+    units: cgs
     boundary_conditions: periodic
-    dt: 1.193536e-17            # sec
+    load_method: production_restart
+    restart_step: 50_000
+    qmc_sequence: halton
+    equilibration_steps: 5_000                      # number of timesteps for the equilibrium
+    eq_dump_step: 10
+    production_steps: 250_000
+    prod_dump_step: 2          # sec
+    # (OPTIONAL) This is a list of observable that you want to calculate during the simulation.
+    observables_list: ["Pressure Tensor"]
+    # (OPTIONAL) The observables_arrays_list is a list of Particles arrays that will be saved during the simulation
+    observables_arrays_list: ["species_pressure_tensor", "dipole_moment"]  
+    # This is a list of thermodynamics that you want to calculate during the simulation.
+    thermodynamics_list: ["total_energy", "temperature", "kinetic_energy", "potential_energy", "pressure", "enthalpy", "dipole_moment_energy"]
 
 IO:
     verbose: True

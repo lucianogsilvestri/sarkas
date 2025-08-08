@@ -19,7 +19,7 @@ Integrator:
   type: verlet
   dt: 1.6790565e-15
   thermostat_type: Berendsen                         # thermostat type
-  thermalization_timestep: 40
+  thermalization_timestep: 100
   berendsen_tau: 11
   
 Parameters:
@@ -29,7 +29,7 @@ Parameters:
   load_method: qmc
   qmc_sequence: sobol
   equilibration_steps: 1000
-  production_steps: 100_000
+  production_steps: 20_000
   eq_dump_step: 4
   prod_dump_step: 2
   # (OPTIONAL) This is a list of observable that you want to calculate during the simulation.

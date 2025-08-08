@@ -30,21 +30,26 @@ Integrator:
 Parameters:
     units: cgs                      # units
     verbose: yes
+    random_seed: 12654651
     boundary_conditions: periodic
-    load_method: random_no_reject
-    # qmc_sequence: halton
+    load_method: qmc # random_no_reject
+    qmc_sequence: halton
     # load_perturb: 0.05
     # initial_lattice_config: bcc # simple_cubic
-    equilibration_steps: 2000
+    equilibration_steps: 20
     eq_dump_step: 1
-    production_steps: 10000
+    production_steps: 10
     prod_dump_step: 1
-    # observables_list: ["Velocity Moments"]
+    # (OPTIONAL) This is a list of observable that you want to calculate during the simulation.
+    # observables_list: ["Pressure Tensor", "Heat Flux"]
+    # (OPTIONAL) The observables_arrays_list is a list of Particles arrays that will be saved during the simulation
+    observables_arrays_list: ["virial"]
+    # This is a list of thermodynamics that you want to calculate during the simulation.
+    # thermodynamics_list: ["total_energy", "temperature", "kinetic_energy", "potential_energy", "pressure", "enthalpy" ]
+
 IO:
     verbose: True
-    data_to_save: ["id", "names", "pos", "vel", "acc", "rdf_hist"]
-    # md_simulations_dir: LJSimulations
-    job_dir: LJ_viscosity               # dir name to save data.
+    job_dir: LJ_example               # dir name to save data.
     job_id: lj
 
 Observables:
