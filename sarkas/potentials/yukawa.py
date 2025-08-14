@@ -33,14 +33,15 @@ from scipy.special import gamma
 from warnings import warn
 
 
-@jit(nopython=True)
-def yukawa_force_pppm(r_in, pot_matrix):
+
+@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
+def yukawa_force_pppm(r, pot_matrix):
     """
     Numba'd function to calculate Potential and Force between two particles when the pppm algorithm is chosen.
 
     Parameters
     ----------
-    r_in : float
+    r : float
         Distance between two particles.
 
     pot_matrix : numpy.ndarray
@@ -67,11 +68,6 @@ def yukawa_force_pppm(r_in, pot_matrix):
     kappa = pot_matrix[1]
     alpha = pot_matrix[2]  # Ewald parameter alpha
 
-    # Short-range cutoff to deal with divergence of the Coulomb potential
-    rs = pot_matrix[-1]
-    # Branchless programming
-    r = r_in * (r_in >= rs) + rs * (r_in < rs)
-
     kappa_alpha = kappa / alpha
     alpha_r = alpha * r
     kappa_r = kappa * r
@@ -93,8 +89,8 @@ def yukawa_force_pppm(r_in, pot_matrix):
     return u_r, f_r
 
 
-@jit(nopython=True)
-def yukawa_force(r_in, pot_matrix):
+@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
+def yukawa_force(r, pot_matrix):
     """
     Numba'd function to calculate Potential and Force between two particles.
 
@@ -125,11 +121,6 @@ def yukawa_force(r_in, pot_matrix):
     (0.06766764161830635, 0.10150146242745953)
 
     """
-    # Short-range cutoff to deal with divergence of the Coulomb potential
-    rs = pot_matrix[-1]
-    # Branchless programming
-    r = r_in * (r_in >= rs) + rs * (r_in < rs)
-
     u_r = pot_matrix[0] * exp(-pot_matrix[1] * r) / r
     f_r = u_r * (1.0 / r + pot_matrix[1])
 

@@ -37,7 +37,7 @@ from ..utilities.maths import force_error_analytic_lcl, force_error_analytic_pp
 __all__ = ["yukawa_force", "potential_derivatives", "pretty_print_info", "update_params", "calc_force_error_quad"]
 
 @jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
-def yukawa_ft_force(r_in, pot_matrix):
+def yukawa_ft_force(r, pot_matrix):
     """
     Numba'd function to calculate Potential and Force between two particles.
 
@@ -67,11 +67,6 @@ def yukawa_ft_force(r_in, pot_matrix):
     (0.06766764161830635, 0.10150146242745953)
 
     """
-    # Short-range cutoff to deal with divergence of the Coulomb potential
-    rs = pot_matrix[-1]
-    # Branchless programming
-    r = r_in * (r_in >= rs) + rs * (r_in < rs)
-
     u_y = pot_matrix[0] * exp(-pot_matrix[1] * r) / r
     f_y = u_y * (1.0 / r + pot_matrix[1])
 

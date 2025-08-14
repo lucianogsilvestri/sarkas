@@ -81,7 +81,59 @@ from ..utilities.exceptions import AlgorithmWarning
 from ..utilities.maths import force_error_analytic_pp, TWOPI
 
 
-@jit(nopython=True)
+@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
+def deutsch_force(r, pot_matrix):
+    """
+    Calculate Deutsch QSP Force between two particles.
+
+    Parameters
+    ----------
+    r : float
+        Distance between two particles.
+
+    pot_matrix : numpy.ndarray
+        It contains potential dependent variables. \n
+        Shape = (6, :attr:`sarkas.core.Parameters.num_species`, :attr:`sarkas.core.Parameters.num_species`)
+
+    Returns
+    -------
+    u_r : float
+        Potential.
+
+    f_r : float
+        Force between two particles.
+
+
+    """
+
+    A = pot_matrix[0]
+    C = pot_matrix[1]
+    D = pot_matrix[2]
+    F = pot_matrix[3]
+    alpha = pot_matrix[4]
+
+    a2 = alpha * alpha
+    r2 = r * r
+
+    # Ewald short-range potential and force terms
+    u_ewald = A * erfc(alpha * r) / r
+    f_ewald = u_ewald / r  # 1/r derivative
+    f_ewald += A * (2.0 * alpha / sqrt(pi)) * exp(-a2 * r2) / r  # erfc derivative
+
+    # Diffraction potential and force term
+    u_diff = -A * exp(-C * r) / r
+    f_diff = u_diff * (1.0 / r + C)  # 1/r derivative
+
+    # Pauli Term
+    u_pauli, f_pauli = pauli_force(r, pot_matrix)
+
+    u_r = u_ewald + E * u_diff + u_pauli
+    f_r = f_ewald + E * f_diff + f_pauli
+
+    return u_r, f_r
+
+
+@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
 def pauli_force(r, pot_matrix):
     """
     Calculate Pauli term of the QSP potential
@@ -107,82 +159,24 @@ def pauli_force(r, pot_matrix):
     """
     D = pot_matrix[2]
     F = pot_matrix[3]
-    A = pot_matrix[4]
 
     r2 = r * r
-    F2 = F * F
 
     # Pauli Term
-    u_r = D * log(1.0 - 0.5 * A *  exp(-F2 * r2))
-    f_r = - D *  r * F2  * A * exp(-F2 * r2)/ (1.0 - 0.5 * A * exp(-F2 * r2) )
+    u_r = D * log(1.0 - 0.5 * exp(-F * r2))
+    f_r = - D * ( r * F * exp(-F * r2)) / (1.0 - 0.5 * exp(-F * r2))
 
     return u_r, f_r
 
 
-@jit(nopython=True)
-def deutsch_force(r_in, pot_matrix):
+@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
+def hansen_force(r, pot_matrix):
     """
     Calculate Deutsch QSP Force between two particles.
 
     Parameters
     ----------
-    r_in : float
-        Distance between two particles.
-
-    pot_matrix : numpy.ndarray
-        It contains potential dependent variables. \n
-        Shape = (6, :attr:`sarkas.core.Parameters.num_species`, :attr:`sarkas.core.Parameters.num_species`)
-
-    Returns
-    -------
-    u_r : float
-        Potential.
-
-    f_r : float
-        Force between two particles.
-
-
-    """
-
-    A = pot_matrix[0]
-    C = pot_matrix[1]
-
-    E = pot_matrix[5]  # flag for diffraction term
-    alpha = pot_matrix[6]
-    rs = pot_matrix[7]
-
-    # Branchless programming
-    r = r_in * (r_in >= rs) + rs * (r_in < rs)
-
-    a2 = alpha * alpha
-    r2 = r * r
-
-    # Ewald short-range potential and force terms
-    u_ewald = A * erfc(alpha * r) / r
-    f_ewald = u_ewald / r  # 1/r derivative
-    f_ewald += A * (2.0 * alpha / sqrt(pi)) * exp(-a2 * r2) / r  # erfc derivative
-
-    # Diffraction potential and force term
-    u_diff = -A * exp(-C * r) / r
-    f_diff = u_diff * (1.0 / r + C)  # 1/r derivative
-
-    # Pauli Term
-    u_pauli, f_pauli = pauli_force(r, pot_matrix)
-
-    u_r = u_ewald + E * u_diff + u_pauli
-    f_r = f_ewald + E * f_diff + f_pauli
-
-    return u_r, f_r
-
-
-@jit(nopython=True)
-def hansen_force(r_in, pot_matrix):
-    """
-    Calculate Deutsch QSP Force between two particles.
-
-    Parameters
-    ----------
-    r_in : float
+    r : float
         Distance between two particles.
 
     pot_matrix : numpy.ndarray
@@ -204,11 +198,7 @@ def hansen_force(r_in, pot_matrix):
     C = pot_matrix[1]
     D = pot_matrix[2]
     F = pot_matrix[3]
-    alpha = pot_matrix[6]
-    rs = pot_matrix[7]
-
-    # Branchless programming
-    r = r_in * (r_in >= rs) + rs * (r_in < rs)
+    alpha = pot_matrix[4]
 
     a2 = alpha * alpha
     r2 = r * r
@@ -233,14 +223,14 @@ def hansen_force(r_in, pot_matrix):
     return U, force
 
 
-@jit(nopython=True)
-def kelbg_force(r_in, pot_matrix):
+@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
+def kelbg_force(r, pot_matrix):
     """
     Calculates the QSP Force between two particles when the pppm algorithm is chosen.
 
     Parameters
     ----------
-    r_in : float
+    r : float
         Distance between two particles.
 
     pot_matrix : numpy.ndarray
@@ -276,13 +266,10 @@ def kelbg_force(r_in, pot_matrix):
 
     A = pot_matrix[0]  # qi*qj/4*pi*eps0
     C = pot_matrix[1]  # sqrt(2pi)/deBroglie
-    E = pot_matrix[5] # flag for diffraction term 
-
-    alpha = pot_matrix[6]
-    rs = pot_matrix[7]
-
-    # Branchless programming
-    r = r_in * (r_in >= rs) + rs * (r_in < rs)
+    D = pot_matrix[2]  # e-e Pauli term factor
+    F = pot_matrix[3]
+    E = pot_matrix[4] # flag for diffraction term 
+    alpha = pot_matrix[5]
 
     C2 = C * C
     a2 = alpha * alpha

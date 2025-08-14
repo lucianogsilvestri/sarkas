@@ -31,13 +31,13 @@ from ..utilities.maths import force_error_analytic_pp
 
 
 @jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
-def coulomb_force_pppm(r_in, pot_matrix):
+def coulomb_force_pppm(r, pot_matrix):
     """
     Numba'd function to calculate the potential and force between two particles when the pppm algorithm is chosen.
 
     Parameters
     ----------
-    r_in : float
+    r : float
         Distance between two particles.
 
     pot_matrix : numpy.ndarray
@@ -62,12 +62,6 @@ def coulomb_force_pppm(r_in, pot_matrix):
     (0.07864960352514257, 0.14310167611771996)
 
     """
-
-    # Short-range cutoff to deal with divergence of the Coulomb potential
-    rs = pot_matrix[2]
-    # Branchless programming
-    r = r_in * (r_in >= rs) + rs * (r_in < rs)
-
     alpha = pot_matrix[1]  # Ewald parameter alpha
     alpha_r = alpha * r
     r2 = r * r

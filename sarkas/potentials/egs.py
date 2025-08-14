@@ -214,13 +214,13 @@ def update_params(potential, species):
 
 
 @jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
-def egs_force(r_in, pot_matrix):
+def egs_force(r, pot_matrix):
     """
     Numba'd function to calculate the potential and force between particles using the EGS Potential.
 
     Parameters
     ----------
-    r_in : float
+    r : float
         Particles' distance.
 
     pot_matrix : numpy.ndarray
@@ -250,11 +250,6 @@ def egs_force(r_in, pot_matrix):
 
 
     """
-
-    rs = pot_matrix[6]
-    # Branchless programming
-    r = r_in * (r_in >= rs) + rs * (r_in < rs)
-
     q2_e0 = pot_matrix[0]
     nu = pot_matrix[1]
 

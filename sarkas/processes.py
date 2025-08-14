@@ -414,7 +414,7 @@ class Process:
             self.io.setup_checkpoint(self.parameters, self.particles, phase = "magnetization")
         self.io.setup_checkpoint(self.parameters, self.particles, phase = "production")
 
-        self.io.save_pickle(self)
+        self.io.save_simulation_state(self)
 
         # Print Process summary to file and screen
         self.io.simulation_summary(self)
@@ -499,9 +499,14 @@ class Process:
             self.io.make_directories()
             self.io.make_files_tree()
 
-            # Read previously stored files
-            self.io.read_pickle(self, self.io.directory_tree["simulation"]["path"])
+            # Read the parameters and species classes from saved files
+            self.io.read_simulation_state(self, self.io.directory_tree["simulation"]["path"])
             self.io.copy_params(self.parameters)
+
+            # DEV NOTE: the potential setup could take a long time if the optimal green function need be calculated
+            self.potential.setup(self.parameters, self.species)
+            self.integrator.setup(self.parameters, self.potential)
+
             # Print parameters to log file
             if not exists(self.io.log_file):
                 # if the file exists do not print the file header
@@ -514,14 +519,10 @@ class Process:
                 # Initialize the Particles class attributes by reading the last step
                 old_method = self.parameters.load_method
                 self.parameters.load_method = "production_restart"
-                no_dumps = len(listdir(self.io.prod_dump_dir))
-                last_step = self.parameters.prod_dump_step * (no_dumps - 1)
-                if no_dumps == 0:
-                    self.parameters.load_method = "equilibration_restart"
-                    no_dumps = len(listdir(self.io.eq_dump_dir))
-                    last_step = self.parameters.eq_dump_step * (no_dumps - 1)
+                last_step = self.parameters.production_steps
                 self.parameters.restart_step = last_step
                 self.particles.setup(self.parameters, self.species)
+                
                 # Restore the original value for future use
                 self.parameters.load_method = old_method
                 # Update the log file. It is set to the simulation log in the parameters class, but it is correct in the IO class.
@@ -554,9 +555,13 @@ class Process:
             self.io.make_directories()
             self.io.make_files_tree()
 
-            # Read previously stored files
-            self.io.read_pickle(self, self.io.directory_tree["simulation"]["path"])
+            # Read the parameters and species classes from saved files
+            self.io.read_simulation_state(self, self.io.directory_tree["simulation"]["path"])
             self.io.copy_params(self.parameters)
+
+            # DEV NOTE: the potential setup could take a long time if the optimal green function need be calculated
+            self.potential.setup(self.parameters, self.species)
+            self.integrator.setup(self.parameters, self.potential)
 
             # Print parameters to log file
             if not exists(self.io.log_file):
@@ -570,19 +575,14 @@ class Process:
                 # Initialize the Particles class attributes by reading the last step
                 old_method = self.parameters.load_method
                 self.parameters.load_method = "production_restart"
-                no_dumps = len(listdir(self.io.prod_dump_dir))
-                last_step = self.parameters.prod_dump_step * (no_dumps - 1)
-                if no_dumps == 0:
-                    self.parameters.load_method = "equilibration_restart"
-                    no_dumps = len(listdir(self.io.eq_dump_dir))
-                    last_step = self.parameters.eq_dump_step * (no_dumps - 1)
+                last_step = self.parameters.production_steps
                 self.parameters.restart_step = last_step
                 self.particles.setup(self.parameters, self.species)
+                
                 # Restore the original value for future use
                 self.parameters.load_method = old_method
                 # Update the log file. It is set to the simulation log in the parameters class, but it is correct in the IO class.
                 self.parameters.log_file = self.io.log_file
-
         else:
             self.initialization()
 

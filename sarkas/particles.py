@@ -6,7 +6,7 @@ import csv
 from copy import deepcopy
 from h5py import File as h5File
 from numba import float64, int64, jit, njit, void
-from numpy import arange, array, empty, exp, floor, full, histogram, int64, log, pi
+from numpy import arange, array, empty, exp, floor, full, histogram, int64, log, newaxis, pi
 from numpy import load as np_load
 from numpy import (
     loadtxt,
@@ -79,12 +79,6 @@ class Particles:
     rdf_hist : numpy.ndarray
         Histogram array for the radial pair distribution function.
 
-    prod_dump_dir : str
-        Directory name where to store production phase's simulation's checkpoints. Default = 'dumps'.
-
-    eq_dump_dir : str
-        Directory name where to store equilibration phase's simulation's checkpoints. Default = 'dumps'.
-
     total_num_ptcls : int
         Total number of simulation's particles.
 
@@ -128,12 +122,10 @@ class Particles:
     """
 
     def __init__(self):
-        self.mag_dump_dir = None
+
         self.rdf_nbins = None
         self.kB = None
         self.fourpie0 = None
-        self.prod_dump_dir = None
-        self.eq_dump_dir = None
         self.box_lengths = None
         self.pbox_lengths = None
         self.total_num_ptcls = None
@@ -147,10 +139,17 @@ class Particles:
         self.pos = None
         self.vel = None
         self.acc = None
-        self.virial_species_tensor = None
-        self.heat_flux_species_tensor = None
+        self.dipole_moment = None  # Dipole moment of each particle
+        # Virial tensor components per particle
+        self.virial_xx = None
+        self.virial_xy = None
+        self.virial_xz = None
+        self.virial_yy = None
+        self.virial_yz = None
+        self.virial_zz = None
+
         self.potential_energy = None
-        self.dipole_energy = None
+        self.dipole_moment_energy = None
         self.pbc_cntr = None
         self.masses = None
         self.charges = None
@@ -167,7 +166,7 @@ class Particles:
 
         self.species_kinetic_energy = None
         self.species_potential_energy = None
-        self.species_dipole_energy = None
+        self.species_dipole_moment_energy = None
         self.species_temperature = None
         self.species_thermostat_temperatures = None
 
@@ -190,6 +189,7 @@ class Particles:
             "Pressure Tensor": self.calculate_species_pressure_tensor,
             "Heat Flux": self.calculate_species_heat_flux,
             "Diffusion Flux": self.calculate_species_diffusion_flux,
+            "Virial": self.calculate_species_virial_tensor,
         }
         self.qmc_sequence = None
         self.available_qmc_sequences = ["halton", "sobol", "poissondisk", "latinhypercube"]
@@ -271,10 +271,8 @@ class Particles:
         self.names = zeros(self.__dict__["total_num_ptcls"])
         self.pbc_cntr = zeros((self.__dict__["total_num_ptcls"], 3))
         self.rdf_hist = zeros((self.__dict__["num_species"], self.__dict__["num_species"], self.__dict__["rdf_nbins"]))
-        self.virial_species_tensor = zeros((self.__dict__["num_species"], self.__dict__["num_species"], 3, 3))
         self.potential_energy = zeros((self.__dict__["total_num_ptcls"]))
-        self.dipole_energy = zeros((self.__dict__["total_num_ptcls"]))
-        self.heat_flux_species_tensor = zeros((self.__dict__["num_species"], self.__dict__["num_species"], 3))
+        self.dipole_moment_moment_energy = zeros((self.__dict__["total_num_ptcls"]))
 
     def copy_params(self, params):
         """
@@ -292,14 +290,8 @@ class Particles:
         self.h5md_filenames_tree = deepcopy(params.h5md_filenames_tree)
         self.process_h5md_filepath_dict = deepcopy(params.process_h5md_filepath_dict)
         
-        # Redundant info. Can be removed.
-        self.prod_dump_dir = params.process_directory_tree["production"]["dumps"]["path"]
-        self.eq_dump_dir = params.process_directory_tree["equilibration"]["dumps"]["path"]
-        self.mag_dump_dir = params.process_directory_tree["magnetization"]["dumps"]["path"]
-
         self.kB = params.kB
         self.fourpie0 = params.fourpie0
-
         
         self.box_lengths = params.box_lengths.copy()
         self.pbox_lengths = params.pbox_lengths.copy()
@@ -329,7 +321,7 @@ class Particles:
         self.eq_dump_step = params.eq_dump_step
         self.prod_dump_step = params.prod_dump_step
         self.mag_dump_step = params.mag_dump_step 
-        self.job_id = params.job_id
+        
         self.particles_input_file = params.particles_input_file
         self.load_perturb = params.load_perturb
         self.load_rejection_radius = params.load_rejection_radius
@@ -551,6 +543,17 @@ class Particles:
         self.vel = zeros((self.total_num_ptcls, 3))
         self.acc = zeros((self.total_num_ptcls, 3))
 
+        # Initialize virial tensor components per particle
+        # Each component is a 2D array of shape (total_num_ptcls, 2)
+        # The first column is the value from the short-range term of the potential
+        # The second column is the value from the long-range term of the potential
+        self.virial_xx = zeros( self.total_num_ptcls)
+        self.virial_xy = zeros( self.total_num_ptcls)
+        self.virial_xz = zeros( self.total_num_ptcls)
+        self.virial_yy = zeros( self.total_num_ptcls)
+        self.virial_yz = zeros( self.total_num_ptcls)
+        self.virial_zz = zeros( self.total_num_ptcls)
+
         self.pbc_cntr = zeros((self.total_num_ptcls, 3))
 
         self.masses = zeros(self.total_num_ptcls)  # mass of each particle
@@ -559,8 +562,8 @@ class Particles:
 
         self.kinetic_energy = zeros(self.total_num_ptcls)
         self.potential_energy = zeros(self.total_num_ptcls)
-        self.dipole_energy = zeros(self.total_num_ptcls)
         self.temperature = zeros(self.total_num_ptcls)
+        self.dipole_moment_energy = zeros(self.total_num_ptcls)
 
         self.species_initial_velocity = zeros((self.num_species, 3))
         self.species_thermal_velocity = zeros((self.num_species, 3))
@@ -576,7 +579,19 @@ class Particles:
         self.species_temperature = zeros(self.num_species)
         self.species_thermostat_temperatures = zeros(self.num_species)
         
+        
+        # # Virial tensor components per species
+        # self.species_virial_xx = zeros(self.num_species)
+        # self.species_virial_xy = zeros(self.num_species)
+        # self.species_virial_xz = zeros(self.num_species)
+        # self.species_virial_yy = zeros(self.num_species)
+        # self.species_virial_yz = zeros(self.num_species)
+        # self.species_virial_zz = zeros(self.num_species)
+        
+        self.species_virial_tensor = zeros((self.num_species, 3, 3))
+
         self.no_grs = int64(self.num_species * (self.num_species + 1) / 2)
+        
         if "Radial Distribution Function" in self.observables_list:
             self.rdf_hist = zeros((self.num_species, self.num_species, self.rdf_nbins))
             if 'rdf_hist' not in self.observables_arrays_list:
@@ -596,11 +611,11 @@ class Particles:
 
         if "Pressure Tensor" in self.observables_list:
             self.pressure = zeros(self.total_num_ptcls)
+
             self.species_pressure = zeros(self.species_num)
             self.species_pressure_kin_tensor = zeros((self.num_species, 3, 3))
             self.species_pressure_pot_tensor = zeros((self.num_species, 3, 3))
             self.species_pressure_tensor = zeros((self.num_species, 3, 3))
-            self.virial_species_tensor = zeros((self.num_species, self.num_species, 3, 3))
 
             if 'species_pressure_tensor' not in self.observables_arrays_list:
                 self.observables_arrays_list.append('species_pressure_tensor')
@@ -612,7 +627,15 @@ class Particles:
         if "enthalpy" in self.thermodynamics_list:
             self.enthalpy = zeros(self.total_num_ptcls)
             self.species_enthalpy = zeros(self.num_species)
-            
+        
+        if "dipole_moment_energy" in self.thermodynamics_list:
+            self.dipole_moment_energy = zeros(self.total_num_ptcls)
+            self.species_dipole_moment_energy = zeros(self.num_species)
+        
+        if "dipole_moment" in self.observables_arrays_list:
+            self.dipole_moment = zeros((self.total_num_ptcls, 3))
+            self.species_dipole_moment = zeros((self.num_species, 3))
+
         if "Heat Flux" in self.observables_list:
             self.heat_flux_species_tensor = zeros(( self.num_species, self.num_species, 3))
             self.species_heat_flux = zeros((self.num_species, 3))
@@ -1202,17 +1225,16 @@ class Particles:
 
         self.load_from_checkpoint(phase, it)
 
-    def load_from_checkpoint(self, phase, it):
+    def load_from_checkpoint(self, phase, it= None):
         """
         Load particles' data from a checkpoint of a previous run
 
         Parameters
         ----------
-        it : int
-            Timestep.
-
         phase: str
             Restart phase.
+        it : int
+            Timestep.
 
         """
         if phase == "equilibration":
@@ -1226,7 +1248,10 @@ class Particles:
             dump_step = self.mag_dump_step
 
         # Calculate the index of the time step
-        index = self.restart_step // dump_step
+        if it is None:
+            index = self.restart_step // dump_step
+        else:
+            index = it // dump_step
         
         with h5py.File(file_name, "r") as file:
             self.pos = file["particles/pos"][index]
@@ -1248,6 +1273,26 @@ class Particles:
 
         """
         self.kinetic_energy = 0.5 * self.masses * (self.vel * self.vel).sum(axis=-1)
+
+    def calculate_dipole_moment(self):
+        """Calculate the dipole moment moment of each particle and store it into :attr:`dipole_moment`."""
+        self.dipole_moment = self.charges[:, newaxis] * self.pos
+
+    def calculate_species_dipole_moment(self):
+        """Calculate the dipole moment of each species and store it into :attr:`species_dipole_moment`."""
+        self.calculate_dipole_moment()
+        self.species_dipole_moment = vector_species_loop(self.dipole_moment, self.species_num)
+
+    def calculate_dipole_moment_energy(self):
+        """Calculate the dipole energy of each particle and store it into :attr:`dipole_moment_energy`."""
+        self.calculate_dipole_moment()
+
+        self.dipole_moment_energy = 2.0 * pi * (self.dipole_moment**2).sum(axis = -1) / ( 3.0* self.box_volume) # TODO: add eps0 in the denominator
+
+    def calculate_species_dipole_moment_energy(self):
+        """Calculate the dipole energy of each species and store it into :attr:`species_dipole_moment_energy`."""
+        self.calculate_dipole_moment_energy()
+        self.species_dipole_moment_energy = scalar_species_loop(self.dipole_moment_energy, self.species_num)
 
     def calculate_observables(self):
         """Calculate the observables in :attr:`observables_list`."""
@@ -1302,7 +1347,6 @@ class Particles:
         self.species_kinetic_energy = scalar_species_loop(self.kinetic_energy, self.species_num)
         self.species_temperature = const * self.species_kinetic_energy
 
-
     def calculate_species_temperature(self):
         """Calculate the temperature of each species and store it into :attr:`species_temperature`.
         
@@ -1341,10 +1385,33 @@ class Particles:
         """Calculate the potential energy of each species from :attr:`potential_energy`, calculated in the force loop, and stores it into :attr:`species_potential_energy`."""
         self.species_potential_energy = scalar_species_loop(self.potential_energy, self.species_num)
 
+    def calculate_species_virial_tensor(self):
+        """Calculate the virial tensor of each species from :attr:`virial_species_tensor`, calculated in the force loop, and stores it into :attr:`species_virial_tensor`."""
+        # the .sum(axis=1) is to sum over the short-range and long-range contributions of the virial tensor.
+        species_virial_xx = scalar_species_loop(self.virial_xx, self.species_num)
+        species_virial_xy = scalar_species_loop(self.virial_xy, self.species_num)
+        species_virial_xz = scalar_species_loop(self.virial_xz, self.species_num)
+        species_virial_yy = scalar_species_loop(self.virial_yy, self.species_num)
+        species_virial_yz = scalar_species_loop(self.virial_yz, self.species_num)
+        species_virial_zz = scalar_species_loop(self.virial_zz, self.species_num)
+            
+        self.species_virial_tensor[:, 0, 0] = species_virial_xx
+        self.species_virial_tensor[:, 0, 1] = species_virial_xy
+        self.species_virial_tensor[:, 0, 2] = species_virial_xz
+        self.species_virial_tensor[:, 1, 0] = species_virial_xy
+        self.species_virial_tensor[:, 1, 1] = species_virial_yy
+        self.species_virial_tensor[:, 1, 2] = species_virial_yz
+        self.species_virial_tensor[:, 2, 0] = species_virial_xz
+        self.species_virial_tensor[:, 2, 1] = species_virial_yz
+        self.species_virial_tensor[:, 2, 2] = species_virial_zz
+
     def calculate_species_pressure_tensor(self):
         """Calculate the pressure, the kinetic part of the pressure tensor, the potential part of the kinetic tensor of each species and store them into :attr:`species_pressure`, :attr:`species_pressure_kin_tensor`, :attr:`species_pressure_pot_tensor`."""
+        
+        self.calculate_species_virial_tensor()
+
         self.species_pressure, self.species_pressure_kin_tensor, self.species_pressure_pot_tensor = calc_pressure_tensor(
-            self.vel, self.virial_species_tensor, self.species_masses, self.species_num, self.box_volume, self.dimensions
+            self.vel, self.species_virial_tensor, self.species_masses, self.species_num, self.box_volume, self.dimensions
         )
         self.species_pressure_tensor = self.species_pressure_kin_tensor + self.species_pressure_pot_tensor
         
@@ -1353,9 +1420,7 @@ class Particles:
         Calculate the pressure, the kinetic part of the pressure tensor, the potential part of the kinetic tensor of each species and store them into :attr:`species_pressure`, :attr:`species_pressure_kin_tensor`, :attr:`species_pressure_pot_tensor`.
         Redundant with :meth:`calculate_species_pressure_tensor`.
         """
-        self.species_pressure, self.species_pressure_kin_tensor, self.species_pressure_pot_tensor = calc_pressure_tensor(
-            self.vel, self.virial_species_tensor, self.species_masses, self.species_num, self.box_volume, self.dimensions
-        )
+        self.calculate_species_pressure_tensor()
 
     def calculate_total_electric_current(self):
         """Calculate the total electric current of the system, by summing the electric current of each species and store it into :attr:`total_electric_current`."""
@@ -1705,7 +1770,7 @@ class Particles:
 
 
 @njit
-def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num, box_volume, dimensions):
+def calc_pressure_tensor(vel, species_virial_tensor, species_masses, species_num, box_volume, dimensions):
     """
     Calculate the pressure tensor of each species.
 
@@ -1714,8 +1779,8 @@ def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num
     vel : numpy.ndarray
         Particles' velocities.
 
-    virial_species_tensor : numpy.ndarray
-        Virial tensor of each particle. Shape= (:attr:`num_species`, :attr:`num_species`, 3, 3).
+    species_virial_tensor : numpy.ndarray
+        Virial tensor of each particle. Shape= (:attr:`num_species`, 3, 3).
         Note that the size of the last two axis is 3 even if the system is 2D.
 
     species_masses : numpy.ndarray
@@ -1748,7 +1813,6 @@ def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num
     pressure_pot = zeros((species_num.shape[0], 3, 3))
     temp_kin_tensor = zeros((3, 3, vel.shape[0]))
 
-    # TODO: There must be a faster way to do this tensor product
     # for ip in range(vel.shape[0]):
     #     temp_kin_tensor[:, :, ip] = outer(vel[ip, :], vel[ip, :])
 
@@ -1759,7 +1823,7 @@ def calc_pressure_tensor(vel, virial_species_tensor, species_masses, species_num
 
     pressure_kin = species_masses * tensor_species_loop(temp_kin_tensor, species_num) / box_volume
     # Sum over the species
-    pressure_pot =  virial_species_tensor.sum(axis = 0)/box_volume # tensor_cross_species_loop(virial_species_tensor, species_num) / box_volume
+    pressure_pot =  species_virial_tensor/box_volume # tensor_cross_species_loop(virial_species_tensor, species_num) / box_volume
     pressure_tensor = pressure_kin + pressure_pot
     for isp in range(species_num.shape[0]):
         pressure[isp] += (pressure_tensor[isp, 0, 0] + pressure_tensor[isp, 1, 1] + pressure_tensor[isp, 2, 2]) / dimensions

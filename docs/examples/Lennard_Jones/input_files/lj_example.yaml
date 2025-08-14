@@ -1,0 +1,60 @@
+# keywords: single species, LJ, PP, mks, random_reject
+# ref: A. Rahman, Phys Rev A 136 405 (1964)
+
+Particles:
+    - Species:
+        name: Argon                 # species name
+        num: 8192                    # total number of Argon
+        mass_density: 1.374         # g/cc
+        atomic_weight: 39.95        # A
+        # mass: 66.904e-24          # g
+        temperature: 94.4           # kelvin
+        epsilon: 1.6567788e-14      # erg/K
+        sigma: 3.4e-08              # cm
+
+Potential:
+    type: LJ
+    powers: [12, 6]
+    rc: 7.65e-08 # 3.40e-07                   # cm
+    a_rs: 3.4e-12
+
+Integrator:
+    equilibration_type: langevin
+    production_type: verlet
+    dt: 1.0e-14                    # timestep, sec
+    langevin_type: BBK
+    langevin_gamma: 1.698075e+11
+    thermalization: no
+    # temperatures: 191.91
+
+Parameters:
+    units: cgs                      # units
+    verbose: yes
+    random_seed: 12654651
+    boundary_conditions: periodic
+    load_method: qmc # random_no_reject
+    qmc_sequence: halton
+    # load_perturb: 0.05
+    # initial_lattice_config: bcc # simple_cubic
+    equilibration_steps: 20
+    eq_dump_step: 1
+    production_steps: 10
+    prod_dump_step: 1
+    # (OPTIONAL) This is a list of observable that you want to calculate during the simulation.
+    # observables_list: ["Pressure Tensor", "Heat Flux"]
+    # (OPTIONAL) The observables_arrays_list is a list of Particles arrays that will be saved during the simulation
+    observables_arrays_list: ["virial"]
+    # This is a list of thermodynamics that you want to calculate during the simulation.
+    # thermodynamics_list: ["total_energy", "temperature", "kinetic_energy", "potential_energy", "pressure", "enthalpy" ]
+
+IO:
+    verbose: True
+    job_dir: LJ_example               # dir name to save data.
+    job_id: lj
+
+Observables:
+  - RadialDistributionFunction:
+      no_bins: 100
+
+  - Thermodynamics:
+      phase: production
