@@ -14,6 +14,8 @@ from .force_pm import update as pm_update
 from .force_pp import update as pp_update
 from .force_pp import update_0D as pp_update_0D
 
+from ..utilities.maths import force_error_approx_pppm
+
 
 class Potential:
     r"""

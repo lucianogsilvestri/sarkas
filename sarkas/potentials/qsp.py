@@ -60,28 +60,29 @@ The elements of the :attr:`sarkas.potentials.core.Potential.matrix` are:
 
 .. code-block:: python
 
-    pot_matrix[0] = qi*qj/4*pi*eps0
-    pot_matrix[1] = 2pi/deBroglie
-    pot_matrix[2] = e-e Pauli term factor
-    pot_matrix[3] = e-e Pauli term exponent term
-    pot_matrix[4] = Ewald parameter
-    pot_matrix[5] = Short-range cutoff
+    pot_matrix[i, j, 0] = qi * qj / (4π ε₀)           # Coulomb prefactor
+    pot_matrix[i, j, 1] = screening parameter          # Depends on QSP type
+    pot_matrix[i, j, 2] = Pauli term factor           # Temperature dependent
+    pot_matrix[i, j, 3] = Pauli term exponent         # Related to de Broglie wavelength
+    pot_matrix[i, j, 4] = Pauli amplitude factor      # Jones-Murillo correction
+    pot_matrix[i, j, 5] = Diffraction flag            # 1.0 for e-e/e-i, 0.0 for i-i
+    pot_matrix[i, j, 6] = Ewald parameter             # α for PPPM algorithm
+    pot_matrix[i, j, 7] = Short-range cutoff          # Minimum distance
 
 """
 
 from math import erfc
 from numba import jit
-from numba.core.types import float64, UniTuple
-from numpy import array, exp, inf, log, ndarray, pi, sqrt, unravel_index, zeros, isclose
+from numpy import exp, inf, log, ndarray, pi, sqrt,zeros, isclose
 from warnings import warn
 from scipy.integrate import quad
 from scipy.special import gamma
 
 from ..utilities.exceptions import AlgorithmWarning
-from ..utilities.maths import force_error_analytic_pp, TWOPI
+from ..utilities.maths import TWOPI
 
 
-@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
+@jit(nopython=True)
 def deutsch_force(r, pot_matrix):
     """
     Calculate Deutsch QSP Force between two particles.
@@ -108,9 +109,8 @@ def deutsch_force(r, pot_matrix):
 
     A = pot_matrix[0]
     C = pot_matrix[1]
-    D = pot_matrix[2]
-    F = pot_matrix[3]
-    alpha = pot_matrix[4]
+    E = pot_matrix[5]
+    alpha = pot_matrix[6]
 
     a2 = alpha * alpha
     r2 = r * r
@@ -133,7 +133,7 @@ def deutsch_force(r, pot_matrix):
     return u_r, f_r
 
 
-@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
+@jit(nopython=True)
 def pauli_force(r, pot_matrix):
     """
     Calculate Pauli term of the QSP potential
@@ -159,17 +159,18 @@ def pauli_force(r, pot_matrix):
     """
     D = pot_matrix[2]
     F = pot_matrix[3]
+    A = pot_matrix[4]
 
     r2 = r * r
+    F2 = F * F
 
     # Pauli Term
-    u_r = D * log(1.0 - 0.5 * exp(-F * r2))
-    f_r = - D * ( r * F * exp(-F * r2)) / (1.0 - 0.5 * exp(-F * r2))
+    u_r = D * log(1.0 - 0.5 * A *  exp(-F2 * r2))
+    f_r = - D *  r * F2  * A * exp(-F2 * r2)/ (1.0 - 0.5 * A * exp(-F2 * r2) )
 
     return u_r, f_r
 
-
-@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
+@jit(nopython=True)
 def hansen_force(r, pot_matrix):
     """
     Calculate Deutsch QSP Force between two particles.
@@ -199,7 +200,8 @@ def hansen_force(r, pot_matrix):
     D = pot_matrix[2]
     F = pot_matrix[3]
     alpha = pot_matrix[4]
-
+    E = pot_matrix[5]
+    
     a2 = alpha * alpha
     r2 = r * r
 
@@ -217,13 +219,13 @@ def hansen_force(r, pot_matrix):
     U_pauli = D * exp(-F * r2)
     f_pauli = 2.0 * r * D * F * exp(-F * r2)
 
-    U = U_ewald + U_diff + U_pauli
-    force = f_ewald + f_diff + f_pauli
+    U = U_ewald + E * U_diff + U_pauli
+    force = f_ewald + E * f_diff + f_pauli
 
     return U, force
 
 
-@jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
+@jit(nopython=True)
 def kelbg_force(r, pot_matrix):
     """
     Calculates the QSP Force between two particles when the pppm algorithm is chosen.
@@ -266,11 +268,9 @@ def kelbg_force(r, pot_matrix):
 
     A = pot_matrix[0]  # qi*qj/4*pi*eps0
     C = pot_matrix[1]  # sqrt(2pi)/deBroglie
-    D = pot_matrix[2]  # e-e Pauli term factor
-    F = pot_matrix[3]
-    E = pot_matrix[4] # flag for diffraction term 
-    alpha = pot_matrix[5]
-
+    E = pot_matrix[5]  # flag for diffraction term
+    alpha = pot_matrix[6]
+    
     C2 = C * C
     a2 = alpha * alpha
     r2 = r * r
@@ -628,7 +628,7 @@ def update_params(potential, species):
 
             if sp1.name == "e" or sp2.name == "e":
                 # Handle electron-related interactions (e-e and e-i)
-                if sp1.name == sp2.name and sp1.name == "e":  # e-e interaction
+                if sp1.name == sp2.name:  # e-e interaction
                     if has_custom_ee:
                         # Use user-provided e-e diffractive length
                         lambda_deB = potential.ee_diffractive_length

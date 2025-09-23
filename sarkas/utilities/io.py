@@ -488,7 +488,7 @@ class InputOutput:
         self.a_ws = params.a_ws
         self.total_num_ptcls = params.total_num_ptcls
         self.total_plasma_frequency = params.total_plasma_frequency
-        self.species_names = params.species_names.copy()
+        # self.species_names = params.species_names.copy()
 
         self.equilibration_phase = params.equilibration_phase
 

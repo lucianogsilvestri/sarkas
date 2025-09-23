@@ -4,7 +4,7 @@ Module of various types of time_evolution
 
 from copy import deepcopy
 from numba import float64, int64, jit, void
-from numpy import arange, array, bool_, cos, cross, floor, floor, log, pi, rint, sin, sqrt, zeros
+from numpy import array, bool_, cos, cross, floor, log, pi, sin, sqrt, zeros
 from scipy.linalg import norm
 
 
@@ -1151,7 +1151,7 @@ def enforce_pbc(pos, cntr, box_lengths):
     
     for i in range(N):
         for j in range(D):
-            L = box_vector[j]
+            L = box_lengths[j]
             # Calculate how many times this particle crosses the boundary
             fold_count = int(floor(pos[i, j] / L))
             cntr[i, j] += fold_count
