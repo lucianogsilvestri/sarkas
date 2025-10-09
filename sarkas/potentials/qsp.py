@@ -79,8 +79,8 @@ from scipy.integrate import quad
 from scipy.special import gamma
 
 from ..utilities.exceptions import AlgorithmWarning
-from ..utilities.maths import TWOPI
 
+TWOPI = 2.0 * pi 
 
 @jit(nopython=True)
 def deutsch_force(r, pot_matrix):
@@ -660,7 +660,7 @@ def update_params(potential, species):
                         # Use user-provided e-i diffractive length
                         lambda_deB = potential.ei_diffractive_length[ion_index]
                     else:
-                        # Calculate e-i diffractive length
+                        # Calculate e-i diffractive length use the electron temperature!
                         lambda_deB = sqrt(deBroglie_const / (reduced * species[0].temperature))
 
                 potential.matrix[i, j, 5] = 1.0

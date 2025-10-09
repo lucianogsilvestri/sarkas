@@ -15,6 +15,9 @@ else:
 import matplotlib.pyplot as plt
 from matplotlib.cm import get_cmap, ScalarMappable
 from matplotlib.colors import LogNorm
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
 from numpy import (
     arange,
     array,
@@ -26,6 +29,7 @@ from numpy import (
     logspace,
     meshgrid,
     pi,
+    quantile,
     sqrt,
     zeros,
 )
@@ -37,16 +41,17 @@ from pandas import DataFrame, read_csv
 from seaborn import scatterplot
 from warnings import warn
 
+# Sarkas modules
 from .core import Parameters
 from .particles import Particles
 from .plasma import Species
 from .potentials.core import Potential
 from .time_evolution.integrators import Integrator
 
-# Sarkas modules
 from .utilities.io import InputOutput, print_to_logger
 from .utilities.maths import force_error_analytic_pp, force_error_approx_pppm
 from .utilities.timing import SarkasTimer
+from .plotting.styles import get_msu_colors
 
 class Process:
     """Parent class for :class:`sarkas.process.PreProcess`, :class:`sarkas.process.Simulation`, and
@@ -688,18 +693,56 @@ class PreProcess(Process):
         self.pp_cells = arange(3, 16, dtype=int64)
         super().__init__(input_file)
 
-    def analytical_approx_pppm(self):
-        """Calculate the total force error as given in :cite:`Dharuman2017`."""
+    def analytical_approx_pppm(self, rcuts = None, alphas=None, rlims=None, alims=None):
+        """Calculate the total force error as given in :cite:`Dharuman2017`.
+        Parameters
+        ----------
+        rcuts: numpy.ndarray
+            Cut off distances.
+        alphas: numpy.ndarray
+            Ewald parameters.
+        rlims: tuple
+            Min and max cut off distances.
+        alims: tuple
+            Min and max Ewald parameters.
+        Returns
+        -------
+        total_force_error: numpy.ndarray
+            Force error matrix.
+        pp_force_error: numpy.ndarray
+            Force error matrix for the PP part.
+        pm_force_error: numpy.ndarray
+            Force error array for the PM part.
+        rcuts: numpy.ndarray
+            Cut off distances.
+        alphas: numpy.ndarray
+            Ewald parameters.
+        """
+        if rcuts is None:
+            if rlims:
+                r_min, r_max = rlims
+            else:
+                r_min = self.potential.rc * 0.5
+                r_max = self.potential.rc * 2.0       
+            rcuts = linspace(r_min, r_max, 101)
+        else:
+            r_min = rcuts.min()
+            r_max = rcuts.max()
+        
+        if alphas is None:
+            if alims:
+                a_min, a_max = alims
+            else:
+                a_min = self.potential.pppm_alpha_ewald * 0.25
+                a_max = self.potential.pppm_alpha_ewald * 2.0
 
-        a_min = self.potential.pppm_alpha_ewald * 0.25
-        a_max = self.potential.pppm_alpha_ewald * 2.0
+            alphas = linspace(a_min, a_max, 101)
 
-        r_min = self.potential.rc * 0.5
-        r_max = self.potential.rc * 2.0
-
-        alphas = linspace(a_min, a_max, 101)
-        rcuts = linspace(r_min, r_max, 101)
-
+        else:
+            a_min = alphas.min()
+            a_max = alphas.max()
+        
+        # Create the meshgrids
         pm_force_error = zeros(len(alphas))
         pp_force_error = zeros((len(alphas), len(rcuts)))
         total_force_error = zeros((len(alphas), len(rcuts)))
@@ -865,17 +908,20 @@ class PreProcess(Process):
 
         fig, ax = plt.subplots(1, 2, constrained_layout=True, figsize=(19, 7))
         linestyles = [(0, (5, 10)), "dashed", "solid", "dashdot", (0, (3, 10, 1, 10))]
-        indexes = [30, 40, 50, 60, 70]
-        for lns, i in zip(linestyles, indexes):
-            min_rc = rcuts[total_force_error[i, :].argmin()]
+        # Indexes is quantiles of the alphas and rcuts arrays
+        r_indexes = quantile(arange(len(rcuts)), [0.3, 0.4, 0.5, 0.6, 0.7], method="nearest").astype(int)
+        a_indexes = quantile(arange(len(alphas)), [0.3, 0.4, 0.5, 0.6, 0.7], method="nearest").astype(int)
+        for lns, i, j in zip(linestyles, r_indexes, a_indexes):
+            min_rc = rcuts[total_force_error[j, :].argmin()]
             rc_lbl = (
                 r"$\alpha a_{ws} = "
-                + "{:.2f}$".format(alphas[i])
+                + "{:.2f}$".format(alphas[j])
                 + r" min @ $r_c = "
                 + "{:.2f}".format(min_rc)
                 + r" a_{\rm ws}$"
             )
-            ax[0].plot(rcuts, total_force_error[i, :], ls=lns, label=rc_lbl)
+            ax[0].plot(rcuts, total_force_error[j, :], ls=lns, label=rc_lbl)
+            
             min_a = alphas[total_force_error[:, i].argmin()]
             a_lbl = (
                 r"$r_c = {:.2f}".format(rcuts[i])
@@ -910,6 +956,214 @@ class PreProcess(Process):
         )
         fig.savefig(join(fig_path, "LinePlot_ForceError_" + self.io.job_id + ".png"))
 
+    def make_pppm_line_plot_interactive(self, rcuts, alphas, chosen_alpha, chosen_rcut, total_force_error):
+        """
+        Create interactive line plots of the total force error approximation.
+
+        Parameters
+        ----------
+        rcuts: numpy.ndarray
+            Cut off distances.
+        alphas: numpy.ndarray
+            Ewald parameters.
+        chosen_alpha: float
+            Chosen Ewald parameter.
+        chosen_rcut: float
+            Chosen cut off radius.
+        total_force_error: numpy.ndarray
+            Force error matrix.
+        """
+
+        # Create subplots
+        fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=("Force Error vs r<sub>c</sub>", "Force Error vs α"),
+            horizontal_spacing=0.12
+        )
+        
+        # Get MSU colors
+        msu_colors = get_msu_colors()
+        
+        # Line styles
+        dash_styles = ['dot', 'dash', 'solid', 'dashdot', 'longdash']
+        # Indexes is quantiles of the alphas and rcuts arrays
+        r_indexes = quantile(arange(len(rcuts)), [0.3, 0.4, 0.5, 0.6, 0.7], method="nearest").astype(int)
+        a_indexes = quantile(arange(len(alphas)), [0.3, 0.4, 0.5, 0.6, 0.7], method="nearest").astype(int)
+        
+        # Left plot: Force error vs r_c for different alpha values
+        for idx, (i, j, color, dash) in enumerate(zip(r_indexes, a_indexes, msu_colors[:5], dash_styles)):
+            rc_lbl = f"αa<sub>ws</sub> = {alphas[j]:.2f}" # min @ r<sub>c</sub> = {min_rc:.2f} a<sub>ws</sub>"
+            
+            fig.add_trace(
+                go.Scatter(
+                    x=rcuts,
+                    y=total_force_error[j, :],
+                    mode='lines',
+                    name=rc_lbl,
+                    line=dict(color=color, dash=dash, width=2),
+                    hovertemplate='r<sub>c</sub>/a<sub>ws</sub>: %{x:.4e}<br>ΔF: %{y:.4e}<extra></extra>',
+                    legendgroup=f'group{idx}',
+                    showlegend=True
+                ),
+                row=1, col=1
+            )
+        
+        # Right plot: Force error vs alpha for different r_c values
+        for idx, (i, j, color, dash) in enumerate(zip(r_indexes, a_indexes, msu_colors[:5], dash_styles)):
+
+            a_lbl = f"r<sub>c</sub> = {rcuts[i]:.2f} a<sub>ws</sub>" # min @ α<sub>min</sub>a<sub>ws</sub> = {min_a:.2f}"
+            
+            fig.add_trace(
+                go.Scatter(
+                    x=alphas,
+                    y=total_force_error[:, i],
+                    mode='lines',
+                    name=a_lbl,
+                    line=dict(color=color, dash=dash, width=2),
+                    hovertemplate='αa<sub>ws</sub>: %{x:.4e}<br>ΔF: %{y:.4e}<extra></extra>',
+                    legendgroup=f'group{idx}',
+                    showlegend=True
+                ),
+                row=1, col=2
+            )
+        
+        # Add reference lines
+        fig.add_vline(x=chosen_rcut, line_dash="dash", line_color="black", 
+                    row=1, col=1, annotation_text="chosen r<sub>c</sub>")
+        fig.add_hline(y=self.potential.force_error, line_dash="dash", line_color="black",
+                    row=1, col=1)
+        fig.add_vline(x=chosen_alpha, line_dash="dash", line_color="black",
+                    row=1, col=2, annotation_text="chosen α")
+        fig.add_hline(y=self.potential.force_error, line_dash="dash", line_color="black",
+                    row=1, col=2)
+        
+        # Add L/2 reference line if applicable
+        if rcuts[-1] * self.parameters.a_ws > 0.5 * self.parameters.box_lengths.min():
+            l_half = 0.5 * self.parameters.box_lengths.min() / self.parameters.a_ws
+            fig.add_vline(x=l_half, line_color="red", row=1, col=1,
+                        annotation_text="L/2", annotation_position="top")
+        
+        # Update axes
+        fig.update_xaxes(title_text="r<sub>c</sub>/a<sub>ws</sub>", row=1, col=1)
+        fig.update_xaxes(title_text="α a<sub>ws</sub>", row=1, col=2, )
+        fig.update_yaxes(title_text="ΔF<sub>tot</sub><sup>approx</sup>", type="log", row=1, col=1)
+        fig.update_yaxes(type="log", row=1, col=2)
+        
+        # Update layout with MSUstyle template
+        title_text = (f"Parameters  N = {self.parameters.total_num_ptcls}, "
+                    f"M = {self.potential.pppm_mesh[0]}, "
+                    f"p = {self.potential.pppm_cao[0]}, "
+                    f"κ = {self.parameters.a_ws / self.potential.screening_length:.2f}")
+        
+        fig.update_layout(
+            template="MSUstyle",  # Use MSUstyle template
+            title_text=title_text,
+            height=600,
+            width=1400,
+            hovermode='closest',
+            showlegend=True,
+            legend=dict(x=1.05, y=1, xanchor='left', yanchor='top')
+        )
+        return fig
+
+    def make_pppm_color_map_interactive(self, rcuts, alphas, chosen_alpha, chosen_rcut, total_force_error):
+        """
+        Create an interactive color map of the total force error approximation.
+
+        Parameters
+        ----------
+        rcuts: numpy.ndarray
+            Cut off distances.
+        alphas: numpy.ndarray
+            Ewald parameters.
+        chosen_alpha: float
+            Chosen Ewald parameter.
+        chosen_rcut: float
+            Chosen cut off radius.
+        total_force_error: numpy.ndarray
+            Force error matrix.
+        """
+        
+        # Create figure
+        fig = go.Figure()
+        
+        # Add heatmap with log scale
+        fig.add_trace(
+            go.Heatmap(
+                x=alphas,
+                y=rcuts,
+                z=log10(total_force_error + 1e-20).T,
+                colorscale='Viridis',
+                colorbar=dict(
+                    title=dict(
+                        text="log<sub>10</sub>ΔF<sub>tot</sub><sup>approx</sup>(r<sub>c</sub>,α)",
+                        side="right"
+                    ),
+                    exponentformat='e',
+                    tickformat='.2e'
+                ),
+                # hovertemplate='α a<sub>ws</sub>: %{x:.2f}<br>r<sub>c</sub>/a<sub>ws</sub>: %{y:.2f}<br>ΔF: %{z:.2e}<extra></extra>',
+                showlegend=False
+            )
+        )
+        
+        # Add contour lines
+        fig.add_trace(
+            go.Contour(
+                x=alphas,
+                y=rcuts,
+                z=log10(total_force_error + 1e-20).T,
+                showscale=False,
+                contours=dict(
+                    showlabels=True,
+                    labelfont=dict(size=12, color='white'),
+                    coloring='none'
+                ),
+                line=dict(color='white', width=2),
+                ncontours=10,
+                hoverinfo='skip',
+                showlegend=False
+            )
+        )
+        
+        # Add chosen point
+        fig.add_trace(
+            go.Scatter(
+                x=[chosen_alpha],
+                y=[chosen_rcut],
+                mode='markers',
+                marker=dict(size=15, color='black', symbol='circle', 
+                        line=dict(width=2, color='white')),
+                # name='Chosen parameters',
+                # hovertemplate='Chosen: α=%{x:.2f}, r<sub>c</sub>=%{y:.2f}<extra></extra>'
+                showlegend=False,
+            )
+        )
+        
+        # Add L/2 reference line if applicable
+        if rcuts[-1] * self.parameters.a_ws > 0.5 * self.parameters.box_lengths.min():
+            l_half = 0.5 * self.parameters.box_lengths.min() / self.parameters.a_ws
+            fig.add_hline(y=l_half, line_color="red", line_width=2,
+                        annotation_text="L/2", annotation_position="right")
+        
+        # Update layout with MSUstyle template
+        title_text = (f"Parameters  N = {self.parameters.total_num_ptcls}, "
+                    f"M = {self.potential.pppm_mesh[0]}, "
+                    f"p = {self.potential.pppm_cao[0]}, "
+                    f"κ = {self.parameters.a_ws / self.potential.screening_length:.2f}")
+        
+        fig.update_layout(
+            template="MSUstyle",  # Use MSUstyle template
+            title_text=title_text,
+            xaxis_title="α a<sub>ws</sub>",
+            yaxis_title="r<sub>c</sub>/a<sub>ws</sub>",
+            height=700,
+            width=900,
+            hovermode='closest'
+        )
+
+        return fig
+        
     def make_pppm_color_map(self, rcuts, alphas, chosen_alpha, chosen_rcut, total_force_error):
         """
         Plot a color map of the total force error approximation.
@@ -1124,16 +1378,29 @@ class PreProcess(Process):
         if not exists(self.pppm_plots_dir):
             mkdir(self.pppm_plots_dir)
 
-    def pppm_approximation(self):
+    def pppm_approximation(self, rcuts = None, alphas=None, rlims=None, alims=None):
         """
         Calculate the force error for a PPPM simulation using analytical approximations.\n
         Plot the force error in the parameter space.
+
+        Parameters
+        ----------
+        rcuts: array-like
+            Array of cutoff radii used in the PPPM approximation.
+        alphas: array-like
+            Array of Ewald splitting parameters used in the PPPM approximation.
+        rlims: tuple
+            Limits for the cutoff radius axis in the plots (min, max).
+        alims: tuple
+            Limits for the Ewald parameter axis in the plots (min, max).
+
         """
 
         self.make_pppm_plots_dir()
 
         # Calculate Force error from analytic approximation given in Dharuman et al. J Chem Phys 2017
-        total_force_error, pp_force_error, pm_force_error, rcuts, alphas = self.analytical_approx_pppm()
+        total_force_error, _, _, rcuts, alphas = self.analytical_approx_pppm(rcuts=rcuts, alphas=alphas, rlims=rlims, alims=alims)
+
         chosen_alpha = self.potential.pppm_alpha_ewald * self.parameters.a_ws
         chosen_rcut = self.potential.rc / self.parameters.a_ws
 
@@ -1144,6 +1411,7 @@ class PreProcess(Process):
         self.make_pppm_line_plot(rcuts, alphas, chosen_alpha, chosen_rcut, total_force_error)
 
         msg = f"\nFigures can be found in {self.pppm_plots_dir}"
+
         self.io.write_to_logger(msg)
 
     def remove_preproc_dumps(self):
@@ -1167,6 +1435,7 @@ class PreProcess(Process):
         timing: bool = True,
         timing_study: bool = False,
         pppm_estimate: bool = False,
+        pppm_estimate_args: dict = {},
         postprocessing: bool = False,
         remove: bool = False,
     ):
@@ -1205,7 +1474,7 @@ class PreProcess(Process):
             self.remove_preproc_dumps()
 
         if pppm_estimate:
-            self.pppm_approximation()
+            self.pppm_approximation(**pppm_estimate_args)
 
         if timing_study:
             self.timing_study_calculation()

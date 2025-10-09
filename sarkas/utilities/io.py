@@ -484,7 +484,7 @@ class InputOutput:
             Simulation's parameters.
 
         """
-        self.dt = params.dt
+
         self.a_ws = params.a_ws
         self.total_num_ptcls = params.total_num_ptcls
         self.total_plasma_frequency = params.total_plasma_frequency

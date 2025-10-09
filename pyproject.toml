@@ -1,11 +1,82 @@
-# Development tools
 [build-system]
-requires = [
-    "setuptools>=42",
-    "wheel",
-    "matplotlib"
-]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "sarkas"
+version = "1.1.0"
+description = "Sarkas - A fast pure-python Molecular Dynamics suite for plasmas"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Murillo Group", email = "sarkasdev@gmail.com"}
+]
+maintainers = [
+    {name = "Murillo Group", email = "sarkasdev@gmail.com"}
+]
+keywords = ["molecular dynamics", "plasma", "simulation", "physics"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+dependencies = [
+    "numpy",
+    "scipy",
+    "pandas",
+    "numba>=0.50",
+    "pyfftw",
+    "pyyaml",
+    "tables",
+    "tqdm",
+    "pyfiglet==0.8.post1",
+    "jupyter",
+    "jupyterlab",
+    "notebook",
+    "matplotlib>=3.5",
+    "seaborn",
+    "plotly>=5.0",
+    "fmm3dpy",
+]
+
+[project.optional-dependencies]
+testing = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "tox>=4.0",
+]
+dev = [
+    "black",
+    "isort",
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.urls]
+Homepage = "https://murillogroup.github.io/sarkas"
+Documentation = "https://murillogroup.github.io/sarkas"
+Repository = "https://github.com/murillo-group/sarkas"
+"Bug Tracker" = "https://github.com/murillo-group/sarkas/issues"
+
+[project.scripts]
+# Add any command-line scripts here if needed
+# example-script = "sarkas.module:function"
+
+[tool.setuptools]
+packages = ["sarkas"]
+zip-safe = false
+
+[tool.setuptools.package-data]
+"sarkas.plotting" = ["*.mplstyle"]
 
 # Black profile
 [tool.black]
@@ -20,39 +91,40 @@ exclude = '''
 )/
 '''
 
-#[tool.flakehell]
-#exclude = []
-## make output nice
-#format = "grouped"
-#max-line-length = 122
-## show line of source code in output
-## show_source = true
-#extended_default_ignore=[]  # workaround for flakehell#10
-#
-#[tool.flakehell.plugins]
-#pycodestyle = ["+*",
-##                "-E203",
-##                "-E501",
-##                "-W503",
-##                "-E741",
-##                "-E266",  # too many leading #
-##                "-E731", # do not assign lambda expression, use def
-#               ]
-#pyflakes = ["+*", "-E203"]
-## flake8-bandit = ["+*"]
-## mccabe = ["+*"]
-#pylint = ["+*", "-C0103"]
-
-
 [tool.isort]
 profile = "black"
 sections = ["FUTURE", "STDLIB", "FIRSTPARTY", "LOCALFOLDER"]
-known_first_party = ["sarkas", ]
+known_first_party = ["sarkas"]
 default_section = "STDLIB"
 force_alphabetical_sort_within_sections = true
 
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=sarkas --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["sarkas"]
+omit = ["*/tests/*", "*/test_*.py"]
 
 [tool.towncrier]
 package = "sarkas"
 filename = "CHANGELOG.rst"
 directory = "changelog/"
+
+[tool.tox]
+legacy_tox_ini = """
+[tox]
+min_version = 4.6.0
+env_list = py39, py310, py311, py312
+isolated_build = true
+
+[testenv]
+setenv =
+    PYTHONPATH = {toxinidir}
+deps = 
+    -r{toxinidir}/requirements_dev.txt
+commands = 
+    pytest --basetemp={envtmpdir}
+"""

@@ -1,129 +1,164 @@
-import glob
+"""
+Sarkas setup script with custom post-install commands.
+
+This setup.py is kept for backward compatibility and to handle
+custom installation steps (matplotlib and Plotly style installation).
+The main configuration is now in pyproject.toml.
+"""
+
 import os
-import setuptools
-import sys
-from configparser import ConfigParser
+import shutil
+import site
+from pathlib import Path
+
+from setuptools import setup
 from setuptools.command.develop import develop
 from setuptools.command.install import install
 
 
-# The following are needed to copy the MSU plot styles in Matplotlib folder
-# From https://stackoverflow.com/questions/20288711/post-install-script-with-python-setuptools
+def install_matplotlib_styles():
+    """
+    Install matplotlib style files to the matplotlib stylelib directory.
+    """
+    try:
+        import matplotlib as mpl
+        
+        base_library_path = Path(mpl.get_data_path()) / "stylelib"
+        style_path = Path.cwd() / "sarkas" / "plotting" / "mplstyles"
+        style_files = list(style_path.glob("*.mplstyle"))
+        
+        if not style_files:
+            print("Warning: No .mplstyle files found in sarkas/plotting/mplstyles/")
+            return
+        
+        # Copy style files to matplotlib directory
+        for style_file in style_files:
+            dest = base_library_path / style_file.name
+            shutil.copy2(style_file, dest)
+            print(f"✓ {style_file.name} installed to matplotlib stylelib")
+            
+    except ImportError:
+        print("Warning: matplotlib not found. Skipping matplotlib style installation.")
+    except Exception as e:
+        print(f"Warning: Could not install matplotlib styles: {e}")
+
+
+def install_plotly_auto_registration():
+    """
+    Install a .pth file that automatically registers Plotly templates on Python startup.
+    This is the cleanest way to make templates available without explicit imports.
+    """
+    try:
+        # Get site-packages directory
+        site_packages = Path(site.getsitepackages()[0])
+        
+        # Create .pth file that imports and registers templates
+        pth_file = site_packages / "sarkas_plotly_templates.pth"
+        
+        # Content: silently register templates on Python startup
+        pth_content = (
+            "import sys; "
+            "exec(\"try:\\n"
+            "    from sarkas.plotting.styles import register_all_styles\\n"
+            "    register_all_styles()\\n"
+            "except: pass\\n\")"
+        )
+        
+        with open(pth_file, 'w') as f:
+            f.write(pth_content)
+        
+        print(f"✓ Plotly auto-registration installed")
+        print(f"  Location: {pth_file}")
+        print(f"  Templates will be available in all Python sessions")
+        return True
+        
+    except Exception as e:
+        print(f"⚠ Could not install auto-registration: {e}")
+        print("  Plotly templates will be registered when you 'import sarkas'")
+        return False
+
+
+def verify_plotly_templates():
+    """
+    Verify that Plotly templates can be registered.
+    """
+    try:
+        from sarkas.plotting.styles import register_all_styles
+        register_all_styles()
+        
+        import plotly.io as pio
+        if "MSUstyle" in pio.templates and "PUBstyle" in pio.templates:
+            print("✓ Plotly templates verified: MSUstyle and PUBstyle")
+            return True
+        else:
+            print("⚠ Warning: Templates registration may have failed")
+            return False
+            
+    except ImportError:
+        print("⚠ Plotly not installed. Templates will be available after installing plotly.")
+        return False
+    except Exception as e:
+        print(f"⚠ Could not verify templates: {e}")
+        return False
+
+
 class PostDevelopCommand(develop):
     """Post-installation for development mode."""
-
+    
     def run(self):
         develop.run(self)
-        import matplotlib as mpl
-        import shutil
-
-        # ~ # ref  ->  matplotlib/style/core
-        BASE_LIBRARY_PATH = os.path.join(mpl.get_data_path(), "stylelib")
-        STYLE_PATH = os.path.join(os.getcwd(), os.path.join("sarkas", "mplstyles"))
-        STYLE_EXTENSION = "mplstyle"
-        style_files = glob.glob(os.path.join(STYLE_PATH, "*.%s" % (STYLE_EXTENSION)))
-
-        # Copy the plotting style in the matplotlib directory
-        for _path_file in style_files:
-            _, fname = os.path.split(_path_file)
-            dest = os.path.join(BASE_LIBRARY_PATH, fname)
-            shutil.copy(_path_file, dest)
-            print("%s style installed" % (fname))
+        print("\n" + "="*70)
+        print("Installing Sarkas custom styles...")
+        print("="*70)
+        
+        # Install matplotlib styles
+        install_matplotlib_styles()
+        
+        # Install Plotly auto-registration
+        install_plotly_auto_registration()
+        
+        # Verify templates work
+        verify_plotly_templates()
+        
+        print("="*70)
+        print("✓ Installation complete!")
+        print("\nUsage:")
+        print("  Matplotlib: plt.style.use('MSUstyle') or plt.style.use('PUBstyle')")
+        print("  Plotly:     fig.update_layout(template='MSUstyle') or 'PUBstyle'")
+        print("="*70 + "\n")
 
 
 class PostInstallCommand(install):
     """Post-installation for installation mode."""
-
+    
     def run(self):
         install.run(self)
-        import matplotlib as mpl
-        import shutil
+        print("\n" + "="*70)
+        print("Installing Sarkas custom styles...")
+        print("="*70)
+        
+        # Install matplotlib styles
+        install_matplotlib_styles()
+        
+        # Install Plotly auto-registration
+        install_plotly_auto_registration()
+        
+        # Verify templates work
+        verify_plotly_templates()
+        
+        print("="*70)
+        print("✓ Installation complete!")
+        print("\nUsage:")
+        print("  Matplotlib: plt.style.use('MSUstyle') or plt.style.use('PUBstyle')")
+        print("  Plotly:     fig.update_layout(template='MSUstyle') or 'PUBstyle'")
+        print("\nNote: Plotly templates are automatically available in all Python")
+        print("      sessions without needing to import sarkas first!")
+        print("="*70 + "\n")
 
-        # ~ # ref  ->  matplotlib/style/core
-        BASE_LIBRARY_PATH = os.path.join(mpl.get_data_path(), "stylelib")
-        STYLE_PATH = os.path.join(os.getcwd(), os.path.join("sarkas", "mplstyles"))
-        STYLE_EXTENSION = "mplstyle"
-        style_files = glob.glob(os.path.join(STYLE_PATH, "*.%s" % (STYLE_EXTENSION)))
 
-        # Copy the plotting style in the matplotlib directory
-        for _path_file in style_files:
-            _, fname = os.path.split(_path_file)
-            dest = os.path.join(BASE_LIBRARY_PATH, fname)
-            shutil.copy(_path_file, dest)
-            print("%s style installed" % (fname))
-
-
-# Package Requirements
-BASE_DEPENDENCIES = [
-    "numpy",
-    "scipy",
-    "pandas",
-    "numba>=0.50",
-    "pyfftw",
-    "pyyaml",
-    "tables",
-    "tqdm",
-    "pyfiglet==0.8.post1",
-    "jupyter",
-    "jupyterlab",
-    "notebook",
-    "matplotlib",
-    "seaborn",
-    "fmm3dpy"
-]
-
-# Get some values from the setup.cfg
-conf = ConfigParser()
-conf.read(["setup.cfg"])
-metadata = dict(conf.items("metadata"))
-
-PACKAGENAME = metadata.get("package_name")
-DESCRIPTION = metadata.get("description")
-DESCRIPTION_FILE = metadata.get("description-file")
-PACKAGEDIR = metadata.get("package_dir")
-VERSION = metadata.get("version")
-AUTHOR = metadata.get("author")
-AUTHOR_EMAIL = metadata.get("author_email")
-LICENSE = metadata.get("license")
-URL = metadata.get("url")
-__minimum_python_version__ = metadata.get("minimum_python_version")
-
-# Enforce Python version check - this is the same check as in __init__.py but
-# this one has to happen before importing ah_bootstrap.
-if sys.version_info < tuple((int(val) for val in __minimum_python_version__.split("."))):
-    sys.stderr.write("ERROR: packagename requires Python {} or later\n".format(__minimum_python_version__))
-    sys.exit(1)
-
-# Read the README file into a string
-with open(DESCRIPTION_FILE, "r") as fh:
-    long_description = fh.read()
-
-# Treat everything in scripts as a script to be installed
-scripts = [fname for fname in glob.glob(os.path.join("scripts", "*"))]
-
-setuptools.setup(
-    name=PACKAGENAME,  # Replace with your own username
-    version=VERSION,
-    author=AUTHOR,
-    author_email=AUTHOR_EMAIL,
-    description=DESCRIPTION,
-    long_description=long_description,
-    long_description_content_type="text/markdown",
-    url=URL,
-    scripts=scripts,
-    packages=setuptools.find_packages(),
-    install_requires=BASE_DEPENDENCIES,
-    # dependency_links = ["https://pypi.org/"],
-    classifiers=[
-        # Chose either "3 - Alpha", "4 - Beta" or "5 - Production/Stable" as the current state of your package
-        "Development Status :: 5 - Production/Stable",
-        "Intended Audience :: Science/Research",
-        "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
-    ],
-    python_requires=">=3.7",
-    # Call the classes above and run the post installation scripts
+# Run setup with custom commands
+# Main configuration is in pyproject.toml
+setup(
     cmdclass={
         "develop": PostDevelopCommand,
         "install": PostInstallCommand,

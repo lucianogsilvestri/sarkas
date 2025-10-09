@@ -810,7 +810,7 @@ class Potential:
             self.pot_update_params = update_params
 
         self.pot_pretty_print = pretty_print_info
-        self.pot_update_params(self, species)
+        # self.pot_update_params(self, species)
 
     def update_linked_list(self, ptcls):
         """

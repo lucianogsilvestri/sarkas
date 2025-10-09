@@ -11,11 +11,13 @@ Particles:
 Potential:
     type: Coulomb                 # potential type
     method: pppm                    # Linked-cell
-    rc: 3.411928e-08          # cut-off radius, meter
-    pppm_mesh: [32, 32, 32]
-    pppm_aliases: [2, 2, 2]
-    pppm_cao: 6
-    pppm_alpha_ewald: 1.041271e+08
+    force_error: 1.0e-5
+    estimate_parameters: True
+    # rc: 3.411928e-08          # cut-off radius, meter
+    # pppm_mesh: [32, 32, 32]
+    # pppm_aliases: [2, 2, 2]
+    # pppm_cao: 6
+    # pppm_alpha_ewald: 1.041271e+08
 
 Integrator:
     type: Verlet                  # velocity integrator type
@@ -28,8 +30,7 @@ Parameters:
     rand_seed: 3576516958
     units: cgs
     boundary_conditions: periodic
-    load_method: production_restart
-    restart_step: 50_000
+    load_method: qmc
     qmc_sequence: halton
     equilibration_steps: 5_000                      # number of timesteps for the equilibrium
     eq_dump_step: 10
@@ -43,7 +44,7 @@ Parameters:
     thermodynamics_list: ["total_energy", "temperature", "kinetic_energy", "potential_energy", "pressure", "enthalpy", "dipole_moment_energy"]
 
 IO:
-    verbose: True
+    verbose: False
     job_dir: OCP_cgs        # dir name to save data. The default is "Checkpoint"
 
 Observables:
