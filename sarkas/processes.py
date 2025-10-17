@@ -18,6 +18,9 @@ from matplotlib.colors import LogNorm
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+import h5py
+from astropy import units as u
+
 from numpy import (
     arange,
     array,
@@ -33,6 +36,7 @@ from numpy import (
     sqrt,
     zeros,
 )
+
 from os import listdir, mkdir
 from os import remove as os_remove
 from os import stat as os_stat
@@ -52,6 +56,10 @@ from .utilities.io import InputOutput, print_to_logger
 from .utilities.maths import force_error_analytic_pp, force_error_approx_pppm
 from .utilities.timing import SarkasTimer
 from .plotting.styles import get_msu_colors
+from .tools.observables import run_thermalization_tests
+
+# Get conversion factor from astropy
+K2eV = u.K.to(u.eV, equivalencies=u.temperature_energy())
 
 class Process:
     """Parent class for :class:`sarkas.process.PreProcess`, :class:`sarkas.process.Simulation`, and
@@ -693,7 +701,7 @@ class PreProcess(Process):
         self.pp_cells = arange(3, 16, dtype=int64)
         super().__init__(input_file)
 
-    def analytical_approx_pppm(self, rcuts = None, alphas=None, rlims=None, alims=None):
+    def analytical_approx_pppm(self, rcuts = None, alphas=None, rlims=None, alims=None, mesh_size = None, cao = None):
         """Calculate the total force error as given in :cite:`Dharuman2017`.
         Parameters
         ----------
@@ -705,6 +713,10 @@ class PreProcess(Process):
             Min and max cut off distances.
         alims: tuple
             Min and max Ewald parameters.
+        mesh_size: int
+            Mesh size for the PPPM part.
+        cao: int
+            Cells per box length for the PP part.
         Returns
         -------
         total_force_error: numpy.ndarray
@@ -751,6 +763,15 @@ class PreProcess(Process):
         potential_copy = self.potential.__copy__()
         # Reset the potential parameters
         potential_copy.estimate_parameters = False
+
+        if mesh_size is not None:
+            # if mesh_size is float convert to int
+            mesh_size = int(mesh_size)
+            potential_copy.pppm_mesh = array([mesh_size, mesh_size, mesh_size], dtype=int64)
+        if cao is not None:
+            cao = int(cao)
+            potential_copy.pppm_cao = array([cao, cao, cao], dtype=int64)
+
         potential_copy.setup(self.parameters, self.species)
         # potential_copy = self.potential.__deepcopy__()
         for ia, alpha in enumerate(alphas):
@@ -879,29 +900,34 @@ class PreProcess(Process):
             DeprecationWarning,
         )
         # Line Plot
-        self.make_pppm_line_plot(rcuts, alphas, chosen_alpha, chosen_rcut, total_force_error)
+        self.make_pppm_line_plot(total_force_error=total_force_error, rcuts=rcuts, alphas=alphas, chosen_alpha=chosen_alpha, chosen_rcut=chosen_rcut, chosen_mesh=self.potential.pppm_mesh[0], chosen_cao=self.potential.pppm_cao[0])
 
-    def make_pppm_line_plot(self, rcuts, alphas, chosen_alpha, chosen_rcut, total_force_error):
+    def make_pppm_line_plot(self, total_force_error, rcuts, alphas, chosen_alpha = None, chosen_rcut = None, chosen_mesh=None, chosen_cao=None):
         """
         Plot selected values of the total force error approximation.
 
         Parameters
         ----------
+        total_force_error: numpy.ndarray
+            Force error matrix.
+
         rcuts: numpy.ndarray
             Cut off distances.
 
         alphas: numpy.ndarray
             Ewald parameters.
 
-        chosen_alpha: float
+        chosen_alpha: float, optional
             Chosen Ewald parameter.
 
-        chosen_rcut: float
+        chosen_rcut: float, optional
             Chosen cut off radius.
 
-        total_force_error: numpy.ndarray
-            Force error matrix.
+        chosen_mesh: int, optional
+            Chosen mesh size.
 
+        chosen_cao: int, optional
+            Chosen Spline order per box length.
         """
         # Plot the results
         fig_path = self.pppm_plots_dir
@@ -934,11 +960,13 @@ class PreProcess(Process):
         ax[0].set(ylabel=r"$\Delta F^{approx}_{tot}$", xlabel=r"$r_c/a_{ws}$", yscale="log")
         ax[1].set(xlabel=r"$\alpha \; a_{ws}$", yscale="log")
 
-        ax[0].axvline(chosen_rcut, ls="--", c="k")
-        ax[0].axhline(self.potential.force_error, ls="--", c="k")
-        ax[1].axhline(self.potential.force_error, ls="--", c="k")
-        ax[1].axvline(chosen_alpha, ls="--", c="k")
-
+        if chosen_rcut is not None and chosen_alpha is not None:
+            ax[0].axvline(chosen_rcut, ls="--", c="k")
+            ax[1].axvline(chosen_alpha, ls="--", c="k")
+        
+        ax[0].axhline(self.potential.force_error, ls="--", c="k", label = "Actual Force Error")
+        ax[1].axhline(self.potential.force_error, ls="--", c="k", label = "Actual Force Error")
+            
         if rcuts[-1] * self.parameters.a_ws > 0.5 * self.parameters.box_lengths.min():
             ax[0].axvline(0.5 * self.parameters.box_lengths.min() / self.parameters.a_ws, c="r", label=r"$L/2$")
 
@@ -949,29 +977,33 @@ class PreProcess(Process):
         fig.suptitle(
             r"Parameters  $N = {}, \quad M = {}, \quad p = {}, \quad \kappa = {:.2f}$".format(
                 self.parameters.total_num_ptcls,
-                self.potential.pppm_mesh[0],
-                self.potential.pppm_cao[0],
+                chosen_mesh if chosen_mesh is not None else self.potential.pppm_mesh[0],
+                chosen_cao if chosen_cao is not None else self.potential.pppm_cao[0],
                 self.parameters.a_ws / self.potential.screening_length,
             )
         )
         fig.savefig(join(fig_path, "LinePlot_ForceError_" + self.io.job_id + ".png"))
 
-    def make_pppm_line_plot_interactive(self, rcuts, alphas, chosen_alpha, chosen_rcut, total_force_error):
+    def make_pppm_line_plot_interactive(self, total_force_error, rcuts, alphas, chosen_alpha = None, chosen_rcut = None, chosen_mesh = None, chosen_cao = None):
         """
         Create interactive line plots of the total force error approximation.
 
         Parameters
         ----------
+        total_force_error: numpy.ndarray
+            Force error matrix.
         rcuts: numpy.ndarray
             Cut off distances.
         alphas: numpy.ndarray
             Ewald parameters.
-        chosen_alpha: float
+        chosen_alpha: float, optional
             Chosen Ewald parameter.
-        chosen_rcut: float
+        chosen_rcut: float, optional
             Chosen cut off radius.
-        total_force_error: numpy.ndarray
-            Force error matrix.
+        chosen_mesh: int, optional
+            Chosen mesh size.
+        chosen_cao: int, optional
+            Chosen Spline order per box length.
         """
 
         # Create subplots
@@ -1028,15 +1060,17 @@ class PreProcess(Process):
             )
         
         # Add reference lines
-        fig.add_vline(x=chosen_rcut, line_dash="dash", line_color="black", 
+        if chosen_rcut is not None and chosen_alpha is not None:
+            fig.add_vline(x=chosen_rcut, line_dash="dash", line_color="black", 
                     row=1, col=1, annotation_text="chosen r<sub>c</sub>")
-        fig.add_hline(y=self.potential.force_error, line_dash="dash", line_color="black",
-                    row=1, col=1)
-        fig.add_vline(x=chosen_alpha, line_dash="dash", line_color="black",
+            fig.add_vline(x=chosen_alpha, line_dash="dash", line_color="black",
                     row=1, col=2, annotation_text="chosen α")
-        fig.add_hline(y=self.potential.force_error, line_dash="dash", line_color="black",
-                    row=1, col=2)
         
+        # fig.add_hline(y=self.potential.force_error, line_dash="dash", line_color="black",
+        #             row=1, col=1, annotation_text="Actual Force Error")
+        # fig.add_hline(y=self.potential.force_error, line_dash="dash", line_color="black",
+        #             row=1, col=2, annotation_text="Actual Force Error")
+
         # Add L/2 reference line if applicable
         if rcuts[-1] * self.parameters.a_ws > 0.5 * self.parameters.box_lengths.min():
             l_half = 0.5 * self.parameters.box_lengths.min() / self.parameters.a_ws
@@ -1051,8 +1085,8 @@ class PreProcess(Process):
         
         # Update layout with MSUstyle template
         title_text = (f"Parameters  N = {self.parameters.total_num_ptcls}, "
-                    f"M = {self.potential.pppm_mesh[0]}, "
-                    f"p = {self.potential.pppm_cao[0]}, "
+                    f"M = {chosen_mesh if chosen_mesh is not None else self.potential.pppm_mesh[0]}, "
+                    f"p = {chosen_cao if chosen_cao is not None else self.potential.pppm_cao[0]}, "
                     f"κ = {self.parameters.a_ws / self.potential.screening_length:.2f}")
         
         fig.update_layout(
@@ -1066,22 +1100,26 @@ class PreProcess(Process):
         )
         return fig
 
-    def make_pppm_color_map_interactive(self, rcuts, alphas, chosen_alpha, chosen_rcut, total_force_error):
+    def make_pppm_color_map_interactive(self, total_force_error, rcuts, alphas, chosen_alpha=None, chosen_rcut=None, chosen_mesh=None, chosen_cao=None):
         """
         Create an interactive color map of the total force error approximation.
 
         Parameters
         ----------
+        total_force_error: numpy.ndarray
+            Force error matrix.
         rcuts: numpy.ndarray
             Cut off distances.
         alphas: numpy.ndarray
             Ewald parameters.
-        chosen_alpha: float
+        chosen_alpha: float, optional
             Chosen Ewald parameter.
-        chosen_rcut: float
+        chosen_rcut: float, optional
             Chosen cut off radius.
-        total_force_error: numpy.ndarray
-            Force error matrix.
+        chosen_mesh: int, optional
+            Chosen mesh size.
+        chosen_cao: int, optional
+            Chosen Spline order per box length.
         """
         
         # Create figure
@@ -1127,18 +1165,19 @@ class PreProcess(Process):
         )
         
         # Add chosen point
-        fig.add_trace(
-            go.Scatter(
-                x=[chosen_alpha],
-                y=[chosen_rcut],
-                mode='markers',
-                marker=dict(size=15, color='black', symbol='circle', 
-                        line=dict(width=2, color='white')),
-                # name='Chosen parameters',
-                # hovertemplate='Chosen: α=%{x:.2f}, r<sub>c</sub>=%{y:.2f}<extra></extra>'
-                showlegend=False,
+        if chosen_alpha is not None and chosen_rcut is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=[chosen_alpha],
+                    y=[chosen_rcut],
+                    mode='markers',
+                    marker=dict(size=15, color='black', symbol='circle', 
+                            line=dict(width=2, color='white')),
+                    # name='Chosen parameters',
+                    # hovertemplate='Chosen: α=%{x:.2f}, r<sub>c</sub>=%{y:.2f}<extra></extra>'
+                    showlegend=False,
+                )
             )
-        )
         
         # Add L/2 reference line if applicable
         if rcuts[-1] * self.parameters.a_ws > 0.5 * self.parameters.box_lengths.min():
@@ -1148,8 +1187,8 @@ class PreProcess(Process):
         
         # Update layout with MSUstyle template
         title_text = (f"Parameters  N = {self.parameters.total_num_ptcls}, "
-                    f"M = {self.potential.pppm_mesh[0]}, "
-                    f"p = {self.potential.pppm_cao[0]}, "
+                    f"M = {chosen_mesh if chosen_mesh is not None else self.potential.pppm_mesh[0]}, "
+                    f"p = {chosen_cao if chosen_cao is not None else self.potential.pppm_cao[0]}, "
                     f"κ = {self.parameters.a_ws / self.potential.screening_length:.2f}")
         
         fig.update_layout(
@@ -1403,12 +1442,14 @@ class PreProcess(Process):
 
         chosen_alpha = self.potential.pppm_alpha_ewald * self.parameters.a_ws
         chosen_rcut = self.potential.rc / self.parameters.a_ws
+        chosen_mesh = self.potential.pppm_mesh[0]
+        chosen_cao = self.potential.pppm_cao[0]
 
         # Color Map
-        self.make_pppm_color_map(rcuts, alphas, chosen_alpha, chosen_rcut, total_force_error)
+        self.make_pppm_color_map(total_force_error=total_force_error, rcuts=rcuts, alphas=alphas, chosen_alpha=chosen_alpha, chosen_rcut=chosen_rcut, chosen_mesh=chosen_mesh, chosen_cao=chosen_cao)
 
         # Line Plot
-        self.make_pppm_line_plot(rcuts, alphas, chosen_alpha, chosen_rcut, total_force_error)
+        self.make_pppm_line_plot(total_force_error, rcuts, alphas, chosen_alpha, chosen_rcut, chosen_mesh, chosen_cao)
 
         msg = f"\nFigures can be found in {self.pppm_plots_dir}"
 
@@ -2560,3 +2601,415 @@ class Simulation(Process):
         self.io.time_stamp("Total", self.timer.time_division(time_tot - time0))
 
         self.directory_sizes()
+
+    def adaptive_thermalize(self):
+        """
+        Run adaptive thermalization using statistical tests to verify equilibration.
+        
+        This method alternates between NVT (thermostat) and NVE (microcanonical) cycles
+        until statistical tests confirm proper thermalization, or max_cycles is reached.
+        
+        The NVT steps are automatically set to production_steps // 2 for reheating,
+        while NVE steps (for testing) must be specified in the YAML configuration.
+        
+        Returns
+        -------
+        pandas.DataFrame
+            DataFrame containing thermalization statistics and test results
+            
+        Examples
+        --------
+        >>> sim = Simulation(input_file='input.yaml')
+        >>> sim.setup(read_yaml=True)
+        >>> therm_results = sim.adaptive_thermalize()
+        >>> sim.produce()
+        
+        Notes
+        -----
+        YAML configuration:
+        
+        .. code-block:: yaml
+        
+            Parameters:
+            adaptive_thermalization:
+                max_cycles: 11
+                nve_steps: 50000
+                observable: "temperature"
+                adf_significance: 0.05
+                kpss_significance: 0.01
+                max_mae: 0.01
+        """
+        # Check if adaptive thermalization is configured
+        if self.parameters.adaptive_thermalization is None:
+            raise AttributeError(
+                "Adaptive thermalization not configured. "
+                "Add 'adaptive_thermalization' section to Parameters in YAML file."
+            )
+        
+        config = self.parameters.adaptive_thermalization
+        
+        # Calculate NVT steps from production_steps (for reheating)
+        # This is the same as the original thermalization_cycle logic
+        nvt_steps = self.parameters.equilibration_steps
+        config['nvt_steps'] = nvt_steps
+        
+        msg = f"\n{'='*60}"
+        msg += f"\nAdaptive Thermalization Configuration:"
+        msg += f"\n  Observable: {config['observable']}"
+        msg += f"\n  NVE steps (testing): {config['nve_steps']}"
+        msg += f"\n  NVT steps (reheating): {nvt_steps} (auto from production_steps)"
+        msg += f"\n  Max cycles: {config['max_cycles']}"
+        msg += f"\n  Max MAE: {config['max_mae']}"
+        
+        self.io.write_to_logger(msg)
+        
+        # Initialize thermalization data storage
+        self._init_thermalization_data_dict(config)
+        
+        # Prepare simulation
+        self._prepare_adaptive_thermalization()
+        
+        # Run initial NVE cycle
+        self._run_initial_nve_cycle(config)
+        
+        # Continue with NVT-NVE cycles until thermalized
+        cycle_counter = 0
+        while (not self._thermalization_data["Verdict"][-1] and 
+            cycle_counter < config['max_cycles']):
+            self._run_nvt_thermalization_cycle()
+            self._run_nve_thermalization_cycle(config)
+            self._save_thermalization_results()
+            cycle_counter += 1
+        
+        # Finalize
+        self._finalize_adaptive_thermalization(cycle_counter, config)
+        
+        return DataFrame(self._thermalization_data)
+    
+    def _init_thermalization_data_dict(self, config):
+        """Initialize dictionary for storing thermalization results."""
+        obs_name = config['observable'].replace('_', ' ').title()
+        
+        self._thermalization_data = {
+            "Completed steps": [],
+            "NVT start": [], "NVT end": [],
+            "NVE start": [], "NVE end": [],
+            "Cycle": [],
+            f"Average {obs_name} Deviation": [],
+            f"Mean {obs_name}": [],
+            f"Std {obs_name}": [],
+            f"MAE {obs_name}": [],
+            "Linear slope": [], "Linear intercept": [],
+            "Linear rmse_fit": [], "Epsilon": [],
+            "ADF Test": [], "ADF p-value": [], "ADF Critical Value": [],
+            "KPSS Test": [], "KPSS p-value": [], "KPSS Critical Value": [],
+            "MK Test": [], "MK p-value": [], "MK Tau": [],
+            "MK h": [], "MK Trend": [],
+            "Conditions": [], "Verdict": []
+        }
+        
+        self._therm_step_counter = 0
+        self._therm_dump_counter = 0
+    
+    def _read_thermalization_observable(self, config, start_dump, end_dump):
+        """
+        Read observable data from H5MD file for thermalization check.
+        
+        Parameters
+        ----------
+        config : dict
+            Adaptive thermalization configuration
+        start_dump : int
+            Starting dump index
+        end_dump : int
+            Ending dump index
+            
+        Returns
+        -------
+        tuple
+            (time_data, observable_data) - weighted average across species
+        """
+
+        observable_name = config['observable']
+        
+        with h5py.File(self.io.h5md_filepath, 'r') as file:
+            time_data = None
+            observable_data = 0.0
+            
+            # Compute weighted average across species using concentrations
+            for sp_name, concentration in zip(
+                self.parameters.species_names,
+                self.parameters.species_concentrations
+            ):
+                path_base = f"observables/{sp_name}/{observable_name}"
+                
+                if time_data is None:
+                    time_data = file[f"{path_base}/time"][start_dump:end_dump]
+                
+                species_data = file[f"{path_base}/value"][start_dump:end_dump]
+                observable_data += concentration * species_data
+        
+        return time_data, observable_data
+    
+    def _check_thermalization_statistics(self, config, start_dump, end_dump):
+        """
+        Check if system is thermalized using statistical tests.
+        
+        Parameters
+        ----------
+        config : dict
+            Adaptive thermalization configuration
+        start_dump : int
+            Starting dump index
+        end_dump : int
+            Ending dump index
+        """
+        obs_name = config['observable'].replace('_', ' ').title()
+        
+        # Get target value
+        target_value = self.parameters.T_desired
+        
+        # Read observable data
+        time_data, observable_data = self._read_thermalization_observable(
+            config, start_dump, end_dump
+        )
+        
+        # Calculate basic statistics
+        mean_obs = observable_data.mean()
+        std_obs = observable_data.std()
+        relative_deviation = abs(mean_obs - target_value) / target_value
+        mae = abs(observable_data - target_value).mean() / target_value
+        
+        self._thermalization_data[f"Average {obs_name} Deviation"].append(relative_deviation)
+        self._thermalization_data[f"Mean {obs_name}"].append(mean_obs)
+        self._thermalization_data[f"Std {obs_name}"].append(std_obs)
+        self._thermalization_data[f"MAE {obs_name}"].append(mae)
+        
+        # Apply conversion for temperature
+        if config['observable'] == 'temperature':
+            observable_converted = observable_data #* K2eV
+        else:
+            observable_converted = observable_data
+        
+        # Normalize time
+        time_normalized = time_data / self.parameters.total_plasma_frequency
+        
+        # Run statistical tests
+        test_results = run_thermalization_tests(
+            observable_converted, 
+            time_normalized,
+            adf_significance=config.get('adf_significance', 0.05),
+            kpss_significance=config.get('kpss_significance', 0.05)
+        )
+        
+        # Check MAE condition
+        mae_condition = mae < config.get('max_mae', 0.01)
+        
+        # Store results
+        self._thermalization_data["Linear intercept"].append(test_results['intercept'])
+        self._thermalization_data["Linear slope"].append(test_results['slope'])
+        self._thermalization_data["Linear rmse_fit"].append(test_results['rmse'])
+        self._thermalization_data["Epsilon"].append(test_results['epsilon'])
+        
+        self._thermalization_data["ADF Test"].append(test_results['adf']['statistic'])
+        self._thermalization_data["ADF p-value"].append(test_results['adf']['pvalue'])
+        self._thermalization_data["ADF Critical Value"].append(
+            test_results['adf']['critical_value']
+        )
+        
+        self._thermalization_data["KPSS Test"].append(test_results['kpss']['statistic'])
+        self._thermalization_data["KPSS p-value"].append(test_results['kpss']['pvalue'])
+        self._thermalization_data["KPSS Critical Value"].append(
+            test_results['kpss']['critical_value']
+        )
+        
+        self._thermalization_data["MK Test"].append(test_results['mann_kendall']['s'])
+        self._thermalization_data["MK p-value"].append(test_results['mann_kendall']['pvalue'])
+        self._thermalization_data["MK Tau"].append(test_results['mann_kendall']['tau'])
+        self._thermalization_data["MK h"].append(test_results['mann_kendall']['h'])
+        self._thermalization_data["MK Trend"].append(test_results['mann_kendall']['trend'])
+        
+        # Overall verdict: all statistical tests + MAE condition
+        all_conditions = test_results['all_conditions'] + [mae_condition]
+        self._thermalization_data["Conditions"].append(all_conditions)
+        self._thermalization_data["Verdict"].append(all(all_conditions))
+    
+    def _prepare_adaptive_thermalization(self):
+        """Prepare simulation for adaptive thermalization."""
+        self.io.open_h5md_file(phase="equilibration")
+        self.potential.measure = True
+
+    
+    def _resize_thermalization_h5md(self, new_steps):
+        """Resize H5MD file for additional thermalization steps."""
+        self.io.close_h5md_file()
+        self.parameters.equilibration_steps = new_steps
+        self.io.setup_checkpoint(
+            self.parameters,
+            self.particles,
+            phase="equilibration"
+        )
+        self.io.open_h5md_file(phase="equilibration")
+        self.potential.measure = True
+    
+    def _run_initial_nve_cycle(self, config):
+        """Run initial NVE cycle for thermalization."""
+        nve_steps = config['nve_steps']
+        nve_dumps = nve_steps // self.parameters.eq_dump_step
+        
+        if self.io.verbose:
+            print(f"\nRunning initial NVE cycle")
+            print(f"  Steps: {nve_steps}, Dumps: {nve_dumps}")
+        
+        self._thermalization_data["NVT start"].append(0)
+        self._thermalization_data["NVT end"].append(0)
+        self._thermalization_data["NVE start"].append(0)
+        self._thermalization_data["NVE end"].append(nve_dumps)
+        self._thermalization_data["Cycle"].append(0)
+        
+        # Update integrator to NVE
+        self.integrator.update = self.integrator.type_setup(
+            self.integrator.production_type
+        )
+        
+        # Run NVE
+        self.evolve(
+            "equilibration", False,
+            self._therm_step_counter, nve_steps,
+            self.parameters.eq_dump_step
+        )
+        
+        self.particles.remove_drift()
+        
+        # Check thermalization
+        self._check_thermalization_statistics(
+            config, 0, nve_dumps
+        )
+        
+        # Update counters
+        self._therm_step_counter += nve_steps
+        self._therm_dump_counter = nve_dumps
+        self._thermalization_data["Completed steps"].append(self._therm_step_counter)
+        
+        # Save results
+        self._save_thermalization_results()
+    
+    def _run_nvt_thermalization_cycle(self):
+        """Run NVT (thermostat) cycle."""
+
+        nvt_steps = self.parameters.equilibration_steps
+        
+        cycle_num = len([c for c in self._thermalization_data["Cycle"] if c > 0]) + 1
+        
+        if self.io.verbose:
+            print(f"\nCycle {cycle_num}: Running NVT (thermostat)")
+            print(f"  Steps: {nvt_steps} (from production_steps // 2)")
+            print(f"  Total equilibration steps so far: {self._therm_step_counter}")
+        
+        # Record starting dump index
+        self._thermalization_data["NVT start"].append(
+            self._therm_step_counter // self.parameters.eq_dump_step
+        )
+        
+        # Resize H5MD file for additional NVT steps
+        new_total_steps = self._therm_step_counter + nvt_steps
+        self._resize_thermalization_h5md(new_total_steps)
+        
+        # Update integrator to NVT
+        self.integrator.update = self.integrator.type_setup(
+            self.integrator.equilibration_type
+        )
+        
+        # Run NVT
+        self.evolve(
+            "equilibration", self.integrator.thermalization,
+            self._therm_step_counter,
+            new_total_steps,
+            self.parameters.eq_dump_step
+        )
+        
+        self.particles.remove_drift()
+        
+        # Update counters
+        self._therm_step_counter = new_total_steps
+        self._therm_dump_counter = new_total_steps // self.parameters.eq_dump_step
+        self._thermalization_data["NVT end"].append(self._therm_dump_counter)
+        
+    def _run_nve_thermalization_cycle(self, config):
+        """Run NVE (microcanonical) cycle."""
+        nve_steps = config['nve_steps']
+        
+        cycle_num = len([c for c in self._thermalization_data["Cycle"] if c > 0]) + 1
+        
+        if self.io.verbose:
+            print(f"Cycle {cycle_num}: Running NVE")
+            print(f"  Steps: {nve_steps}")
+        
+        self._thermalization_data["NVE start"].append(self._therm_dump_counter + 1)
+        
+        end_nve_steps = self._therm_step_counter + nve_steps
+        
+        # Update integrator to NVE
+        self.integrator.update = self.integrator.type_setup(
+            self.integrator.production_type
+        )
+        
+        # Resize H5MD file
+        self._resize_thermalization_h5md(end_nve_steps)
+        
+        # Run NVE
+        self.evolve(
+            "equilibration", False,
+            self._therm_step_counter, end_nve_steps,
+            self.parameters.eq_dump_step
+        )
+        
+        self.particles.remove_drift()
+        
+        # Calculate ending dump index
+        end_nve_dumps = end_nve_steps // self.parameters.eq_dump_step
+        self._thermalization_data["NVE end"].append(end_nve_dumps)
+        
+        # Check thermalization
+        self._check_thermalization_statistics(
+            config, self._therm_dump_counter + 1, end_nve_dumps
+        )
+        
+        # Update counters
+        self._therm_step_counter += nve_steps
+        self._thermalization_data["Completed steps"].append(self._therm_step_counter)
+        
+        # Increment cycle counter
+        cycle_num = len([c for c in self._thermalization_data["Cycle"] if c > 0]) + 1
+        self._thermalization_data["Cycle"].append(cycle_num)
+    
+    def _save_thermalization_results(self):
+        """Save thermalization results to CSV."""
+        output_path = join(
+            self.parameters.directory_tree["simulation"]["path"],
+            f"AdaptiveThermalizationData.csv"
+        )
+        DataFrame(self._thermalization_data).to_csv(output_path, index=False)
+
+    def _finalize_adaptive_thermalization(self, cycle_counter, config):
+        """Finalize adaptive thermalization."""
+        time_eq = self.timer.stop()
+        self.io.close_h5md_file()
+        self.io.time_stamp("Equilibration", self.timer.time_division(time_eq))
+        obs_name = config['observable'].replace('_', ' ').title()
+        if self._thermalization_data["Verdict"][-1]:
+            msg = f"\n{'='*60}"
+            msg += f"\n  System thermalized after {cycle_counter} cycles"
+            msg += f"\n  Observable: {obs_name}"
+            msg += f"\n  Final MAE: {self._thermalization_data[f'MAE {obs_name}'][-1]:.6f}"
+            msg += f"\n{'='*60}\n"
+            self.io.write_to_logger(msg)
+        else:
+            msg = f"\n{'='*60}"
+            msg += f"\n  Maximum cycles ({config['max_cycles']}) reached"
+            msg += f"\n  Observable: {obs_name}"
+            msg += f"\n  Final MAE: {self._thermalization_data[f'MAE {obs_name}'][-1]:.6f}"
+            msg += f"\n  Consider adjusting parameters or running more cycles"
+            msg += f"\n{'='*60}\n"
+            self.io.write_to_logger(msg)
+    

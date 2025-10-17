@@ -45,6 +45,8 @@ from numpy import (
     where,
     zeros,
 )
+
+from numpy.linalg import lstsq
 from numpy.polynomial import hermite_e
 from numpy.random import default_rng
 from os import listdir, mkdir
@@ -61,7 +63,10 @@ from pandas import (
     Series,
     to_numeric,
 )
+
+import pymannkendall as mk
 import h5py
+
 from pickle import dump
 from pickle import load as pickle_load
 from scipy.fft import fft, fftfreq, fftshift
@@ -7774,3 +7779,126 @@ def check_stationarity(data):
     kpss_summary = kpss_test.summary().as_text()
     print("\nKPSS Test Summary:")
     print(kpss_summary)
+
+@njit
+def remove_linear_trend(y, time_array):
+    """
+    Remove linear trend from a time series using simple linear regression.
+    
+    Parameters
+    ----------
+    y : numpy.ndarray
+        Time series data
+    time_array : numpy.ndarray
+        Time points corresponding to the measurements
+        
+    Returns
+    -------
+    detrended : numpy.ndarray
+        Time series with linear trend removed
+    intercept : float
+        Y-intercept of the linear fit
+    slope : float
+        Slope of the linear fit
+    """
+    n = len(y)   
+    X = zeros((n, 2))
+    X[:, 0] = 1.0  # Constant term
+    X[:, 1] = time_array  # Time variable
+    
+    coeffs = lstsq(X, y)[0]
+    intercept = coeffs[0]
+    slope = coeffs[1]
+    trend = intercept + slope * time_array
+    detrended = y - trend
+    
+    return detrended, intercept, slope
+
+
+def run_thermalization_tests(data, time_array, adf_significance=0.05, kpss_significance=0.05):
+    """
+    Run comprehensive stationarity tests for thermalization verification.
+    
+    This function performs trend removal followed by ADF, KPSS, and Mann-Kendall tests
+    to determine if a system is properly thermalized.
+    
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Raw time series data (e.g., temperature, pressure)
+    time_array : numpy.ndarray
+        Time points corresponding to the measurements
+    adf_significance : float, optional
+        Significance level for ADF test. Default is 0.05.
+    kpss_significance : float, optional
+        Significance level for KPSS test. Default is 0.01.
+        
+    Returns
+    -------
+    dict
+        Dictionary containing:
+        - 'detrended': detrended time series
+        - 'intercept': linear fit intercept
+        - 'slope': linear fit slope
+        - 'rmse': root mean squared error of linear fit
+        - 'epsilon': variance of first differences
+        - 'adf': ADF test results
+        - 'kpss': KPSS test results
+        - 'mann_kendall': Mann-Kendall test results
+        - 'all_conditions': [adf_passed, kpss_passed, mk_passed]
+        - 'verdict': boolean indicating if all tests passed
+    """
+    # Remove linear trend
+    detrended, intercept, slope = remove_linear_trend(data, time_array)
+    
+    # Calculate RMSE and variance of first differences
+    linear_fit = intercept + slope * time_array
+    mse_fit = ((data - linear_fit) ** 2).sum() / len(data)
+    rmse = sqrt(mse_fit)
+    
+    delta_yt = detrended[1:] - detrended[:-1]
+    epsilon = delta_yt.var(ddof=1)
+    
+    # ADF Test
+    adftest = ADF(detrended, trend='c')
+    adf_passed = (adftest.pvalue < adf_significance and 
+                  adftest.stat < adftest.critical_values["5%"])
+    
+    # KPSS Test
+    kpsstest = KPSS(detrended, trend='c')
+    kpss_passed = (kpsstest.pvalue > kpss_significance and 
+                   kpsstest.stat < kpsstest.critical_values["5%"])
+    
+    # Mann-Kendall Test
+    mk_test = mk.original_test(data)
+    mk_passed = bool(~mk_test.h)  # Pass if no trend detected
+    
+    return {
+        'detrended': detrended,
+        'intercept': intercept,
+        'slope': slope,
+        'rmse': rmse,
+        'epsilon': epsilon,
+        'adf': {
+            'statistic': adftest.stat,
+            'pvalue': adftest.pvalue,
+            'critical_value': adftest.critical_values["5%"],
+            'passed': adf_passed
+        },
+        'kpss': {
+            'statistic': kpsstest.stat,
+            'pvalue': kpsstest.pvalue,
+            'critical_value': kpsstest.critical_values["5%"],
+            'passed': kpss_passed
+        },
+        'mann_kendall': {
+            's': mk_test.s,
+            'pvalue': mk_test.p,
+            'tau': mk_test.Tau,
+            'h': mk_test.h,
+            'trend': mk_test.trend,
+            'passed': mk_passed
+        },
+        'all_conditions': [adf_passed, kpss_passed, mk_passed],
+        'verdict': all([adf_passed, kpss_passed, mk_passed])
+    }

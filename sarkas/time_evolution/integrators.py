@@ -144,6 +144,51 @@ class Integrator:
         """
         self.__dict__.update(input_dict)
 
+        # Parse adaptive thermalization configuration if present
+        if "adaptive_thermalization" in input_dict.keys():
+            self.adaptive_thermalization = self._parse_adaptive_thermalization(
+                input_dict["adaptive_thermalization"]
+            )
+
+    def _parse_adaptive_thermalization(self, config_dict):
+        """
+        Parse adaptive thermalization configuration from YAML.
+        
+        Parameters
+        ----------
+        config_dict : dict
+            Dictionary with adaptive thermalization parameters
+            
+        Returns
+        -------
+        dict
+            Validated configuration dictionary
+        """
+        default_config = {
+            'max_cycles': 11,
+            'nve_steps': None,  # Required
+            'observable': 'temperature',
+            'target_value': None,
+            'adf_significance': 0.05,
+            'kpss_significance': 0.01,
+            'max_mae': 0.01
+        }
+        
+        config = default_config.copy()
+        config.update(config_dict)
+        
+        # Validation
+        if config['nve_steps'] is None:
+            raise ValueError("nve_steps must be specified in adaptive_thermalization config")
+        
+        if config['max_cycles'] < 1:
+            raise ValueError("max_cycles must be >= 1")
+        if config['nve_steps'] < 1000:
+            raise ValueError("nve_steps should be >= 1000 for meaningful statistics")
+        
+        return config
+    
+    
     def copy_params(self, params):
         """
         Copy necessary parameters.

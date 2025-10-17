@@ -1,0 +1,63 @@
+# keywords: YOCP, Yukawa, PP, mks, random_no_reject
+Particles:
+- Species:
+    name: Al
+    number_density: 6.03e+22
+    mass: 4.513068464544e-23
+    Z: 3.0
+    temperature_eV: 1.0
+    num: 8192
+
+Potential:
+  type: Yukawa
+  method: PP
+  rc: 9.478644e-08
+  screening_length_type: thomas-fermi
+  electron_temperature_eV: 1.0
+  
+Integrator:
+  equilibration_type: langevin
+  production_type: verlet
+  dt: 1.6790565e-16
+  # thermostat_type: Berendsen                         # thermostat type
+  # thermalization_timestep: 0
+  # berendsen_tau: 11
+  langevin_type: BBK
+  langevin_gamma: 6.856783e+13
+  thermalization: no
+
+Parameters:
+  rand_seed: 3576516958
+  units: cgs
+  boundary_conditions: periodic
+  load_method: qmc
+  qmc_sequence: sobol
+  equilibration_steps: 1000
+  production_steps: 20_000
+  eq_dump_step: 2
+  prod_dump_step: 2
+  # Adaptive thermalization configuration
+  adaptive_thermalization:
+    max_cycles: 11
+    nve_steps: 1000
+    observable: "temperature"
+    target_value: 1.0
+    adf_significance: 0.05
+    kpss_significance: 0.01
+    max_mae: 0.01
+  # (OPTIONAL) This is a list of observable that you want to calculate during the simulation.
+  observables_list: ["Pressure Tensor", "Heat Flux"]
+  # (OPTIONAL) The observables_arrays_list is a list of Particles arrays that will be saved during the simulation
+  observables_arrays_list: ["species_pressure_tensor",  "species_heat_flux"]  
+  # This is a list of thermodynamics that you want to calculate during the simulation.
+  thermodynamics_list: ["total_energy", "temperature", "kinetic_energy", "potential_energy", "pressure", "enthalpy" ]
+
+IO:
+  verbose: True
+  job_dir: Al_AdaptiveTherm
+
+Observables:
+- Thermodynamics:
+    phase: production
+- RadialDistributionFunction:
+    no_bins: 500

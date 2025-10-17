@@ -702,6 +702,51 @@ class Parameters:
         """
         self.__dict__.update(input_dict)
 
+        # Parse adaptive thermalization if present
+        if "adaptive_thermalization" in input_dict.keys():
+            self.adaptive_thermalization = self._parse_adaptive_thermalization(
+                input_dict["adaptive_thermalization"]
+            )
+        else:
+            self.adaptive_thermalization = None
+    
+    def _parse_adaptive_thermalization(self, config_dict):
+        """
+        Parse adaptive thermalization configuration.
+        
+        Parameters
+        ----------
+        config_dict : dict
+            Dictionary with adaptive thermalization parameters
+            
+        Returns
+        -------
+        dict
+            Validated configuration dictionary
+        """
+        default_config = {
+            'max_cycles': 11,
+            'nve_steps': self.equilibration_steps,  # Required
+            'observable': 'temperature',
+            'target_value': None,  # Required
+            'adf_significance': 0.05,
+            'kpss_significance': 0.01,
+            'max_mae': 0.01
+        }
+        
+        config = default_config.copy()
+        config.update(config_dict)
+        
+        # Validation
+        if config['nve_steps'] is None:
+            raise ValueError("nve_steps must be specified in adaptive_thermalization config")
+        
+        if config['max_cycles'] < 1:
+            raise ValueError("max_cycles must be >= 1")
+        
+        
+        return config
+    
     def pretty_print(self):
         """
         Print simulation parameters in a user-friendly way.
