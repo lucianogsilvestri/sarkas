@@ -1156,10 +1156,6 @@ class Observable:
                 self.observable_filenames["simulation_hdf"]["path"], mode="r", index_col=False
             )
             if len(self.simulation_dataframe) != self.no_dumps:
-                print(
-                    f"\nData file {self.observable_filenames['simulation_hdf']['path']} has a different number of timesteps than the simulation. \n"
-                    f"Data will be reloaded from the snapshots."
-                )
                 self.read_data_from_dumps()
                 self.save_simulation_hdf()
         except FileNotFoundError:

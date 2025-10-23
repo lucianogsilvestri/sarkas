@@ -18,7 +18,7 @@ Potential:
 Integrator:
   equilibration_type: langevin
   production_type: verlet
-  dt: 1.6790565e-16
+  dt: 8.3952825e-17
   # thermostat_type: Berendsen                         # thermostat type
   # thermalization_timestep: 0
   # berendsen_tau: 11
@@ -32,8 +32,8 @@ Parameters:
   boundary_conditions: periodic
   load_method: qmc
   qmc_sequence: sobol
-  equilibration_steps: 1000
-  production_steps: 20_000
+  equilibration_steps: 2000
+  production_steps: 50_000
   eq_dump_step: 2
   prod_dump_step: 2
   # Adaptive thermalization configuration
