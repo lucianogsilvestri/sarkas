@@ -937,6 +937,14 @@ class PreProcess(Process):
         # Indexes is quantiles of the alphas and rcuts arrays
         r_indexes = quantile(arange(len(rcuts)), [0.3, 0.4, 0.5, 0.6, 0.7], method="nearest").astype(int)
         a_indexes = quantile(arange(len(alphas)), [0.3, 0.4, 0.5, 0.6, 0.7], method="nearest").astype(int)
+
+        if chosen_alpha is not None:
+            a_index = (abs(alphas - chosen_alpha)).argmin()
+            a_indexes[2] = a_index
+        if chosen_rcut is not None:
+            r_index = (abs(rcuts - chosen_rcut)).argmin()
+            r_indexes[2] = r_index
+
         for lns, i, j in zip(linestyles, r_indexes, a_indexes):
             min_rc = rcuts[total_force_error[j, :].argmin()]
             rc_lbl = (
@@ -1022,6 +1030,13 @@ class PreProcess(Process):
         r_indexes = quantile(arange(len(rcuts)), [0.3, 0.4, 0.5, 0.6, 0.7], method="nearest").astype(int)
         a_indexes = quantile(arange(len(alphas)), [0.3, 0.4, 0.5, 0.6, 0.7], method="nearest").astype(int)
         
+        if chosen_alpha is not None:
+            a_index = (abs(alphas - chosen_alpha)).argmin()
+            a_indexes[2] = a_index
+        if chosen_rcut is not None:
+            r_index = (abs(rcuts - chosen_rcut)).argmin()
+            r_indexes[2] = r_index
+            
         # Left plot: Force error vs r_c for different alpha values
         for idx, (i, j, color, dash) in enumerate(zip(r_indexes, a_indexes, msu_colors[:5], dash_styles)):
             rc_lbl = f"αa<sub>ws</sub> = {alphas[j]:.2f}" # min @ r<sub>c</sub> = {min_rc:.2f} a<sub>ws</sub>"
@@ -1203,12 +1218,19 @@ class PreProcess(Process):
 
         return fig
         
-    def make_pppm_color_map(self, rcuts, alphas, chosen_alpha, chosen_rcut, total_force_error):
+    def make_pppm_color_map(self, 
+                            total_force_error, 
+                            rcuts, alphas, 
+                            chosen_alpha = None,
+                            chosen_rcut = None, chosen_mesh = None, chosen_cao = None):
         """
         Plot a color map of the total force error approximation.
 
         Parameters
         ----------
+        total_force_error: numpy.ndarray
+            Force error matrix.
+
         rcuts: numpy.ndarray
             Cut off distances.
 
@@ -1220,24 +1242,32 @@ class PreProcess(Process):
 
         chosen_rcut: float
             Chosen cut off radius.
-
-        total_force_error: numpy.ndarray
-            Force error matrix.
+        chosen_mesh: int
+            Chosen mesh size.
+        chosen_cao: int
+            Chosen Spline order per box length.
         """
         # Plot the results
         fig_path = self.pppm_plots_dir
 
+        if chosen_rcut is None:
+            chosen_rcut = self.potential.rc / self.potential.a_ws
+        if chosen_alpha is None:
+            chosen_alpha = self.potential.pppm_alpha_ewald * self.potential.a_ws
+        if chosen_mesh is None:
+            chosen_mesh = self.potential.pppm_mesh[0]
+        if chosen_cao is None:
+            chosen_cao = self.potential.pppm_cao[0]
+
         r_mesh, a_mesh = meshgrid(rcuts, alphas)
         fig, ax = plt.subplots(1, 1, figsize=(10, 7))
-        # if total_force_error.min() == 0.0:
-        #     minv = 1e-120
-        # else:
-        #     minv = total_force_error.min()
-        # total_force_error[total_force_error == 0.0] = minv
+
         CS = ax.pcolormesh(a_mesh, r_mesh, total_force_error, shading="auto", norm=LogNorm())
         CS2 = ax.contour(a_mesh, r_mesh, total_force_error, levels=10, colors="w", norm=LogNorm())
         ax.clabel(CS2, fmt="%1.0e", colors="w")
+        
         ax.scatter(chosen_alpha, chosen_rcut, s=200, c="k")
+        
         if rcuts[-1] * self.parameters.a_ws > 0.5 * self.parameters.box_lengths.min():
             ax.axhline(0.5 * self.parameters.box_lengths.min() / self.parameters.a_ws, c="r", label=r"$L/2$")
         # ax.tick_parameters(labelsize=fsz)
@@ -1246,8 +1276,8 @@ class PreProcess(Process):
         ax.set_title(
             r"Parameters  $N = {}, \quad M = {}, \quad p = {}, \quad \kappa = {:.2f}$".format(
                 self.parameters.total_num_ptcls,
-                self.potential.pppm_mesh[0],
-                self.potential.pppm_cao[0],
+                chosen_mesh,
+                chosen_cao,
                 self.parameters.a_ws / self.potential.screening_length,
             )
         )
@@ -1446,7 +1476,10 @@ class PreProcess(Process):
         chosen_cao = self.potential.pppm_cao[0]
 
         # Color Map
-        self.make_pppm_color_map(total_force_error=total_force_error, rcuts=rcuts, alphas=alphas, chosen_alpha=chosen_alpha, chosen_rcut=chosen_rcut, chosen_mesh=chosen_mesh, chosen_cao=chosen_cao)
+        self.make_pppm_color_map(
+            total_force_error=total_force_error,
+            rcuts=rcuts, alphas=alphas,
+            chosen_alpha=chosen_alpha, chosen_rcut=chosen_rcut, chosen_mesh=chosen_mesh, chosen_cao=chosen_cao)
 
         # Line Plot
         self.make_pppm_line_plot(total_force_error, rcuts, alphas, chosen_alpha, chosen_rcut, chosen_mesh, chosen_cao)
@@ -1917,7 +1950,7 @@ class PreProcess(Process):
         
         # Define parameter bounds
         cao_bounds = (1, 7)
-        mesh_bounds = (8, 128)
+        mesh_bounds = (8, 256)
         alpha_factor_bounds = (0.2, 0.5)  # Alpha typically = factor * mesh / box_length
         rc_factor_bounds = (0.4, 2.0)  # rc typically = box_length / (factor * mesh)
         
@@ -1959,14 +1992,13 @@ class PreProcess(Process):
         
         # Find best CAO based on error/time tradeoff
         for result in cao_results:
-            result['score'] = result['pm_error'] * (result['green_time'] + result['pm_time'])
+            result['score'] = result['pm_error'] * result['pm_time']
         
         best_cao_result = min(cao_results, key=lambda x: x['score'])
         best_cao = best_cao_result['cao']
         
         msg = f"\nSelected optimal CAO: {best_cao}"
-        if self.parameters.verbose:
-            print(msg)
+    
         self.io.write_to_logger(msg)
         
         # Now define the objective function for the optimizer

@@ -1916,13 +1916,9 @@ class Observable:
         if plasma_periods_shift is not None:
             self.plasma_periods_shift = plasma_periods_shift
 
-        if (
-            self.independent_slices
-            and self.timesteps_shift is not None
-            or self.independent_slices
-            and self.plasma_periods_shift is not None
-        ):
-            raise AttributeError("timesteps_shift and plasma_periods_shift must be None for independent slices.")
+        # if self.independent_slices and self.timesteps_shift is not None:
+        #     if self.independent_slices and self.plasma_periods_shift is not None:
+        #         raise AttributeError("timesteps_shift and plasma_periods_shift must be None for independent slices.")
 
         if self.independent_slices:
             # In the case of independent slices the shift is equal to the number of steps per slice.

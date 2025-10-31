@@ -667,10 +667,12 @@ def update_params(potential, species):
             else:  # i-i interaction
                 # Use ion temperature in i-i interactions only
                 lambda_deB = sqrt(deBroglie_const / (reduced * total_ion_temperature))
-                potential.matrix[i, j, 5] = 0.0   # No diffraction term for i-i interactions
+                
                 potential.matrix[i, j, 2] = 0.0   # No Pauli term for i-i interactions
                 potential.matrix[i, j, 3] = 0.0   # No Pauli term for i-i interactions
                 potential.matrix[i, j, 4] = 0.0   # No Pauli term for i-i interactions
+
+                potential.matrix[i, j, 5] = 0.0   # No diffraction term for i-i interactions
 
             potential.matrix[i, j, 0] = q1 * q2 / potential.fourpie0
             potential.matrix[i, j, 1] = sqrt(TWOPI) / lambda_deB if potential.qsp_type == "kelbg" else TWOPI / lambda_deB

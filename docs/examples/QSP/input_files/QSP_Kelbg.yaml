@@ -4,7 +4,7 @@ Particles:
         name: e
         number_density: 5.979e+23       # N/cc 
         mass: 9.1093837015e-28        # g, electron mass
-        num: 5000
+        num: 8192
         Z: -1.0                       # degree of ionization
         temperature_eV: 172.0
 
@@ -12,7 +12,7 @@ Particles:
         name: p
         number_density: 5.979e+23       # N/cc  = rho 10.0 [g/cc]
         mass: 1.67262192369e-24       # g
-        num: 5000                     # total number of particles of ion1
+        num: 8192                     # total number of particles of ion1
         Z: 1.0                        # degree of ionization
         temperature_eV: 172.0
 
@@ -20,29 +20,32 @@ Potential:
     type: QSP                         # potential type
     qsp_type: Kelbg
     method: pppm
-    force_error: 1.0e-6
-    estimate_parameters: True
-    # rc: 2.8119964e-08                  # cut-off radius, cm
-    # pppm_mesh: [64,64,64]
-    # pppm_aliases: [3,3,3]
-    # pppm_cao: 6
-    # pppm_alpha_ewald: 1.401516e+08 #9.466103e+07
+    # force_error: 1.0e-6
+    # estimate_parameters: True
+    rc: 3.325548e-08 # 2.8119964e-08                  # cut-off radius, cm
+    pppm_mesh: [64,64,64]
+    pppm_aliases: [3,3,3]
+    pppm_cao: 6
+    pppm_alpha_ewald: 1.077928e+08  # 1.401516e+08 #9.466103e+07
 
 Integrator:
     type: verlet
-    dt: 7.0208e-20                    # sec
-    equilibration_steps: 100000
+    dt: 3.5e-19                    # sec
+    equilibration_steps: 4_000
     eq_dump_step: 10
-    production_steps: 400000
+    production_steps: 2_000
     prod_dump_step: 6
+    # equilibration_phase: False
     thermostat_type: Berendsen       # thermostat type
     thermalization_timestep: 500     # time step at which the thermostat is applied
-    berendsen_tau: 5.0               # relaxation constant for the thermostat
+    berendsen_tau: 50.0               # relaxation constant for the thermostat
 
 Parameters:
     units: cgs                        # units
-    load_method: random_no_reject
-    # load_rejection_radius: 10.0e-10
+    load_method: qmc # production_restart
+    qmc_sequence: sobol
+    restart_step: 0
+    load_rejection_radius: 10.0e-10
     boundary_conditions: periodic
 
 IO:
