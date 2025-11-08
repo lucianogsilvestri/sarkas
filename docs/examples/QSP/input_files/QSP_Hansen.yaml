@@ -20,22 +20,24 @@ Potential:
     type: QSP                         # potential type
     qsp_type: Deutsch
     method: pppm
-    rc: 2.8119964e-08                  # cut-off radius, cm
-    pppm_mesh: [64,64,64]
-    pppm_aliases: [3,3,3]
-    pppm_cao: 6
-    pppm_alpha_ewald: 1.401516e+08 #9.466103e+07
+    force_error: 1.0e-6
+    estimate_parameters: True
+    # rc: 2.8119964e-08                  # cut-off radius, cm
+    # pppm_mesh: [64,64,64]
+    # pppm_aliases: [3,3,3]
+    # pppm_cao: 6
+    # pppm_alpha_ewald: 1.401516e+08 #9.466103e+07
 
 Integrator:
     type: verlet
-    dt: 7.0208e-20                    # sec
-    equilibration_steps: 100000
+    dt: 4.167e-19                    # sec
+    equilibration_steps: 10_000
     eq_dump_step: 10
-    production_steps: 400000
-    prod_dump_step: 6
+    production_steps: 73_000
+    prod_dump_step: 10
     thermostat_type: Berendsen       # thermostat type
     thermalization_timestep: 500     # time step at which the thermostat is applied
-    berendsen_tau: 5.0               # relaxation constant for the thermostat
+    berendsen_tau: 45.87               # relaxation constant for the thermostat
 
 Parameters:
     units: cgs                        # units
@@ -45,7 +47,7 @@ Parameters:
 
 IO:
     verbose: True
-    job_dir: qsp_cgs        # dir name to save data.
+    job_dir: qsp_hansen        # dir name to save data.
 
 Observables:
   - Thermodynamics:

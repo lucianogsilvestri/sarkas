@@ -2976,6 +2976,7 @@ class ElectricCurrent(Observable):
         super().__init__()
         self.__name__ = "ec"
         self.__long_name__ = "Electric Current"
+        self.__hdf_key__ = "electric_current"
         self.acf_observable = True
 
     @setup_doc
@@ -3049,9 +3050,7 @@ class ElectricCurrent(Observable):
         The method uses a progress bar to indicate the progress of reading data from the dump files.
 
         """
-        start_dump_no = 0
-        end_dump_no = self.no_steps + 1  # +1 because range() does not include the last number
-        step = self.dump_step
+
         # Create the dataframe columns
         columns = [f"{self.__long_name__}_Species_Time"]
         cols = [f"{self.__long_name__}_{sp}_{axis}" for sp in self.species_names for axis in self.dim_labels]
@@ -3060,28 +3059,104 @@ class ElectricCurrent(Observable):
         data = zeros((self.no_dumps, len(columns)))
         # Parse the particles from the dump files
         # Recall that species_electric_current has shape (self.num_species, self.dimensions)
-        for it, dump in enumerate(
-            tqdm(
-                range(start_dump_no, end_dump_no, step),
-                desc=f"\nRead data from dumps",
-                disable=not self.verbose,
-                position=0,
-                leave=False,
-            )
-        ):
-            with h5py.File(self.h5md_filepath) as h5file:
-                species_current = h5file["observables/species_electric_current"]["value"]
-                time_ = h5file["observables/species_electric_current"]["time"]
+        # Check that the h5md file contains the required observable
+        with h5py.File(self.h5md_filepath, 'r') as h5file:
+            for isp, sp in enumerate(self.species_names):
+                group_name = f"observables/{sp}/{self.__hdf_key__}"
+                if group_name not in h5file:
+                    flag = False
+                    print(f"{self.__long_name__} data for species {sp} not found in H5MD file.")
+                else:
+                    print(f"{self.__long_name__} data for species {sp} found in H5MD file.")
+                    flag = True
+                    # Check for correct shape
+                    species_current = h5file[group_name]["value"]
+                    if species_current.shape[1] != self.dimensions:
+                        flag = False
+                    if species_current.shape[0] != self.no_dumps:
+                        flag = False
+        if not flag:
+            print(f"{self.__long_name__} data not found in H5MD file. Calculating from dump files...")
+            self.calculate_observable_from_dumps()
+        print(f"Reading {self.__long_name__} data from H5MD file: {self.h5md_filepath}")
+        with h5py.File(self.h5md_filepath, mode = 'r') as h5file:
+            for isp, sp in enumerate(self.species_names):
+                group_name = f"observables/{sp}/{self.__hdf_key__}"
+                species_current = h5file[group_name]["value"]
+                time_ = h5file[group_name]["time"]
+                if species_current:
+                    print(f"{self.__long_name__} data for species {sp} read successfully.")
 
-            # Store the data into list for fast conversion to DataFrame
-            data[it, 0] = time_
-            data[it, 1:] = [
-                species_current[:, isp, iax]
-                for isp, _ in enumerate(self.species_names)
-                for iax, _ in enumerate(self.dim_labels)
-            ]
+                # Store the data into list for fast conversion to DataFrame
+                data[:, 0] = time_
+                for iax, _ in enumerate(self.dim_labels):
+                    col_idx = 1 + isp * self.dimensions + iax
+                    data[:, col_idx] = species_current[:, iax]
 
         self.simulation_dataframe = DataFrame(data, columns=columns)
+
+    def calculate_observable_from_dumps(self):
+        """Calculate the observable from dump files and store it in the h5md file."""
+        # Create a group observable/species_electric_current if it does not exist
+        if not os_path_exists(self.h5md_filepath):
+            raise FileNotFoundError(f"The H5MD file {self.h5md_filepath} does not exist.")
+
+        with h5py.File(self.h5md_filepath, 'a') as h5file:
+            # Get the number of dumps from vel dataset
+            num_dumps = h5file["particles/vel"].shape[0]
+            time_ = h5file["particles/time"][:]
+            step_ = h5file["particles/step"][:]
+
+            sp_start = 0
+            sp_end = self.species_num[0]
+            # Loop over the species and calculate the electric current
+            for isp, sp in enumerate(self.species_names):
+                group_name = f"observables/{sp}/{self.__hdf_key__}"
+
+                # Is the dataset already there? if not create it
+                if group_name not in h5file:
+                    obs_group = h5file.create_group(group_name)
+                    maxshape = (None, self.dimensions)
+                    dtype = 'f8'  # double precision float
+                    obs_group.create_dataset(
+                        "value",
+                        shape=(num_dumps,  self.dimensions),
+                        maxshape=maxshape,
+                        chunks=True,
+                        dtype=dtype,
+                    )
+                    obs_group.create_dataset(
+                        "time",
+                        shape=(num_dumps,),
+                        maxshape=(None,),
+                        chunks=True,
+                        dtype=dtype,
+                    )
+                    obs_group.create_dataset(
+                        "step",
+                        shape=(num_dumps,),
+                        maxshape=(None,),
+                        chunks=True,
+                        dtype='i8',  # integer
+                    )
+                else:
+                    # If the dataset already exists, check if needs be resized
+                    obs_group = h5file[group_name]
+                    if obs_group["value"].shape[0] < num_dumps:
+                        obs_group["value"].resize((num_dumps, self.num_species, self.dimensions))
+                        obs_group["time"].resize((num_dumps,))
+                        obs_group["step"].resize((num_dumps,))
+
+                # Grab the velocities of the species
+                vel = h5file["particles/vel"][:, sp_start:sp_end, :].sum(axis = 1)  # shape (num_particles, dimensions)
+                current = self.species_charges[isp] * vel  # shape (num_particles, dimensions)
+                obs_group = h5file[group_name]    
+                # Store the data
+                obs_group["value"][:, :] = current
+                obs_group["time"][:] = time_
+                obs_group["step"][:] = step_
+                sp_start = sp_end
+                sp_end += self.species_num[isp + 1] if isp + 1 < len(self.species_num) else 0
 
     @calc_slices_doc
     def calc_slices_data(self):
@@ -3255,15 +3330,6 @@ class ElectricCurrent(Observable):
                     data_list.append(col_data)
                     # self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
 
-            # Sum over the species to get the true hf of the system
-            if self.num_species > 1:
-                col_name = f"{self.__long_name__} ACF_all-all_Total_slice {isl}"
-                col_data = total_electric_current.sum(axis=0)
-                columns_list.append(col_name)
-                data_list.append(col_data)
-                # self.dataframe_acf_slices = add_col_to_df(
-                #     self.dataframe_acf_slices, total_electric_current.sum(axis=0), col_name
-                # )
             # Advance by plasma_periods_shift at a time.
             start_index += step
             end_index += step
@@ -3295,10 +3361,8 @@ class ElectricCurrent(Observable):
     def average_acf_slices_data(self):
         # ACF data
         dim_labels = [*self.dim_labels, "Total"]
-        if self.num_species > 1:
-            species_list = [*self.species_names, "all"]
-        else:
-            species_list = self.species_names
+
+        species_list = self.species_names
 
         columns_list = [f"{self.__long_name__} ACF_Species_Axis_Time"]
         data_list = [self.simulation_dataframe.iloc[: self.block_length, 0].values]
@@ -3317,7 +3381,7 @@ class ElectricCurrent(Observable):
                     col_name = f"{self.__long_name__} ACF_{sp1}-{sp2}_{ax}_Std"
                     columns_list.append(col_name)
                     data_list.append(col_data)
-                    # self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
+        
         self.dataframe_acf = DataFrame(dict(zip(columns_list, data_list)))
 
 
@@ -6816,58 +6880,58 @@ def calc_Sk(nkt, k_list, k_counts, species_np, no_dumps):
 
 
 # def calc_Skw(nkt, ka_list, species_np, no_dumps, dt, dump_step):
-    """
-    Calculate the Fourier transform of the correlation function of ``nkt``.
+    # """
+    # Calculate the Fourier transform of the correlation function of ``nkt``.
 
-    Parameters
-    ----------
-    nkt :  complex, numpy.ndarray
-        Particles' density or velocity fluctuations.
-        Shape = ( ``no_species``, ``no_dumps``, ``no_k_list``)
+    # Parameters
+    # ----------
+    # nkt :  complex, numpy.ndarray
+    #     Particles' density or velocity fluctuations.
+    #     Shape = ( ``no_species``, ``no_dumps``, ``no_k_list``)
 
-    ka_list : list
-        List of :math:`k` indices in each direction with corresponding magnitude and index of ``ka_counts``.
-        Shape=(``no_ka_values``, 5)
+    # ka_list : list
+    #     List of :math:`k` indices in each direction with corresponding magnitude and index of ``ka_counts``.
+    #     Shape=(``no_ka_values``, 5)
 
-    species_np : numpy.ndarray
-        Array with one element giving number of particles.
+    # species_np : numpy.ndarray
+    #     Array with one element giving number of particles.
 
-    no_dumps : int
-        Number of dumps.
+    # no_dumps : int
+    #     Number of dumps.
 
-    dt : float
-        Time interval.
+    # dt : float
+    #     Time interval.
 
-    dump_step : int
-        Snapshot interval.
+    # dump_step : int
+    #     Snapshot interval.
 
-    Returns
-    -------
-    Skw_all : numpy.ndarray
-        DSF/CCF of each species and pair of species.
-        Shape = (``no_skw``, ``no_ka_values``, ``no_dumps``)
-    """
-    # Fourier transform normalization: norm = dt / Total time
-    norm = dt / sqrt(no_dumps * dt * dump_step)
-    # number of independent observables
-    no_skw = int(len(species_np) * (len(species_np) + 1) / 2)
-    # DSF
-    # Skw = zeros((no_skw, len(ka_counts), no_dumps))
-    Skw_all = zeros((no_skw, len(ka_list), no_dumps))
-    pair_indx = 0
-    for ip, si in enumerate(species_np):
-        for jp in range(ip, len(species_np)):
-            sj = species_np[jp]
-            dens_const = 1.0 / sqrt(si * sj)
-            for ik, ka in enumerate(ka_list):
-                # indx = int(ka[-1])
-                nkw_i = fft(nkt[ip, :, ik]) * norm
-                nkw_j = fft(nkt[jp, :, ik]) * norm
-                Skw_all[pair_indx, ik, :] = fftshift(real(nkw_i.conjugate() * nkw_j) * dens_const)
-                # Skw[pair_indx, indx, :] += Skw_all[pair_indx, ik, :] / ka_counts[indx]
-            pair_indx += 1
+    # Returns
+    # -------
+    # Skw_all : numpy.ndarray
+    #     DSF/CCF of each species and pair of species.
+    #     Shape = (``no_skw``, ``no_ka_values``, ``no_dumps``)
+    # """
+    # # Fourier transform normalization: norm = dt / Total time
+    # norm = dt / sqrt(no_dumps * dt * dump_step)
+    # # number of independent observables
+    # no_skw = int(len(species_np) * (len(species_np) + 1) / 2)
+    # # DSF
+    # # Skw = zeros((no_skw, len(ka_counts), no_dumps))
+    # Skw_all = zeros((no_skw, len(ka_list), no_dumps))
+    # pair_indx = 0
+    # for ip, si in enumerate(species_np):
+    #     for jp in range(ip, len(species_np)):
+    #         sj = species_np[jp]
+    #         dens_const = 1.0 / sqrt(si * sj)
+    #         for ik, ka in enumerate(ka_list):
+    #             # indx = int(ka[-1])
+    #             nkw_i = fft(nkt[ip, :, ik]) * norm
+    #             nkw_j = fft(nkt[jp, :, ik]) * norm
+    #             Skw_all[pair_indx, ik, :] = fftshift(real(nkw_i.conjugate() * nkw_j) * dens_const)
+    #             # Skw[pair_indx, indx, :] += Skw_all[pair_indx, ik, :] / ka_counts[indx]
+    #         pair_indx += 1
 
-    return Skw_all
+    # return Skw_all
 
 
 @njit
@@ -6890,16 +6954,13 @@ def calc_elec_current(vel, sp_charge, sp_num):
     -------
     Js : numpy.ndarray
         Electric current of each species. Shape = (``no_species``, ``no_dim``, ``no_dumps``)
-
-    Jtot : numpy.ndarray
-        Total electric current. Shape = (``no_dim``, ``no_dumps``)
     """
 
-    no_dumps = vel.shape[1]
-    no_dim = vel.shape[0]
+    no_dumps = vel.shape[0]
+    no_dim = vel.shape[-1]
 
-    Js = zeros((sp_num.shape[0], no_dim, no_dumps))
-    Jtot = zeros((no_dim, no_dumps))
+    Js = zeros((no_dumps, sp_num.shape[0], no_dim))
+    # Jtot = zeros((no_dim, no_dumps))
 
     sp_start = 0
     sp_end = 0
@@ -6907,13 +6968,10 @@ def calc_elec_current(vel, sp_charge, sp_num):
         # Find the index of the last particle of species s
         sp_end += n_sp
         # Calculate the current of each species
-        Js[s, :, :] = q_sp * vel[:, :, sp_start:sp_end].sum(axis=-1)
-        # Add to the total current
-        Jtot[:, :] += Js[s, :, :]
-
+        Js[:, s, :] = q_sp * vel[:, sp_start:sp_end, :].sum(axis=1)
         sp_start += n_sp
 
-    return Js, Jtot
+    return Js
 
 
 def calc_moments(dist, max_moment, species_index_start):

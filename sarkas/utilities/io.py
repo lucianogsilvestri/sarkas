@@ -1913,31 +1913,62 @@ class InputOutput:
         assert len(observables) > 0, "No observables to track. Please provide a list of observables to track in self.observables_arrays_list"
 
         for obs_name in observables:
-            obs_group = self.observables_group.require_group(obs_name)
-
-            if hasattr(ptcls, obs_name):
-                obs = ptcls.__getattribute__(obs_name)
-                required_size = (num_data_points,) + obs.shape
-
+            # Create subgroup for observables of each species if the observable is species-specific
+            # e.g., species_heat_flux, species_virial, etc.
+            if 'species_' in obs_name:
+                for isp, sp_name in enumerate(params.species_names):
+                    species_group = self.observables_group.require_group(sp_name)
+                    obs_group = species_group.require_group(obs_name)
+                    
+                    if hasattr(ptcls, obs_name):
+                        obs = ptcls.__getattribute__(obs_name)[isp]
+                        required_size = (num_data_points,) + obs.shape
+                    else:
+                        raise AttributeError(f"Observable '{obs_name}' not found in Particles object.")
+                    
+                    if 'value' in obs_group:
+                        # Check if the existing dataset needs to be resized
+                        
+                        if obs_group['value'].shape[0] != num_data_points:
+                            obs_group['value'].resize(required_size)
+                            obs_group['time'].resize((num_data_points,))
+                            obs_group['step'].resize((num_data_points,))
+                    else:
+                        # Create new datasets if not existing
+                        # Create chunked and resizable datasets
+                        max_shape = (None,) + required_size[1:]  # Allow the first dimension to be unlimited
+                        chunks = (1,) + required_size[1:]  # Define chunk size, can be adjusted
+                        
+                        obs_group.create_dataset('value', required_size, maxshape=max_shape, chunks=chunks,dtype='float64')
+                        obs_group.create_dataset('time', (num_data_points,), maxshape=(None,), chunks=(1,),dtype='float64')
+                        obs_group.create_dataset('step', (num_data_points,), maxshape=(None,), chunks=(1,),dtype='int64')
             else:
-                raise AttributeError(f"Observable '{obs_name}' not found in Particles object.")
-        
-            if 'value' in obs_group:
-                # Check if the existing dataset needs to be resized
-                
-                if obs_group['value'].shape[0] != num_data_points:
-                    obs_group['value'].resize(required_size)
-                    obs_group['time'].resize((num_data_points,))
-                    obs_group['step'].resize((num_data_points,))
-            else:
-                # Create new datasets if not existing
-                # Create chunked and resizable datasets
-                max_shape = (None,) + required_size[1:]  # Allow the first dimension to be unlimited
-                chunks = (1,) + required_size[1:]  # Define chunk size, can be adjusted
-                
-                obs_group.create_dataset('value', required_size, maxshape=max_shape, chunks=chunks,dtype='float64')
-                obs_group.create_dataset('time', (num_data_points,), maxshape=(None,), chunks=(1,),dtype='float64')
-                obs_group.create_dataset('step', (num_data_points,), maxshape=(None,), chunks=(1,),dtype='int64')
+                # For global observables
+                obs_group = self.observables_group.require_group(obs_name)
+
+                if hasattr(ptcls, obs_name):
+                    obs = ptcls.__getattribute__(obs_name)
+                    required_size = (num_data_points,) + obs.shape
+
+                else:
+                    raise AttributeError(f"Observable '{obs_name}' not found in Particles object.")
+            
+                if 'value' in obs_group:
+                    # Check if the existing dataset needs to be resized
+                    
+                    if obs_group['value'].shape[0] != num_data_points:
+                        obs_group['value'].resize(required_size)
+                        obs_group['time'].resize((num_data_points,))
+                        obs_group['step'].resize((num_data_points,))
+                else:
+                    # Create new datasets if not existing
+                    # Create chunked and resizable datasets
+                    max_shape = (None,) + required_size[1:]  # Allow the first dimension to be unlimited
+                    chunks = (1,) + required_size[1:]  # Define chunk size, can be adjusted
+                    
+                    obs_group.create_dataset('value', required_size, maxshape=max_shape, chunks=chunks,dtype='float64')
+                    obs_group.create_dataset('time', (num_data_points,), maxshape=(None,), chunks=(1,),dtype='float64')
+                    obs_group.create_dataset('step', (num_data_points,), maxshape=(None,), chunks=(1,),dtype='int64')
     
     def init_thermodynamics_group(self, params, ptcls, phase = 'production', thermodynamics_to_save = None):
         # TODO: complete this function
