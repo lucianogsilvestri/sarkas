@@ -613,6 +613,7 @@ class InputOutput:
         dump_end: int = None,
         dump_skip: int = 1,
         ptcls_list: list = None,
+        scaling: [] = None,
     ):
         """
         Save the XYZ file by reading Sarkas dumps.
@@ -634,6 +635,8 @@ class InputOutput:
         ptcls_list : list
             List of particle indices to save. Default is None.
 
+        scaling : bool
+            Values for position, velocity, and acceleration are scaled to reduce numerical values for OVITO. Default is False.
         """
         # TODO: Find a way so that the user can pass strings of the information to save for OVITO.
         # For example. the user might want to save pos, vel, acc and the kinetic energy or total energy of each particle.
@@ -655,11 +658,16 @@ class InputOutput:
 
         # Get particles info
         params = self.read_single_class("parameters", self.directory_tree["simulation"]["path"])
-
-        # Rescale constants. This is needed since OVITO has a small number limit.
-        pscale = 1.0 / params.a_ws
-        vscale = 1.0 / (params.a_ws * params.total_plasma_frequency)
-        ascale = 1.0 / (params.a_ws * params.total_plasma_frequency**2)
+        if scaling is not None:
+            # Use user-defined scaling
+            pscale = scaling[0]
+            vscale = scaling[1]
+            ascale = scaling[2]
+        else:
+            # Rescale constants. This is needed since OVITO has a small number limit.
+            pscale = 1.0 / params.a_ws
+            vscale = 1.0 / (params.a_ws * params.total_plasma_frequency)
+            ascale = 1.0 / (params.a_ws * params.total_plasma_frequency**2)
 
         with  h5py.File(self.h5md_filenames_tree[self.process][phase]) as f:
             data = f["particles"]["pos"]

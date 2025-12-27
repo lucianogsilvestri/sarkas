@@ -441,7 +441,7 @@ class Potential:
 
             if species_list is None:
                 raise AttributeError("species_list not defined! Please pass the species list.")
-            print("\nEstimating PPPM parameters...")
+            # print("\nEstimating PPPM parameters...")
 
             self.estimate_pppm_parameters(species_list)
 
