@@ -17,7 +17,7 @@ import warnings
 from arch.unitroot import ADF, KPSS
 from matplotlib.gridspec import GridSpec
 from numba import njit
-from numpy import append as np_append, asarray, mean
+from numpy import append as np_append, asarray, full, mean
 from numpy import (
     allclose,
     argsort,
@@ -4422,21 +4422,17 @@ class PressureTensor(Observable):
     def read_data_from_dumps(self):
         """
         Read data from dump files and store it in a pandas DataFrame.
-
-        This method reads data from dump files for each species and axis, and stores it in a pandas DataFrame.
-        The DataFrame is then assigned to the `simulation_dataframe` attribute of the class instance.
         """
         tensor_cols = [
             f"Total_Pressure Tensor {ax1}{ax2}"
             for iax1, ax1 in enumerate(self.dim_labels)
             for _, ax2 in enumerate(self.dim_labels[iax1:], iax1)
-            ]
+        ]
         columns = [f"Quantity_Time"]
         columns.append(f"Total_Pressure")
         columns.extend(tensor_cols)
 
         if self.num_species > 1:
-            # Species specific cols
             sp_tensor_cols = [
                 f"{sp}_Pressure Tensor {ax1}{ax2}"
                 for sp in self.species_names
@@ -4447,41 +4443,52 @@ class PressureTensor(Observable):
             columns.extend(sp_pressure_cols)
             columns.extend(sp_tensor_cols)
 
-        data = zeros((self.no_dumps, len(columns)))
-
-        species_pressure = zeros((self.no_dumps, self.num_species))
-
+        # Read data from HDF5 file
         with h5py.File(self.h5md_filepath, 'r') as h5md_file:
+            # Read time from first species (assuming all have same time points)
+            first_species = self.species_names[0]
+            time_data = h5md_file[f"observables/{first_species}/species_pressure_tensor"]["time"][:]
             
-            data[:,0] = h5md_file["observables"]["species_pressure_tensor"]["time"][:]
-            pt_temp = h5md_file["observables"]["species_pressure_tensor"]["value"][:,:,:,:]
+            # Pre-allocate array for all species tensors
+            # Shape: (no_dumps, num_species, dimensions, dimensions)
+            pt_temp = zeros((self.no_dumps, self.num_species, self.dimensions, self.dimensions))
+            
+            # Read pressure tensor for each species
+            for isp, sp in enumerate(self.species_names):
+                pt_temp[:, isp, :, :] = h5md_file[f"observables/{sp}/species_pressure_tensor"]["value"][:, :, :]
 
-        # TODO: There must be a faster way to do this
-        for it in range(species_pressure.shape[0]):
+        # Vectorized computation of species pressures (trace / dimensions)
+        species_pressure = pt_temp.trace(axis1=2, axis2=3) / self.dimensions  # (no_dumps, num_species)
+        
+        # Total pressure across all species
+        total_pressure = species_pressure.sum(axis=1)  # (no_dumps,)
+        
+        # Extract upper triangular indices once
+        triu_i, triu_j = triu_indices(self.dimensions)
+        n_triu = len(triu_i)
+        
+        # Vectorized extraction of upper triangular elements and sum across species
+        total_tensor = pt_temp.sum(axis=1)  # (no_dumps, dimensions, dimensions)
+        total_half_tensor = total_tensor[:, triu_i, triu_j]  # (no_dumps, n_triu_elements)
+        
+        # Assemble the data array
+        data = zeros((self.no_dumps, len(columns)))
+        data[:, 0] = time_data
+        data[:, 1] = total_pressure
+        data[:, 2:2+n_triu] = total_half_tensor
+        
+        if self.num_species > 1:
+            col_idx = 2 + n_triu
             
-            species_half_tensor = zeros( (len(triu_indices(self.dimensions)[0])))
+            # Add species-specific pressures
+            data[:, col_idx:col_idx+self.num_species] = species_pressure
+            col_idx += self.num_species
+            
+            # Add species-specific pressure tensors
             for isp in range(self.num_species):
-                species_pressure[it, isp] = (pt_temp[it, isp, :, :]).trace() / self.dimensions
-                species_half_tensor += pt_temp[it,isp][triu_indices(self.dimensions)]
-            data[it, 1] = species_pressure[it].sum()
-            data[it, 2:] = species_half_tensor
-            
-            if self.num_species > 1:
-                # Add the pressure of each species
-                data.update([(f"{sp}_Pressure", species_pressure[isp]) for isp, sp in enumerate(self.species_names)])
-
-                # Add the pressure tensor of each species
-                data.update(
-                    [
-                        (f"{sp}_Pressure Tensor {ax1}{ax2}", pt_temp[iax1, iax2, isp])
-                        for isp, sp in enumerate(self.species_names)
-                        for iax1, ax1 in enumerate(self.dim_labels)
-                        for iax2, ax2 in enumerate(self.dim_labels[iax1:], iax1)
-                    ]
-                )
-
-            # Append row to the dataset
-            # dataset = concat([dataset, DataFrame(data, index=[it])])
+                species_half_tensor = pt_temp[:, isp, triu_i, triu_j]  # (no_dumps, n_triu_elements)
+                data[:, col_idx:col_idx+n_triu] = species_half_tensor
+                col_idx += n_triu
 
         self.simulation_dataframe = DataFrame(data, columns=columns)
 
@@ -6208,6 +6215,289 @@ class VelocityAutoCorrelationFunction(Observable):
 
         return vacf
 
+
+class PairDistributionFunction(Observable):
+    """
+    Pair Distribution Function.
+
+    Attributes
+    ----------
+    no_bins : int
+        Number of bins.
+
+    dr_rdf : float
+        Size of each bin.
+
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.__name__ = "pdf"
+        self.__long_name__ = "Pair Distribution Function"
+        self.pdf_bins = array([100, 100, 100])
+        self.cutoffs = array([5.0, 5.0, 5.0])  # in units of a_ws
+        self.coord_system = "cartesian"  # or 'cylindrical' or 'spherical'
+        self.deltas_pdf = self.cutoffs/self.pdf_bins
+        self.cutoff = None
+    
+    @setup_doc
+    def setup(
+        self,
+        params,
+        phase: str = None,
+        independent_slices: bool = None,
+        no_slices: int = None,
+        timesteps_per_slice: int = None,
+        timesteps_shift: int = None,
+        plasma_periods_per_slice: int = None,
+        plasma_periods_shift: int = None,
+        **kwargs,
+    ):
+        super().setup_init(
+            params,
+            phase=phase,
+            independent_slices=independent_slices,
+            no_slices=no_slices,
+            timesteps_per_slice=timesteps_per_slice,
+            timesteps_shift=timesteps_shift,
+            plasma_periods_per_slice=plasma_periods_per_slice,
+            plasma_periods_shift=plasma_periods_shift,
+            **kwargs,
+        )
+        self.update_args(**kwargs)
+
+    @arg_update_doc
+    def update_args(self, **kwargs):
+        # Update the attribute with the passed arguments
+        self.__dict__.update(kwargs.copy())
+        
+        if self.cell_cutoff is None:
+            self.cell_cutoff = self.cutoff_radius # This is the rc from the potential.
+        
+        # Ensure the cutoffs are set according to the coordinate system
+        if self.coord_system == "cylindrical":
+            self.cutoffs[1] = pi
+        elif self.coord_system == "spherical":
+            self.cutoffs[1] = pi / 2.0
+            self.cutoffs[2] = 2.0 * pi
+
+        self.update_finish()
+
+    @compute_doc
+    def compute(self):
+        t0 = self.timer.current()
+        self.calc_slices_data()
+        self.average_slices_data()
+        self.save_hdf()
+        self.save_state()
+        tend = self.timer.current()
+        time_stamp(self.log_file, self.__long_name__ + " Calculation", self.timer.time_division(tend - t0), self.verbose)
+
+    @calc_slices_doc
+    def calc_slices_data(self):
+        
+
+        particles_names = full(self.total_num_ptcls, "", dtype=self.species_names.dtype)
+        particles_ids = zeros(self.total_num_ptcls, 0, dtype=int)
+
+        species_start = 0
+        species_end = 0
+        for name, n, i in zip(self.species_names, self.species_num, range(len(self.species_names))):
+            species_end += n
+            particles_names[species_start:species_end] = name
+            particles_ids[species_start:species_end] = i
+            species_start += n
+
+        # The histogram arrays are stored in a dictionary. Each key is a species pair.
+        column_names = [f"{sp1}-{sp2} PDF_slice {isl}" for isl in range(self.no_slices) for sp1 in self.species_names for sp2 in self.species_names]
+        # Create dict with the column names as the keys. This is needed to add the columns to the dataframe
+        hist_dict = {col_name: zeros((self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2]), dtype=int) for col_name in column_names}
+
+        from sarkas.algorithms.cell_list import LinkedCellList
+
+        # Initialize the linked cell list solver
+        lcl = LinkedCellList()
+        params = {"box_lengths": self.box_lengths,
+                  "cutoff_radius": self.cell_cutoff,
+                  "dimensions": self.dimensions,
+                  "total_num_density": self.total_num_density,
+                  "a_ws": self.a_ws,
+                  "units_dict": self.units_dict}
+        
+        lcl.setup(params)
+
+        dump_init = 0
+        dump_end = 0
+        step = self.dumps_per_slice - 1 # The -1 is due to zero indexing. The last dump is the number of dumps - 1.
+
+        with h5py.File(self.h5md_filepath, "r") as h5md_file:
+            for isl in tqdm(range(self.no_slices), desc="Calculating PDF for slice", disable=not self.verbose):
+                dump_end += step
+
+                for it in range(dump_init, dump_end + 1):
+                    positions = h5md_file["particles"]["pos"][it, :, :]        
+                    
+                    # Create the cell structure
+                    cells_per_dim, cell_length_per_dim = lcl.create_cells_array(
+                        self.box_lengths, self.cell_cutoff
+                    )
+
+                    # Create head and list arrays for the linked cell algorithm
+                    head, ls_array = lcl.create_head_list_arrays(
+                        positions, cell_length_per_dim, cells_per_dim
+                    )
+                    key_string = f" PDF_slice {isl}"
+                    # Calculate distance histograms
+                    hist_dict = lcl.calculate_pdf_hist(
+                        pos=positions,
+                        p_name=particles_names,
+                        cutoffs=self.cutoffs,
+                        pdf_bins=self.pdf_bins,
+                        hist_dict = hist_dict,
+                        key_string=key_string,
+                        head=head,
+                        ls_array=ls_array,
+                        cells_per_dim=cells_per_dim,
+                        box_lengths=self.box_lengths,
+                        coord_system=self.coord_system  # or 'cylindrical' or 'spherical'
+                    )
+                   
+                dump_init += step
+                dump_end += step
+        # Normalize the histograms
+    
+
+    def normalize_histograms(self, hist_dict, timesteps):
+        
+        pair_density = zeros((self.num_species, self.num_species))
+        # No. of pairs per volume
+        for i, sp1 in enumerate(self.species_num):
+            pair_density[i, i] = sp1 * (sp1 - 1) / self.box_volume
+            if self.num_species > 1:
+                for j, sp2 in enumerate(self.species_num[i + 1 :], i + 1):
+                    pair_density[i, j] = sp1 * sp2 / self.box_volume
+
+        for i, sp1 in enumerate(self.species_names):
+            for j, sp2 in enumerate(self.species_names[i:], i):
+                key_string = f"{sp1}-{sp2} PDF_slice "
+    def norm_g_r_theta(hist_r_theta, rdf, timesteps):
+
+        g_r_theta = np.zeros_like(hist_r_theta)
+        
+        r_bins = hist_r_theta.shape[0]
+        theta_bins = hist_r_theta.shape[1]
+        
+        bin_vol = np.zeros( (r_bins, theta_bins))
+        pair_density = np.zeros((rdf.num_species, rdf.num_species))
+        
+        
+        # N = positions.shape[0]
+        dr = rdf.rc / r_bins
+        dtheta = np.pi / theta_bins
+        
+        # Create the bin volume for normalization
+        for r_bin in range(r_bins):
+            r_inner = r_bin * dr
+            r_outer = (r_bin + 1) * dr
+            volume_shell = (4/3) * np.pi * (r_outer**3 - r_inner**3)
+            norm_factor = volume_shell
+            for theta_bin in range(theta_bins):
+                theta = (theta_bin + 0.5)*dtheta
+                bin_vol[r_bin, theta_bin] =  volume_shell * ( np.sin(theta) * dtheta ) 
+        
+        denom_const = pair_density * timesteps
+        
+        for i, sp1 in enumerate(rdf.species_names):
+            for j, sp2 in enumerate(rdf.species_names[i:], start = i):
+                g_r_theta[:, :, i, j] = hist_r_theta[:,:, i, j]/ (denom_const[i,j] * bin_vol * (2 - 1*(i == j) ) )
+        
+        return g_r_theta
+    
+    @avg_slices_doc
+    def average_slices_data(self):
+        for i, sp1 in enumerate(self.species_names):
+            for j, sp2 in enumerate(self.species_names[i:], i):
+                col_str = [f"{sp1}-{sp2} RDF_slice {isl}" for isl in range(self.no_slices)]
+
+                col_name = f"{sp1}-{sp2} RDF_Mean"
+                col_data = self.dataframe_slices[col_str].mean(axis=1).values
+                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+
+                col_name = f"{sp1}-{sp2} RDF_Std"
+                col_data = self.dataframe_slices[col_str].std(axis=1).values
+                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+
+    def compute_sum_rule_integrals(self, potential):
+        """
+        Compute integrals of the RDF used in sum rules. \n
+
+        The species dependent integrals are
+
+        .. math::
+
+            I_{AB}^{\\rm (Hartree, k)} = 2^{D - 2} \\pi  n_{A} n_{B} \\int_0^{\\infty} dr \\,
+            r^{D - 1 + k} \\frac{d^k}{dr^k} \\phi_{AB}(r),
+
+        .. math::
+
+            I_{AB}^{\\rm (Corr, k)} = 2^{D - 2} \\pi  n_{A} n_{B} \\int_0^{\\infty} dr \\,
+            r^{D - 1 + k} h_{AB} (r) \\frac{d^k}{dr^k} \\phi_{AB}(r),
+
+        where :math:`D` is the number of dimensions, :math:`k = {0, 1, 2}`,
+        and :math:`\\phi_{AB}(r)` is the potential between species :math:`A` and :math:`B`. \n
+        Only Coulomb and Yukawa potentials are supported at the moment.
+
+        Parameters
+        ----------
+        potential : :class:`sarkas.potentials.core.Potential`
+            Sarkas Potential object. Needed for all its attributes.
+
+        Returns
+        -------
+        hartrees : numpy.ndarray
+            Hartree integrals with :math:`k = {0, 1, 2}`. \n
+            Shape = ( :py:attr:`sarkas.tools.observables.Observable.no_obs`, 3).
+
+        corrs : numpy.ndarray
+            Correlational integrals with :math:`k = {0, 1, 2}`. \n
+            Shape = ( :py:attr:`sarkas.tools.observables.Observable.no_obs`, 3).
+
+        """
+
+        r = self.dataframe[self.dataframe.columns[0]].to_numpy().copy()
+
+        dims = self.dimensions
+        dim_const = 2.0 ** (dims - 2) * pi
+
+        if r[0] == 0.0:
+            r[0] = 1e-40
+
+        corrs = zeros((self.no_obs, 3))
+        hartrees = zeros((self.no_obs, 3))
+
+        obs_indx = 0
+        # TODO:Make this calculation for each slice and/or run
+        for sp1, sp1_name in enumerate(self.species_names):
+            for sp2, sp2_name in enumerate(self.species_names[sp1:], sp1):
+                h_r = self.dataframe[(f"{sp1_name}-{sp2_name} RDF", "Mean")].to_numpy() - 1.0
+
+                # Calculate the derivatives of the potential
+                u_r, dv_dr, d2v_dr2 = potential.potential_derivatives(r, potential.matrix[sp1, sp2])
+
+                densities = self.species_num_dens[sp1] * self.species_num_dens[sp2]
+
+                hartrees[obs_indx, 0] = dim_const * densities * trapz(u_r * r ** (dims - 1), x=r)
+                corrs[obs_indx, 0] = dim_const * densities * trapz(u_r * h_r * r ** (dims - 1), x=r)
+
+                hartrees[obs_indx, 1] = dim_const * densities * trapz(dv_dr * r**dims, x=r)
+                corrs[obs_indx, 1] = dim_const * densities * trapz(dv_dr * h_r * r**dims, x=r)
+
+                hartrees[obs_indx, 2] = dim_const * densities * trapz(d2v_dr2 * r ** (dims + 1), x=r)
+                corrs[obs_indx, 2] = dim_const * densities * trapz(d2v_dr2 * h_r * r ** (dims + 1), x=r)
+
+                obs_indx += 1
+
+        return hartrees, corrs
 
 # TODO: Review and fix this class
 class VelocityDistribution(Observable):

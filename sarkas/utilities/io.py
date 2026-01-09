@@ -2084,11 +2084,21 @@ class InputOutput:
         index = step // dump_step
         ptcls.calculate_species_observables()
         for obs_name in self.observables_arrays_list:
-            obs_group = self.observables_group[obs_name]
-            # Directly insert data at the current step index without resizing
-            obs_group['value'][index] = ptcls.__getattribute__(obs_name)
-            obs_group['time'][index] = time
-            obs_group['step'][index] = step
+            # Handle the species specific observables
+            if 'species_' in obs_name:
+                for isp, sp_name in enumerate(ptcls.species_names):
+                    species_group = self.observables_group[sp_name]
+                    obs_group = species_group[obs_name]
+                    # Directly insert data at the current step index without resizing
+                    obs_group['value'][index] = ptcls.__getattribute__(obs_name)[isp]
+                    obs_group['time'][index] = time
+                    obs_group['step'][index] = step
+            else:
+                obs_group = self.observables_group[obs_name]
+                # Directly insert data at the current step index without resizing
+                obs_group['value'][index] = ptcls.__getattribute__(obs_name)
+                obs_group['time'][index] = time
+                obs_group['step'][index] = step
     
     def save_thermodynamics_data(self, step, dump_step, time, ptcls):
         """

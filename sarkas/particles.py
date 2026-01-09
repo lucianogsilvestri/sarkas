@@ -6,7 +6,7 @@ import csv
 from copy import deepcopy
 from h5py import File as h5File
 from numba import float64, int64, jit, njit, void
-from numpy import arange, array, empty, exp, floor, full, histogram, int64, log, newaxis, pi
+from numpy import arange, array, empty, exp, floor, full, histogram, int64, log, newaxis, pi, zeros_like
 from numpy import load as np_load
 from numpy import (
     loadtxt,
@@ -1821,7 +1821,12 @@ def calc_pressure_tensor(vel, species_virial_tensor, species_masses, species_num
         for j in range(3):
             temp_kin_tensor[i, j, :] = vel[:, i] * vel[:, j]
 
-    pressure_kin = species_masses * tensor_species_loop(temp_kin_tensor, species_num) / box_volume
+    # pressure_kin = species_masses * tensor_species_loop(temp_kin_tensor, species_num) / box_volume
+    p_kin = tensor_species_loop(temp_kin_tensor, species_num) / box_volume
+    pressure_kin = zeros_like(p_kin)
+    for i in range(species_num.shape[0]):
+        pressure_kin[i,:,:] = species_masses[i] * p_kin[i,:,:]
+
     # Sum over the species
     pressure_pot =  species_virial_tensor/box_volume # tensor_cross_species_loop(virial_species_tensor, species_num) / box_volume
     pressure_tensor = pressure_kin + pressure_pot

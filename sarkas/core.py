@@ -926,11 +926,13 @@ class Parameters:
         self.check_simulation_restart()
 
     def check_simulation_restart(self):
-        """Check if the simulation is a restart simulation."""
-        if self.load_method[-7:] == "restart":
-            if self.load_method[:2] == "pr":
-                self.equilibration_phase = False
-    
+        """Check if the simulation is a restart simulation. If so, set the equilibration phase accordingly."""
+        if self.load_method is not None:
+            # Check whether "restart" is in the load_method string
+            if "restart" in self.load_method:
+                if self.load_method[:2] == "pr":
+                    self.equilibration_phase = False
+
     def sim_box_setup(self):
         """Calculate initial particle's and simulation's box parameters."""
         # Simulation Box Parameters
