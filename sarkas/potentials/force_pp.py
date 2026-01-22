@@ -246,11 +246,11 @@ def update(pos, vel, p_id, p_mass, box_lengths, rc, potential_matrix, force, mea
 
     head, ls_array = create_head_list_arrays(pos, cell_lengths, cells_per_dim)
 
-    U_s_r, acc_s_r, virial_xx, virial_yy, virial_zz, virial_xy, virial_xz, virial_yz  = particles_interaction_loop(
+    U_s_r, acc_s_r, virial_xx, virial_yy, virial_zz, virial_xy, virial_xz, virial_yz, j_e  = particles_interaction_loop(
         pos, vel, p_mass, p_id, potential_matrix, rc, measure, force, rdf_hist, head, ls_array, cells_per_dim, box_lengths
     )
 
-    return U_s_r, acc_s_r, virial_xx, virial_yy, virial_zz, virial_xy, virial_xz, virial_yz
+    return U_s_r, acc_s_r, virial_xx, virial_yy, virial_zz, virial_xy, virial_xz, virial_yz, j_e
 
 
 @jit(nopython=True)
@@ -337,6 +337,8 @@ def particles_interaction_loop(
     virial_yz_sr = zeros(pos.shape[0])
     virial_zz_sr = zeros(pos.shape[0])
 
+    # heat current
+    j_e = zeros_like(pos)
     ptcl_pot_energy = zeros(pos.shape[0])  # Short-ranges potential energy of each particle
     # Pair distribution function
 
@@ -507,13 +509,32 @@ def particles_interaction_loop(
                                             virial_yz_sr[j] += 0.5*dy * fz
                                             virial_zz_sr[j] += 0.5*dz * fz
 
+                                            # Heat current
+                                            vij_x = vel[i, 0] + vel[j, 0]
+                                            vij_y = vel[i, 1] + vel[j, 1]
+                                            vij_z = vel[i, 2] + vel[j, 2]
+                                            fij_vij = vij_x * fx + vij_y * fy + vij_z * fz
+
+                                            j_e[i, 0] += 0.25* (vij_x * pot - dx * fij_vij)  
+                                            j_e[i, 1] += 0.25* (vij_y * pot - dy * fij_vij) 
+                                            j_e[i, 2] += 0.25* (vij_z * pot - dz * fij_vij)
+                                            j_e[j, 0] += 0.25* (vij_x * pot - dx * fij_vij)  
+                                            j_e[j, 1] += 0.25* (vij_y * pot - dy * fij_vij) 
+                                            j_e[j, 2] += 0.25* (vij_z * pot - dz * fij_vij)
                                     # Move down list (ls) of particles for cell interactions with a head particle
                                     j = ls_array[j]
 
                                 # Check if head particle interacts with other cells
                                 i = ls_array[i]
+    
+    # Add the first term of the energy current
+    for i in range(pos.shape[0]):
+        id_i = p_id[i]
+        j_e[i, 0] += (0.5 * p_mass[i] * (vel[i, :] ** 2).sum(axis=-1)) * vel[i, 0]
+        j_e[i, 1] += (0.5 * p_mass[i] * (vel[i, :] ** 2).sum(axis=-1)) * vel[i, 1]
+        j_e[i, 2] += (0.5 * p_mass[i] * (vel[i, :] ** 2).sum(axis=-1)) * vel[i, 2]
 
-    return ptcl_pot_energy, acc_s_r, virial_xx_sr, virial_yy_sr, virial_zz_sr, virial_xy_sr, virial_xz_sr, virial_yz_sr
+    return ptcl_pot_energy, acc_s_r, virial_xx_sr, virial_yy_sr, virial_zz_sr, virial_xy_sr, virial_xz_sr, virial_yz_sr, j_e
 
 
 @jit(Tuple((int64[:], float64[:]))(float64[:], float64), nopython=True)

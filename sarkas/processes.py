@@ -2664,63 +2664,89 @@ class Simulation(Process):
         
             Parameters:
             adaptive_thermalization:
-                max_cycles: 11
-                nve_steps: 50000
+                max_cycles: 10 # Optional, default 10
+                nve_steps: 50000 # Required for testing thermalization
+                nvt_steps: 50000 # Optional, defaults to equilibration_steps
+                dump_step: 10 # Optional, defaults to eq_dump_step
                 observable: "temperature"
-                adf_significance: 0.05
-                kpss_significance: 0.01
-                max_mae: 0.01
+                max_mae: 0.01 # Optional, default 0.01
+                adf_significance: 0.05 # Optional, default 0.05
+                kpss_significance: 0.05 # Optional, default 0.05
         """
         # Check if adaptive thermalization is configured
         if self.parameters.adaptive_thermalization is None:
             raise AttributeError(
                 "Adaptive thermalization not configured. "
-                "Add 'adaptive_thermalization' section to Parameters in YAML file."
+                "Add 'adaptive_thermalization' section to Parameters in YAML file. See documentation for details."
             )
         
         config = self.parameters.adaptive_thermalization
         
-        # Calculate NVT steps from production_steps (for reheating)
-        # This is the same as the original thermalization_cycle logic
-        nvt_steps = self.parameters.equilibration_steps
-        config['nvt_steps'] = nvt_steps
+        if 'nve_steps' not in config or config['nve_steps'] is None:
+            config['nve_steps'] = self.parameters.equilibration_steps
         
+        if 'nvt_steps' not in config or config['nvt_steps'] is None:
+            config['nvt_steps'] = self.parameters.equilibration_steps
+        
+        if 'dump_step' not in config or config['dump_step'] is None:
+            config['dump_step'] = self.parameters.eq_dump_step
+        
+        if 'max_cycles' not in config or config['max_cycles'] is None:
+            config['max_cycles'] = 10
+        if 'max_mae' not in config or config['max_mae'] is None:
+            config['max_mae'] = 0.01
+        if 'adf_significance' not in config or config['adf_significance'] is None:
+            config['adf_significance'] = 0.05
+        if 'kpss_significance' not in config or config['kpss_significance'] is None:
+            config['kpss_significance'] = 0.05
+        
+        # Log configuration
         msg = f"\n{'='*60}"
         msg += f"\nAdaptive Thermalization Configuration:"
         msg += f"\n  Observable: {config['observable']}"
-        msg += f"\n  NVE steps (testing): {config['nve_steps']}"
-        msg += f"\n  NVT steps (reheating): {nvt_steps} (auto from production_steps)"
+        msg += f"\n  NVT steps: {config['nvt_steps']}"
+        msg += f"\n  NVE steps: {config['nve_steps']}"
+        msg += f"\n  Dump step: {config['dump_step']}"
         msg += f"\n  Max cycles: {config['max_cycles']}"
         msg += f"\n  Max MAE: {config['max_mae']}"
-        
+        msg += f"\n  ADF significance: {config['adf_significance']}"
+        msg += f"\n  KPSS significance: {config['kpss_significance']}"
+        msg += f"\n{'='*60}\n"
         self.io.write_to_logger(msg)
         
         # Initialize thermalization data storage
-        self._init_thermalization_data_dict(config)
+        self._init_thermalization_data_dict(config['observable'])
         
         # Prepare simulation
-        self._prepare_adaptive_thermalization()
+        self._prepare_adaptive_thermalization(config)
         
-        # Run initial NVE cycle
-        self._run_initial_nve_cycle(config)
+        # Start timer
+        self.timer.start()
+
+        # Run initial NVE phase
+        self._run_initial_nve(config["nve_steps"], config['dump_step'], config)
         
         # Continue with NVT-NVE cycles until thermalized
         cycle_counter = 0
         while (not self._thermalization_data["Verdict"][-1] and 
             cycle_counter < config['max_cycles']):
-            self._run_nvt_thermalization_cycle()
-            self._run_nve_thermalization_cycle(config)
+            self._run_nvt_thermalization_cycle(config['nvt_steps'], config['dump_step'])
+            self._run_nve_thermalization_cycle(config['nve_steps'], config['dump_step'], config)
             self._save_thermalization_results()
             cycle_counter += 1
+        
+        time_eq = self.timer.stop()
+        self.io.close_h5md_file()
+        self.io.time_stamp("Adaptive Equilibration", self.timer.time_division(time_eq))
         
         # Finalize
         self._finalize_adaptive_thermalization(cycle_counter, config)
         
         return DataFrame(self._thermalization_data)
     
-    def _init_thermalization_data_dict(self, config):
+    def _init_thermalization_data_dict(self, observable_name):
         """Initialize dictionary for storing thermalization results."""
-        obs_name = config['observable'].replace('_', ' ').title()
+        obs_name = observable_name.replace('_', ' ').title()
         
         self._thermalization_data = {
             "Completed steps": [],
@@ -2743,14 +2769,14 @@ class Simulation(Process):
         self._therm_step_counter = 0
         self._therm_dump_counter = 0
     
-    def _read_thermalization_observable(self, config, start_dump, end_dump):
+    def _read_thermalization_observable(self, observable_name, start_dump, end_dump):
         """
         Read observable data from H5MD file for thermalization check.
         
         Parameters
         ----------
-        config : dict
-            Adaptive thermalization configuration
+        observable_name : str
+            Name of the observable to read
         start_dump : int
             Starting dump index
         end_dump : int
@@ -2762,8 +2788,6 @@ class Simulation(Process):
             (time_data, observable_data) - weighted average across species
         """
 
-        observable_name = config['observable']
-        
         with h5py.File(self.io.h5md_filepath, 'r') as file:
             time_data = None
             observable_data = 0.0
@@ -2783,27 +2807,29 @@ class Simulation(Process):
         
         return time_data, observable_data
     
-    def _check_thermalization_statistics(self, config, start_dump, end_dump):
+    def _check_thermalization_statistics(self, observable_name, start_dump, end_dump, stats_config):
         """
         Check if system is thermalized using statistical tests.
         
         Parameters
         ----------
-        config : dict
-            Adaptive thermalization configuration
+        observable_name : str
+            Name of the observable to check
         start_dump : int
             Starting dump index
         end_dump : int
             Ending dump index
+        stats_config : dict
+            Configuration for statistical tests
         """
-        obs_name = config['observable'].replace('_', ' ').title()
+        obs_name = observable_name.replace('_', ' ').title()
         
         # Get target value
         target_value = self.parameters.T_desired
         
         # Read observable data
         time_data, observable_data = self._read_thermalization_observable(
-            config, start_dump, end_dump
+            observable_name, start_dump, end_dump
         )
         
         # Calculate basic statistics
@@ -2817,25 +2843,19 @@ class Simulation(Process):
         self._thermalization_data[f"Std {obs_name}"].append(std_obs)
         self._thermalization_data[f"MAE {obs_name}"].append(mae)
         
-        # Apply conversion for temperature
-        if config['observable'] == 'temperature':
-            observable_converted = observable_data #* K2eV
-        else:
-            observable_converted = observable_data
-        
         # Normalize time
         time_normalized = time_data / self.parameters.total_plasma_frequency
         
         # Run statistical tests
         test_results = run_thermalization_tests(
-            observable_converted, 
+            observable_data, 
             time_normalized,
-            adf_significance=config.get('adf_significance', 0.05),
-            kpss_significance=config.get('kpss_significance', 0.05)
+            adf_significance=stats_config.get('adf_significance', 0.05),
+            kpss_significance=stats_config.get('kpss_significance', 0.05)
         )
         
         # Check MAE condition
-        mae_condition = mae < config.get('max_mae', 0.01)
+        mae_condition = mae < stats_config.get('max_mae', 0.01)
         
         # Store results
         self._thermalization_data["Linear intercept"].append(test_results['intercept'])
@@ -2865,11 +2885,26 @@ class Simulation(Process):
         all_conditions = test_results['all_conditions'] + [mae_condition]
         self._thermalization_data["Conditions"].append(all_conditions)
         self._thermalization_data["Verdict"].append(all(all_conditions))
+
+        msg = f"\nThermalization Check Results:"
+        msg += f"\n  {obs_name} Mean: {mean_obs:.4f}, Std: {std_obs:.4f}, Rel. Deviation: {relative_deviation:.4e}, MAE: {mae:.4e}"
+        # msg += f"\n  Linear Fit - Slope: {test_results['slope']:.4e}, Intercept: {test_results['intercept']:.4f}, RMSE: {test_results['rmse']:.4e}, Epsilon: {test_results['epsilon']:.4e}"
+        msg += f"\n  ADF Test - Statistic: {test_results['adf']['statistic']:.4f}, p-value: {test_results['adf']['pvalue']:.4f}, Critical Value: {test_results['adf']['critical_value']:.44f}"
+        msg += f"\n  KPSS Test - Statistic: {test_results['kpss']['statistic']:.4f}, p-value: {test_results['kpss']['pvalue']:.4f}, Critical Value: {test_results['kpss']['critical_value']:.4f}"
+        msg += f"\n  Mann-Kendall Test - S: {test_results['mann_kendall']['s']}, p-value: {test_results['mann_kendall']['pvalue']:.4f}, Tau: {test_results['mann_kendall']['tau']:.4f}, h: {test_results['mann_kendall']['h']}, Trend: {test_results['mann_kendall']['trend']}"
+        msg += f"\n  MAE Condition (< {stats_config.get('max_mae', 0.01)}): {'Passed' if mae_condition else 'Failed'}"
+        msg += f"\n  Overall Verdict: {'Thermalized' if all(all_conditions) else 'Not Thermalized'}\n"
+        self.io.write_to_logger(msg)
     
-    def _prepare_adaptive_thermalization(self):
+    def _prepare_adaptive_thermalization(self, config):
         """Prepare simulation for adaptive thermalization."""
         self.io.open_h5md_file(phase="equilibration")
         self.potential.measure = True
+        # Save the initial configuration
+        it_start = 0
+        if config.get('restart_step', None) is not None:
+            it_start = config['restart_step']
+        self.io.save_timestep_data(it_start, config["dump_step"], self.integrator.dt * it_start, self.particles)
 
     
     def _resize_thermalization_h5md(self, new_steps):
@@ -2884,14 +2919,24 @@ class Simulation(Process):
         self.io.open_h5md_file(phase="equilibration")
         self.potential.measure = True
     
-    def _run_initial_nve_cycle(self, config):
-        """Run initial NVE cycle for thermalization."""
-        nve_steps = config['nve_steps']
-        nve_dumps = nve_steps // self.parameters.eq_dump_step
+    def _run_initial_nve(self, nve_steps, dump_step, config):
+        """Run initial NVE phase for thermalization.
         
-        if self.io.verbose:
-            print(f"\nRunning initial NVE cycle")
-            print(f"  Steps: {nve_steps}, Dumps: {nve_dumps}")
+        Parameters
+        ----------
+        nve_steps : int
+            Number of NVE steps to run.
+        dump_step : int
+            Dump step interval.
+        config : dict
+            Configuration for statistical tests.
+        """
+        
+        nve_dumps = nve_steps // dump_step
+        
+        msg = f"\nRunning initial NVE phase"
+        msg += f"  Steps: {nve_steps}, Dumps: {nve_dumps}"
+        self.io.write_to_logger(msg)
         
         self._thermalization_data["NVT start"].append(0)
         self._thermalization_data["NVT end"].append(0)
@@ -2908,14 +2953,14 @@ class Simulation(Process):
         self.evolve(
             "equilibration", False,
             self._therm_step_counter, nve_steps,
-            self.parameters.eq_dump_step
+            dump_step
         )
         
         self.particles.remove_drift()
         
         # Check thermalization
         self._check_thermalization_statistics(
-            config, 0, nve_dumps
+            config["observable"], 0, nve_dumps, config
         )
         
         # Update counters
@@ -2926,21 +2971,28 @@ class Simulation(Process):
         # Save results
         self._save_thermalization_results()
     
-    def _run_nvt_thermalization_cycle(self):
-        """Run NVT (thermostat) cycle."""
-
-        nvt_steps = self.parameters.equilibration_steps
+    def _run_nvt_thermalization_cycle(self, nvt_steps, dump_step):
+        """Run NVT (thermostat) cycle.
         
-        cycle_num = len([c for c in self._thermalization_data["Cycle"] if c > 0]) + 1
+        Parameters
+        ----------
+        nvt_steps : int
+            Number of NVT steps to run.
+        dump_step : int
+            Dump step interval.
+        """
         
-        if self.io.verbose:
-            print(f"\nCycle {cycle_num}: Running NVT (thermostat)")
-            print(f"  Steps: {nvt_steps} (from production_steps // 2)")
-            print(f"  Total equilibration steps so far: {self._therm_step_counter}")
+        cycle_num = self._thermalization_data["Cycle"][-1] + 1
         
+        # Log NVT cycle info
+        msg = f"\nCycle {cycle_num}: Running NVT phase\n"
+        msg += f"  Steps: {nvt_steps}, Dumps: {nvt_steps // dump_step}\n"
+        msg += f"  Total equilibration steps so far: {self._therm_step_counter}"
+        self.io.write_to_logger(msg)
+    
         # Record starting dump index
         self._thermalization_data["NVT start"].append(
-            self._therm_step_counter // self.parameters.eq_dump_step
+            self._therm_step_counter // dump_step
         )
         
         # Resize H5MD file for additional NVT steps
@@ -2957,25 +3009,34 @@ class Simulation(Process):
             "equilibration", self.integrator.thermalization,
             self._therm_step_counter,
             new_total_steps,
-            self.parameters.eq_dump_step
+            dump_step
         )
         
         self.particles.remove_drift()
         
         # Update counters
         self._therm_step_counter = new_total_steps
-        self._therm_dump_counter = new_total_steps // self.parameters.eq_dump_step
+        self._therm_dump_counter = new_total_steps // dump_step
         self._thermalization_data["NVT end"].append(self._therm_dump_counter)
         
-    def _run_nve_thermalization_cycle(self, config):
-        """Run NVE (microcanonical) cycle."""
-        nve_steps = config['nve_steps']
+    def _run_nve_thermalization_cycle(self, nve_steps, dump_step, config):
+        """Run NVE (microcanonical) cycle.
         
-        cycle_num = len([c for c in self._thermalization_data["Cycle"] if c > 0]) + 1
+        Parameters
+        ----------
+        nve_steps : int
+            Number of NVE steps to run.
+        dump_step : int
+            Dump step interval.
+        config : dict
+            Configuration for statistical tests.
+        """
+
+        cycle_num = self._thermalization_data["Cycle"][-1] + 1
         
-        if self.io.verbose:
-            print(f"Cycle {cycle_num}: Running NVE")
-            print(f"  Steps: {nve_steps}")
+        msg = f"Cycle {cycle_num}: Running NVE phase\n"
+        msg += f"  Steps: {nve_steps}, Dumps: {nve_steps // dump_step}\n"
+        self.io.write_to_logger(msg)
         
         self._thermalization_data["NVE start"].append(self._therm_dump_counter + 1)
         
@@ -2993,18 +3054,18 @@ class Simulation(Process):
         self.evolve(
             "equilibration", False,
             self._therm_step_counter, end_nve_steps,
-            self.parameters.eq_dump_step
+            dump_step
         )
         
         self.particles.remove_drift()
         
         # Calculate ending dump index
-        end_nve_dumps = end_nve_steps // self.parameters.eq_dump_step
+        end_nve_dumps = end_nve_steps // dump_step
         self._thermalization_data["NVE end"].append(end_nve_dumps)
         
         # Check thermalization
         self._check_thermalization_statistics(
-            config, self._therm_dump_counter + 1, end_nve_dumps
+            config['observable'], self._therm_dump_counter + 1, end_nve_dumps, config
         )
         
         # Update counters
@@ -3012,7 +3073,6 @@ class Simulation(Process):
         self._thermalization_data["Completed steps"].append(self._therm_step_counter)
         
         # Increment cycle counter
-        cycle_num = len([c for c in self._thermalization_data["Cycle"] if c > 0]) + 1
         self._thermalization_data["Cycle"].append(cycle_num)
     
     def _save_thermalization_results(self):
@@ -3025,9 +3085,6 @@ class Simulation(Process):
 
     def _finalize_adaptive_thermalization(self, cycle_counter, config):
         """Finalize adaptive thermalization."""
-        time_eq = self.timer.stop()
-        self.io.close_h5md_file()
-        self.io.time_stamp("Equilibration", self.timer.time_division(time_eq))
         obs_name = config['observable'].replace('_', ' ').title()
         if self._thermalization_data["Verdict"][-1]:
             msg = f"\n{'='*60}"

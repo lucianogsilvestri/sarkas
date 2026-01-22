@@ -822,7 +822,7 @@ class Potential:
             Particles data.
 
         """
-        ptcls.potential_energy, ptcls.acc, virial_xx_sr, virial_yy_sr, virial_zz_sr, virial_xy_sr, virial_xz_sr, virial_yz_sr = pp_update(
+        ptcls.potential_energy, ptcls.acc, virial_xx_sr, virial_yy_sr, virial_zz_sr, virial_xy_sr, virial_xz_sr, virial_yz_sr, j_e = pp_update(
             ptcls.pos,
             ptcls.vel,
             ptcls.id,
@@ -840,6 +840,7 @@ class Potential:
         ptcls.virial_yy = virial_yy_sr
         ptcls.virial_yz = virial_yz_sr
         ptcls.virial_zz = virial_zz_sr
+        ptcls.heat_flux = j_e
 
     def update_brute(self, ptcls):
         """

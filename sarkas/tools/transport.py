@@ -358,7 +358,7 @@ class TransportCoefficients:
         ax4 = ax2.twiny()
 
         # Calculate axis multipliers and labels
-        xmul, ymul, _, _, xlbl, ylbl = plot_labels(time, tc_data[:, 0], "Time", self.__name__, self.units)
+        xmul, ymul, _, _, xlbl, ylbl = plot_labels(time, tc_data[:, 0], "Time", self.__long_name__, self.units)
 
         # ACF
         ax1.plot(xmul * time, acf_data[:, 0] / acf_data[0, 0])
@@ -607,7 +607,7 @@ class Diffusion(TransportCoefficients):
 
     def __init__(self):
         self.__name__ = "Diffusion"
-        self.__long_name__ = "Diffusion Coefficients"
+        self.__long_name__ = "Diffusion"
         self.required_observable = "Velocity Autocorrelation Function"
         super().__init__()
 
@@ -884,7 +884,7 @@ class InterDiffusion(TransportCoefficients):
 
     def __init__(self):
         self.__name__ = "InterDiffusion"
-        self.__long_name__ = "InterDiffusion Coefficients"
+        self.__long_name__ = "InterDiffusion"
         self.required_observable = "Diffusion Flux"
         super().__init__()
 
@@ -1460,6 +1460,14 @@ class ElectricalConductivity(TransportCoefficients):
 
 
 class ThermalConductivity(TransportCoefficients):
+    """The thermal conductivity is calculated from the Green-Kubo formula
+    
+    .. math::
+            \\kappa_t = k_B \\frac{\\beta^2}{3 V} \\int_0^{t} d\\tau
+            \\langle \\mathbf {J}_{Q}(0) \\cdot \\mathbf {J}_{Q}(\\tau) \\rangle,
+    
+    where :math:`\\mathbf {J}_{Q}(t)` is the heat flux calculated by the :class:`sarkas.tools.observables.HeatFlux` class.
+    """
     def __init__(self):
         self.__name__ = "ThermalConductivity"
         self.__long_name__ = "Thermal Conductivity"
@@ -1492,43 +1500,39 @@ class ThermalConductivity(TransportCoefficients):
         # Initialize Timer
         t0 = self.timer.current()
 
-        const = self.kB * self.beta_slices**2 / self.box_volume
+        const = self.kB * self.beta_slices**2  / self.box_volume
         sp_vacf_str = f"{observable.__long_name__} ACF"
 
-        if self.num_species > 1:
-            species_list = [*observable.species_names, "all"]
-        else:
-            species_list = observable.species_names
+        data_dict = {"Integration_Interval": self.time_array}
 
         # Loop over time slices
-        for isl in tqdm(range(self.no_slices), disable=not observable.verbose):
-            # Iterate over the number of species
-            for isp, sp1 in enumerate(species_list):
-                for _, sp2 in enumerate(species_list[isp:], isp):
-                    # Grab vacf data of each slice
-                    integrand = observable.dataframe_acf_slices[
-                        (sp_vacf_str, f"{sp1}-{sp2}", "Total", f"slice {isl}")
-                    ].values
-                    df_str = f"{self.__long_name__}_{sp1}-{sp2}_slice {isl}"
-                    # self.dataframe_slices[df_str] = const[isl] * fast_integral_loop(
-                    #     time=self.time_array, integrand=integrand
-                    # )
-                    data = const[isl] * cumulative_trapezoid(integrand, self.time_array, initial=0)
-                    self.dataframe_slices = add_col_to_df(self.dataframe_slices, data, df_str)
+        for isl in tqdm(range(self.no_slices), disable=not observable.verbose):            
+            # Grab vacf data of each slice
+            integrand = observable.dataframe_acf_slices[
+                (sp_vacf_str, f"Total", "Total", f"slice {isl}")
+            ].values
+            df_str = f"{self.__long_name__}_slice {isl}"
+            # self.dataframe_slices[df_str] = const[isl] * fast_integral_loop(
+            #     time=self.time_array, integrand=integrand
+            # )
+            data = const[isl] * cumulative_trapezoid(integrand, self.time_array, initial=0)
+            # Add to data dict
+            data_dict[df_str] = data
+        self.dataframe_slices = DataFrame(data_dict)
+        data_dict = {"Integration_Interval": self.time_array}
 
         # Average and std of each transport coefficient.
-        for isp, sp1 in enumerate(species_list):
-            for _, sp2 in enumerate(species_list[isp:], isp):
-                col_str = [f"{self.__long_name__}_{sp1}-{sp2}_slice {isl}" for isl in range(observable.no_slices)]
-                # Mean
-                col_data = self.dataframe_slices[col_str].mean(axis=1).values
-                col_name = f"{self.__long_name__}_{sp1}-{sp2}_Mean"
-                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-                # Std
-                col_data = self.dataframe_slices[col_str].std(axis=1).values
-                col_name = f"{self.__long_name__}_{sp1}-{sp2}_Std"
-                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-
+        col_str = [f"{self.__long_name__}_slice {isl}" for isl in range(observable.no_slices)]
+        # Mean
+        col_data = self.dataframe_slices[col_str].mean(axis=1).values
+        col_name = f"{self.__long_name__}_Mean"
+        data_dict[col_name] = col_data
+        # Std
+        col_data = self.dataframe_slices[col_str].std(axis=1).values
+        col_name = f"{self.__long_name__}_Std"
+        data_dict[col_name] = col_data
+        
+        self.dataframe = DataFrame(data_dict)
         # Time stamp
         tend = self.timer.current()
         self.time_stamp(f"{self.__long_name__} Calculation", self.timer.time_division(tend - t0))
@@ -1563,29 +1567,24 @@ class ThermalConductivity(TransportCoefficients):
         """
         sp_vacf_str = f"{observable.__long_name__} ACF"
 
-        if self.num_species > 1:
-            species_list = [*observable.species_names, "all"]
-        else:
-            species_list = observable.species_names
+        species_list = observable.species_names
 
-        for isp, sp1 in enumerate(species_list):
-            for _, sp2 in enumerate(species_list[isp:], isp):
-                acf_avg = observable.dataframe_acf[(sp_vacf_str, f"{sp1}-{sp2}", "Total", "Mean")].to_numpy()
-                acf_std = observable.dataframe_acf[(sp_vacf_str, f"{sp1}-{sp2}", "Total", "Std")].to_numpy()
+        acf_avg = observable.dataframe_acf[(sp_vacf_str, f"Total", "Total", "Mean")].to_numpy()
+        acf_std = observable.dataframe_acf[(sp_vacf_str, f"Total", "Total", "Std")].to_numpy()
 
-                col_name = (f"{self.__long_name__}", f"{sp1}-{sp2}", "Mean")
-                tc_avg = self.dataframe[col_name].to_numpy()
-                col_name = (f"{self.__long_name__}", f"{sp1}-{sp2}", "Std")
-                tc_std = self.dataframe[col_name].to_numpy()
+        col_name = (f"{self.__long_name__}", "Mean")
+        tc_avg = self.dataframe[col_name].to_numpy()
+        col_name = (f"{self.__long_name__}", "Std")
+        tc_std = self.dataframe[col_name].to_numpy()
 
-                fig, (ax1, ax2, ax3, ax4) = self.plot_tc(
-                    time=self.time_array,
-                    acf_data=column_stack((acf_avg, acf_std)),
-                    tc_data=column_stack((tc_avg, tc_std)),
-                    acf_name=sp_vacf_str,
-                    tc_name=f"{sp1}-{sp2} {self.__long_name__}",
-                    figname=f"{self.__name__}_{sp1}-{sp2}_Plot.png",
-                    show=display_plot,
-                )
+        fig, (ax1, ax2, ax3, ax4) = self.plot_tc(
+            time=self.time_array,
+            acf_data=column_stack((acf_avg, acf_std)),
+            tc_data=column_stack((tc_avg, tc_std)),
+            acf_name=sp_vacf_str,
+            tc_name=f'{self.__long_name__}',
+            figname=f"{self.__name__}_Plot.png",
+            show=display_plot,
+        )
 
         return fig, (ax1, ax2, ax3, ax4)

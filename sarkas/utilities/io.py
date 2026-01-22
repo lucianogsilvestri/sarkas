@@ -1926,7 +1926,7 @@ class InputOutput:
             if 'species_' in obs_name:
                 for isp, sp_name in enumerate(params.species_names):
                     species_group = self.observables_group.require_group(sp_name)
-                    obs_group = species_group.require_group(obs_name)
+                    obs_group = species_group.require_group(obs_name.replace('species_', ''))
                     
                     if hasattr(ptcls, obs_name):
                         obs = ptcls.__getattribute__(obs_name)[isp]
@@ -2088,7 +2088,8 @@ class InputOutput:
             if 'species_' in obs_name:
                 for isp, sp_name in enumerate(ptcls.species_names):
                     species_group = self.observables_group[sp_name]
-                    obs_group = species_group[obs_name]
+                    
+                    obs_group = species_group[obs_name.replace('species_', '')]
                     # Directly insert data at the current step index without resizing
                     obs_group['value'][index] = ptcls.__getattribute__(obs_name)[isp]
                     obs_group['time'][index] = time
@@ -2251,7 +2252,7 @@ class InputOutput:
         Parameters
         ----------
         time_stamp : str
-            Array of time stamps.
+            Phase of the simulation .
 
         t : tuple
             Time in hrs, min, sec, msec, usec, nsec..

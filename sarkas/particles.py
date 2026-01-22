@@ -115,9 +115,9 @@ class Particles:
         :meth:`calculate_total_kinetic_energy()` calculates the total kinetic energy and stores it in :attr:`tottal_kinetic_energy` a float.\n\n
         Quantities requiring cross species evaluation are stored in `numpy.ndarray` as `.[quantity]_species_tensor`.\n
         For example:
-        :attr:`virial_species_tensor` is a  :attr:`num_species` x :attr:`num_species` x 3 x 3 tensor.
-        :attr:`heat_flux_species_tensor` is a :attr:`num_species` x :attr:`num_species` x  3 tensor.
-        The attributes :attr:`potential_energy`, :attr:`virial_species_tensor`, :attr:`heat_flux_species_tensor` are calculated by the :class:`sarkas.potentials.core.Potential` class.\n
+        :attr:`species_virial_tensor` is a  :attr:`num_species` x 3 x 3 tensor.\n
+        :attr:`species_heat_flux` is a :attr:`num_species` x 3 tensor.\n
+        The attributes :attr:`potential_energy`, :attr:`species_virial_tensor`, :attr:`species_heat_flux` are calculated by the :class:`sarkas.potentials.core.Potential` class.\n
         Therefore, this class is missing the :meth:`calculate_potential_energy`, :meth:`calculate_virial`, :meth:`calculate_heat_flux` methods.
     """
 
@@ -147,6 +147,7 @@ class Particles:
         self.virial_yy = None
         self.virial_yz = None
         self.virial_zz = None
+        self.heat_flux = None  # Heat flux of each particle
 
         self.potential_energy = None
         self.dipole_moment_energy = None
@@ -254,9 +255,7 @@ class Particles:
         del state["names"]
         del state["pbc_cntr"]
         del state["rdf_hist"]
-        del state["virial_species_tensor"]
         del state["potential_energy"]
-        del state["heat_flux_species_tensor"]
 
         return state
 
@@ -554,6 +553,8 @@ class Particles:
         self.virial_yz = zeros( self.total_num_ptcls)
         self.virial_zz = zeros( self.total_num_ptcls)
 
+        self.heat_flux = zeros((self.total_num_ptcls, 3))  # Heat flux of each particle
+        
         self.pbc_cntr = zeros((self.total_num_ptcls, 3))
 
         self.masses = zeros(self.total_num_ptcls)  # mass of each particle
@@ -637,7 +638,7 @@ class Particles:
             self.species_dipole_moment = zeros((self.num_species, 3))
 
         if "Heat Flux" in self.observables_list:
-            self.heat_flux_species_tensor = zeros(( self.num_species, self.num_species, 3))
+            self.heat_flux = zeros((self.total_num_ptcls, 3))
             self.species_heat_flux = zeros((self.num_species, 3))
             if 'species_heat_flux' not in self.observables_arrays_list:
                 self.observables_arrays_list.append('species_heat_flux')
@@ -1306,7 +1307,7 @@ class Particles:
     def calculate_species_heat_flux(self):
         """Calculate the energy current of each species from :attr:`heat_flux_species_tensor` and stores it into :attr:`species_heat_flux`.\n
         Note that :attr:`heat_flux_species_tensor` is calculated in the force loop if requested."""
-        self.species_heat_flux = self.heat_flux_species_tensor.sum(axis=0) # vector_cross_species_loop(self.heat_flux_species_tensor)
+        self.species_heat_flux = vector_species_loop(self.heat_flux, self.species_num)
 
     def calculate_species_diffusion_flux(self):
         """Calculate the diffusion fluxes."""
@@ -1386,7 +1387,7 @@ class Particles:
         self.species_potential_energy = scalar_species_loop(self.potential_energy, self.species_num)
 
     def calculate_species_virial_tensor(self):
-        """Calculate the virial tensor of each species from :attr:`virial_species_tensor`, calculated in the force loop, and stores it into :attr:`species_virial_tensor`."""
+        """Calculate the virial tensor of each species from :attr:`species_virial_tensor`, calculated in the force loop, and stores it into :attr:`species_virial_tensor`."""
         # the .sum(axis=1) is to sum over the short-range and long-range contributions of the virial tensor.
         species_virial_xx = scalar_species_loop(self.virial_xx, self.species_num)
         species_virial_xy = scalar_species_loop(self.virial_xy, self.species_num)
@@ -1828,7 +1829,7 @@ def calc_pressure_tensor(vel, species_virial_tensor, species_masses, species_num
         pressure_kin[i,:,:] = species_masses[i] * p_kin[i,:,:]
 
     # Sum over the species
-    pressure_pot =  species_virial_tensor/box_volume # tensor_cross_species_loop(virial_species_tensor, species_num) / box_volume
+    pressure_pot =  species_virial_tensor/box_volume 
     pressure_tensor = pressure_kin + pressure_pot
     for isp in range(species_num.shape[0]):
         pressure[isp] += (pressure_tensor[isp, 0, 0] + pressure_tensor[isp, 1, 1] + pressure_tensor[isp, 2, 2]) / dimensions
