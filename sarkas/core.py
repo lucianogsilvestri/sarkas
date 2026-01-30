@@ -424,22 +424,22 @@ class Parameters:
             e_species = Species(electrons)
             e_species.copy_params(self)
             e_species.calc_ws_radius()
-            e_species.calc_plasma_frequency()
-            e_species.calc_debye_length()
-            e_species.calc_landau_length()
+            e_species.calculate_plasma_frequency()
+            e_species.calculate_debye_length()
+            e_species.calculate_landau_length()
             if self.magnetized:
                 b_mag = norm(self.magnetic_field)  # magnitude of B
                 if self.units == "cgs":
                     b_mag /= self.c0
 
-                e_species.calc_cyclotron_frequency(magnetic_field_strength=b_mag)
+                e_species.calculate_cyclotron_frequency(magnetic_field_strength=b_mag)
             # Electron should be the last species if not dynamical
             species.append(e_species)
         else:
             # Electron should be the first species if dynamical
             e_species = species[0]
 
-        e_species.calc_debroglie_wavelength()
+        e_species.calculate_debroglie_wavelength()
         e_species.calc_quantum_attributes(spin_statistics="fermi-dirac")
         # Electron WS radius
         e_species.a_ws = (3.0 / (4.0 * pi * e_species.number_density)) ** (1.0 / 3.0)
@@ -515,7 +515,7 @@ class Parameters:
             if self.units == "cgs":
                 b_mag /= self.c0
 
-            sp.calc_cyclotron_frequency(magnetic_field_strength=b_mag)
+            sp.calculate_cyclotron_frequency(magnetic_field_strength=b_mag)
 
             sp.beta_c = sp.cyclotron_frequency / sp.plasma_frequency
             self.species_cyclotron_frequencies[i] = sp.cyclotron_frequency
@@ -900,9 +900,9 @@ class Parameters:
 
             sp.copy_params(self)
             sp.calc_ws_radius()
-            sp.calc_plasma_frequency()
-            sp.calc_debye_length()
-            sp.calc_landau_length()
+            sp.calculate_plasma_frequency()
+            sp.calculate_debye_length()
+            sp.calculate_landau_length()
 
         # Calculate species concentrations
         for i, sp in enumerate(species):

@@ -115,11 +115,14 @@ class Potential:
     pppm_pp_err: float = 0.0
     QFactor: float = 0.0
     rc: float = None
-    num_species: ndarray = None
     screening_length_type: str = "thomas-fermi"
     screening_length: float = None
+    
+    num_species: int = 0
     species_charges: ndarray = None
     species_masses: ndarray = None
+    species_num: ndarray = None
+
     total_net_charge: float = 0.0
     total_num_density: float = 0.0
     total_num_ptcls: float = 0.0
@@ -361,13 +364,6 @@ class Potential:
         self.total_net_charge = params.total_net_charge
         self.total_num_density = params.total_num_density
 
-        self.num_species = params.num_species
-        self.species_charges = params.species_charges.copy()
-        self.species_masses = params.species_masses.copy()
-        self.species_num = params.species_num.copy()
-
-        if self.type == "lj":
-            self.species_lj_sigmas = params.species_lj_sigmas.copy()
 
     def from_dict(self, input_dict: dict):
         """
@@ -430,7 +426,6 @@ class Potential:
 
         print(msg)
     
-
     def method_setup(self, species_list = None):
         """Setup algorithm's specific parameters."""
 
@@ -539,26 +534,27 @@ class Potential:
             Dictionary of calculated PPPM parameters including rc, alpha, mesh, and cao
         """
             
-        # Initialize counters
-        total_particles = 0
-        total_charge_squared = 0
-        total_number_density = 0
+        # # Initialize counters
+        # total_particles = 0
+        # total_charge_squared = 0
+        # total_number_density = 0
         
-        # Process each species
-        for species in species_list:
+        # # Process each species
+        # for species in species_list:
             
-            # Extract species properties
-            num_particles = species.num
-            charge = species.charge
-            number_density = species.number_density
-            
-            # Accumulate totals
-            total_particles += num_particles
-            total_charge_squared += num_particles * (charge**2)
-            total_number_density += number_density
-        
-        # Calculate box dimensions from number density
+        #     # If background in species.name then continue
+        #     if "background" in species.name.lower():
+        #         continue
 
+        #     num_particles = species.num
+        #     charge = species.charge
+        #     number_density = species.number_density
+            
+        #     # Accumulate totals
+        #     total_particles += num_particles
+        #     total_charge_squared += num_particles * (charge**2)
+        #     total_number_density += number_density
+        
         # Initial mesh estimate: 
         pppm_h_array = full(3, 0.5 * self.a_ws, dtype=float)
         # Mesh size is power of 2 of L/h
@@ -685,6 +681,37 @@ class Potential:
         self.pot_pretty_print(potential=self)
         self.method_pretty_print()
 
+    def set_attributes_from_species(self, species):
+        """
+        Update potential attributes from species data.
+
+        Parameters
+        ----------
+        species : list
+            List of :class:`sarkas.plasma.Species` objects.
+
+        """
+
+        # Number of species
+        self.num_species = len(species) if "background" not in species[-1].name.lower() else len(species) - 1
+
+        # Total number density
+        self.total_num_density = sum([sp.number_density for sp in species if "background" not in sp.name.lower()])
+
+        # Total net charge
+        self.total_net_charge = sum([sp.charge * sp.num for sp in species if "background" not in sp.name.lower()])
+
+        # QFactor
+        self.QFactor = sum([sp.num * sp.charge**2/self.fourpie0 for sp in species if "background" not in sp.name.lower()])
+
+        # Species Charges
+        self.species_charges = array([sp.charge for sp in species if "background" not in sp.name.lower()], dtype=float)
+        self.species_masses = array([sp.mass for sp in species if "background" not in sp.name.lower()], dtype=float)
+        self.species_num = array([sp.num for sp in species if "background" not in sp.name.lower()], dtype=int)
+
+        if self.type == "lj":
+            self.species_lj_sigmas = array([sp.sigma for sp in species if "background" not in sp.name.lower()], dtype=float)
+        
     def setup(self, params, species):
         """Set up the attributes and methods of the potential class.
 
@@ -703,10 +730,12 @@ class Potential:
         self.method = self.method.lower()
 
         self.copy_params(params)
+        self.set_attributes_from_species(species)
         self.type_setup(species)
         self.method_setup(species_list=species)
         # Update potential matrix with the new parameters in case of pppm
         self.pot_update_params(self, species)
+        
         self.calculate_force_error()
 
     def type_setup(self, species):

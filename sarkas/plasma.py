@@ -6,7 +6,7 @@ from copy import deepcopy
 from numpy import array, ndarray, pi, sqrt, zeros, isclose
 
 from .utilities.fdints import fdm1h, invfd1h
-
+from warnings import warn
 
 class Species:
     """
@@ -107,6 +107,15 @@ class Species:
         self.temperature = None
         self.temperature_eV = None
 
+        # Physical constants (to be copied from Parameters class if not passed)
+        self.kB = None
+        self.eV2K = None
+        self.eV2J = None
+        self.hbar = None
+        self.c0 = None
+        self.units_dict = None
+        self.dimensions = None
+
         if input_dict:
             self.from_dict(input_dict)
 
@@ -190,7 +199,34 @@ class Species:
             self.fourpie0 = params.fourpie0
 
     def calc_plasma_frequency(self):
-        """Calculate the plasma frequency."""
+        """Calculate the plasma frequency.
+        
+        Raises
+        ------
+        `DeprecationWarning`:
+            This method will be deprecated in the next version. Use calculate_plasma_frequency instead.
+        """
+        warn("Species.calc_plasma_frequency will be deprecated in the next version. Use Species.calculate_plasma_frequency instead.", DeprecationWarning)
+        self.calculate_plasma_frequency()
+
+    def calculate_plasma_frequency(self):
+        """Calculate the plasma frequency.
+        
+        Notes
+        -----
+        The plasma frequency is given by: 
+        
+        .. math::
+            \\omega_p = \\sqrt{\\frac{4 \\pi q^2 n}{m 4 \\pi \\epsilon_0}}
+        
+        for 3D systems and by: 
+        
+        .. math::
+            \\omega_p = \\sqrt{\\frac{2 \\pi q^2 n}{a_i m 4 \\pi \\epsilon_0}}
+        
+        for 2D systems. Note that :math:`q` is the `charge` attribute, :math:`n` is the `number_density` attribute, :math:`m` is the `mass` attribute and :math:`a_i` is the Wigner-Seitz radius calculated from the species density.
+        In the case of CGS units :math:`4 \\pi \\epsilon_0 = 1`. It can be accessed through the `plasma_frequency` attribute. 
+        """
         if self.dimensions == 3:
             self.plasma_frequency = sqrt(4.0 * pi * self.charge**2 * self.number_density / (self.mass * self.fourpie0))
         else:
@@ -199,15 +235,58 @@ class Species:
             )
 
     def calc_debye_length(self):
-        """Calculate the Debye Length."""
+        """Calculate the Debye Length.
+        
+        Raises
+        ------
+        `DeprecationWarning`:
+            This method will be deprecated in the next version. Use calculate_debye_length instead.
+        """
+        warn("Species.calc_debye_length will be deprecated in the next version. Use Species.calculate_debye_length instead.", DeprecationWarning)
+        self.calculate_debye_length()
+
+    def calculate_debye_length(self):
+        """Calculate the Debye Length.
+        
+        Notes
+        -----
+        The Debye length is given by:
+        .. math::
+            \\lambda_D = \\sqrt{\\frac{k_B T 4 \\pi \\epsilon_0}{4 \\pi q^2 n}}
+        
+        where :math:`q` is the `charge` attribute, :math:`n` is the `number_density` attribute and :math:`T` the `temperature` attribute of the species.
+        It can be accessed through the `debye_length` attribute.
+        """
         self.debye_length = sqrt(
             (self.temperature * self.kB * self.fourpie0) / (4.0 * pi * self.charge**2 * self.number_density)
         )
 
     def calc_debroglie_wavelength(self):
-        """Calculate the de Broglie wavelength."""
+        """Calculate the de Broglie wavelength.
+        
+        Raises
+        ------
+        `DeprecationWarning`:
+            This method will be deprecated in the next version. Use calculate_debroglie_wavelength instead.
+        """
+        warn("Species.calc_debroglie_wavelength will be deprecated in the next version. Use Species.calculate_debroglie_wavelength instead.", DeprecationWarning)
+        self.calculate_debroglie_wavelength()
+    
+    def calculate_debroglie_wavelength(self):
+        """Calculate the de Broglie wavelength.
+        
+        Notes
+        -----
+        The de Broglie wavelength is given by:
+        
+        .. math::
+            \\lambda_{deB} = \\sqrt{\\frac{2 \\pi \\hbar^2}{k_B T m}}
+        
+        where :math:`m` is the `mass` attribute and :math:`T` the `temperature` attribute of the species.
+        It can be accessed through the `deBroglie_wavelength` attribute.
+        """
         self.deBroglie_wavelength = sqrt(2.0 * pi * self.hbar**2 / (self.kB * self.temperature * self.mass))
-
+  
     def calc_cyclotron_frequency(self, magnetic_field_strength: float):
         """
         Calculate the cyclotron frequency. See `Wikipedia link <https://en.wikipedia.org/wiki/Lorentz_force>`_.
@@ -217,12 +296,64 @@ class Species:
         magnetic_field_strength : float
             Magnetic field strength.
 
+        Raises
+        ------
+        `DeprecationWarning`:
+            This method will be deprecated in the next version. Use calculate_cyclotron_frequency instead.
         """
+        warn("Species.calc_cyclotron_frequency will be deprecated in the next version. Use Species.calculate_cyclotron_frequency instead.", DeprecationWarning)
+        self.calculate_cyclotron_frequency(magnetic_field_strength)
+    
+    def calculate_cyclotron_frequency(self, magnetic_field_strength: float):
+        """
+        Calculate the cyclotron frequency. See `Wikipedia link <https://en.wikipedia.org/wiki/Lorentz_force>`_.
 
+        Parameters
+        ----------
+        magnetic_field_strength : float
+            Magnetic field strength.
+
+        Notes
+        -----
+        The cyclotron frequency is given by:
+        
+        .. math::
+            \\omega_c = \\frac{|q| B}{m}
+
+        where :math:`q` is the `charge` attribute, :math:`m` is the `mass` attribute of the species, and :math:`B` is the `magnetic_field_strength` parameter.
+        The formula is valid for both the MKS and CGS systems. 
+        In the CGS system the factor of 1/c is already included in the charge measured in statCoulomb.
+        It can be accessed through the `cyclotron_frequency` attribute. 
+        """
         self.cyclotron_frequency = abs(self.charge) * magnetic_field_strength / self.mass
 
     def calc_landau_length(self):
-        """Calculate the Landau Length."""
+        """Calculate the Landau Length.
+        
+        Raises
+        ------
+        `DeprecationWarning`:
+            This method will be deprecated in the next version. Use calculate_landau_length instead.
+        
+        """
+        warn("Species.calc_landau_length will be deprecated in the next version. Use Species.calculate_landau_length instead.", DeprecationWarning)
+        self.calculate_landau_length()
+
+    def calculate_landau_length(self):
+        """Calculate the Landau Length.
+        
+        Notes
+        -----
+        The Landau length is given by:
+        
+        .. math::
+            l_L = \\frac{4 \\pi q^2}{k_B T}
+        
+        where :math:`q` is the `charge` attribute, :math:`k_B` is the Boltzmann constant, and :math:`T` is the `temperature` attribute of the species. 
+        See `Wikipedia link <https://en.wikipedia.org/wiki/Landau_length>`_.
+        It can be accessed through the `landau_length` attribute.
+
+        """
         # Landau length 4pi e^2 beta. The division by fourpie0 is needed for MKS units
         self.landau_length = 4.0 * pi * self.charge**2 / (self.temperature * self.fourpie0 * self.kB)
 
@@ -241,6 +372,38 @@ class Species:
         const : float
             Electrostatic * Thermal constants.
 
+        Raises
+        ------
+        `DeprecationWarning`:
+            This method will be deprecated in the next version. Use calculate_coupling instead.
+        """
+        warn("Species.calc_coupling will be deprecated in the next version. Use Species.calculate_coupling instead.", DeprecationWarning)
+        self.calculate_coupling(a_ws, z_avg, const)
+    
+    def calculate_coupling(self, a_ws: float, z_avg: float, const: float):
+        """
+        Calculate and set the coupling constant.
+
+        Parameters
+        ----------
+        a_ws : float
+            Total Wigner-Seitz radius.
+
+        z_avg : float
+            Average charge of the system.
+
+        const : float
+            Electrostatic * Thermal constants.
+
+        Notes
+        -----
+        The coupling constant is given by:
+
+        ..math::
+            \\Gamma = \\frac{q^2}{a k_B T}
+        
+        where :math:`q` is the `charge` attribute, :math:`T` is the `temperature` attribute of the species, and :math:`a` is the Wigner-Seitz radius obtained from the `ai_dens` attribute or scaled by the average charge of the system.
+        It can be accessed through the `coupling` attribute.
         """
         if isclose(z_avg, 0.0):
             self.ai = self.ai_dens
@@ -250,6 +413,34 @@ class Species:
         self.coupling = self.charge**2 / (self.ai * const * self.temperature)
 
     def calc_ws_radius(self):
+        """Calculate the Wigner-Seitz radius from species density.
+        
+        Raises
+        ------
+        `DeprecationWarning`:
+            This method will be deprecated in the next version. Use calculate_ws_radius instead.
+        
+        """
+        warn("Species.calc_ws_radius will be deprecated in the next version. Use Species.calculate_ws_radius instead.", DeprecationWarning)
+        self.calculate_ws_radius()
+
+    def calculate_ws_radius(self):
+        """Calculate the Wigner-Seitz radius from species density.
+        
+        Notes
+        -----
+        The Wigner-Seitz radius is given by:
+        .. math::
+            a_i = \\left( \\frac{3}{4 \\pi n} \\right)^{1/3}
+        
+        for 3D systems and by:
+        .. math::
+            a_i = \\left( \\frac{1}{\\pi n} \\right)^{1/2}
+        
+        for 2D systems, where :math:`n` is the `number_density` attribute.
+        It can be accessed through the `ai_dens` attribute.
+        """
+
         if self.dimensions == 3:
             self.ai_dens = (3.0 / (4.0 * pi * self.number_density)) ** (1.0 / 3.0)
         else:
@@ -269,9 +460,39 @@ class Species:
 
         Raises
         ------
+        `DeprecationWarning`:
+            This method will be deprecated in the next version. Use calculate_quantum_attributes instead.
+
+        """
+        warn("Species.calc_quantum_attributes will be deprecated in the next version. Use Species.calculate_quantum_attributes instead.", DeprecationWarning)
+        self.calculate_quantum_attributes(spin_statistics)
+    
+    def calculate_quantum_attributes(self, spin_statistics: str = "fermi-dirac"):
+        """
+        Calculate the following quantum parameters:
+        Dimensionless chemical potential, Fermi wavenumber, Fermi energy, Thomas-Fermi wavenumber.
+
+        This function work only for electrons. Other species might give nonsensical values.
+
+        Parameters
+        ----------
+        spin_statistics: str
+            Spin statistic. Default and only option "fermi-dirac".
+
+        Raises
+        ------
         `ValueError`:
             If not Fermi-Dirac statistics.
 
+        Notes
+        -----
+        The dimensionless chemical potential is obtained by inverting the density equation using Fermi-Dirac integrals.
+        The Thomas-Fermi length is obtained from the compressibility. See eq.(10) in Ref.[1].
+        The Fermi wave number and Fermi energy are calculated using their standard definitions.
+
+        References
+        ----------
+        .. [1] L. G. Stanton and M. S. Murillo, "Electron screening and damping in warm dense matter," Phys. Rev. E 91, 033104 (2015). https://doi.org/10.1103/PhysRevE.91.033104
         """
 
         if spin_statistics.lower() != "fermi-dirac":

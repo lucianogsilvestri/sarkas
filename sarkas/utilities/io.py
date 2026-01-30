@@ -151,7 +151,19 @@ class PortableStateSaver:
         return str(obj)
 
     def load_species_list(self, filepath: str) -> list:
-        """Load species list from JSON file"""
+        """Load species list from JSON file
+        
+        Parameters
+        ----------
+        filepath : str
+            Path to the JSON file containing saved species.
+        
+        Returns
+        -------
+        list
+            List of restored Species objects.
+        
+        """
         with open(filepath, 'r') as f:
             data = json.load(f)
         
@@ -177,7 +189,16 @@ class PortableStateSaver:
         return species_list
     
     def load_parameters(self, filepath: str, target_params_obj):
-        """Load parameters from JSON file into existing Parameters object"""
+        """Load parameters from JSON file into existing Parameters object
+        
+        Parameters
+        ----------
+        filepath : str
+            Path to the JSON file containing saved parameters.
+        
+        target_params_obj : Parameters
+            Existing Parameters object to populate.
+        """
         with open(filepath, 'r') as f:
             data = json.load(f)
         
