@@ -3,8 +3,9 @@ Module for calculating physical quantities from Sarkas checkpoints.
 """
 import inspect
 from copy import deepcopy
-from typing import List, Union
+from typing import List
 from IPython import get_ipython
+import zarr
 
 if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
     from tqdm import tqdm_notebook as tqdm
@@ -17,17 +18,21 @@ import warnings
 from arch.unitroot import ADF, KPSS
 from matplotlib.gridspec import GridSpec
 from numba import njit
-from numpy import append as np_append, asarray, full, mean
+import xarray as xr
+
 from numpy import (
     allclose,
     argsort,
     array,
+    asarray,
     complex128,
     concatenate,
     exp,
     format_float_scientific,
+    full,
     histogram,
     load,
+    mean,
     ndarray,
     ones,
     ones_like,
@@ -36,6 +41,7 @@ from numpy import (
     repeat,
     rint,
     savez,
+    sin,
     sort,
     sqrt,
     trapz,
@@ -45,6 +51,7 @@ from numpy import (
     where,
     zeros,
 )
+from numpy import append as np_append
 
 from numpy.linalg import lstsq
 from numpy.polynomial import hermite_e
@@ -81,7 +88,8 @@ from ..utilities.maths import correlationfunction
 from ..utilities.misc import add_col_to_df, calculate_beta
 from ..utilities.timing import datetime_stamp, SarkasTimer, time_stamp
 from .fit_functions import exponential, gaussian
-
+from ..algorithms.cell_list import LinkedCellList
+from ..core import Parameters
 from astropy import units as ast_u
 from astropy import constants as ast_c
 
@@ -6222,24 +6230,46 @@ class PairDistributionFunction(Observable):
 
     Attributes
     ----------
-    no_bins : int
-        Number of bins.
-
-    dr_rdf : float
-        Size of each bin.
-
+    coord_system : str
+        Coordinate system to use. Options are 'cartesian', 'cylindrical', or 'spherical'.
+    pdf_bins : numpy.ndarray
+        Number of bins in each dimension for the PDF histogram.
+    cutoffs : numpy.ndarray
+        Cutoff distances in each dimension for the PDF calculation.
+    cutoff_radius : float
+        Cutoff radius for the linked cell list algorithm.
+    delta_pdf : numpy.ndarray
+        Bin widths in each dimension for the PDF histogram. Calculated as `cutoffs / pdf_bins`.
+    
     """
 
-    def __init__(self):
+    def __init__(self, coord_system: str = "cartesian", pdf_bins: array = None, cutoffs: array = None, cutoff_radius: float = None):
         super().__init__()
         self.__name__ = "pdf"
         self.__long_name__ = "Pair Distribution Function"
-        self.pdf_bins = array([100, 100, 100])
-        self.cutoffs = array([5.0, 5.0, 5.0])  # in units of a_ws
-        self.coord_system = "cartesian"  # or 'cylindrical' or 'spherical'
-        self.deltas_pdf = self.cutoffs/self.pdf_bins
-        self.cutoff = None
-    
+
+        self.coord_system = coord_system  # or 'cylindrical' or 'spherical'
+        if self.coord_system not in ["cartesian", "cylindrical", "spherical"]:
+            raise ValueError("coord_system must be 'cartesian', 'cylindrical', or 'spherical'")
+        else:
+            if self.coord_system == "cartesian":
+                self.dim_labels = ["x", "y", "z"]
+                self.pdf_bins = array([100, 100, 100]) if pdf_bins is None else pdf_bins
+                self.cutoffs = array([5.0, 5.0, 5.0]) if cutoffs is None else cutoffs
+        
+            elif self.coord_system == "cylindrical":
+                self.dim_labels = ["r", "phi", "z"]
+                self.cutoffs = array([5.0, pi, 5.0]) if cutoffs is None else cutoffs
+                self.pdf_bins = array([100, 45, 100]) if pdf_bins is None else pdf_bins
+        
+            elif self.coord_system == "spherical":
+                self.dim_labels = ["r", "theta", "phi"]
+                self.cutoffs = array([5.0, pi / 2.0, 2.0 * pi]) if cutoffs is None else cutoffs
+                self.pdf_bins = array([100, 45, 90]) if pdf_bins is None else pdf_bins
+
+        self.deltas_pdf = self.cutoffs / self.pdf_bins
+        self.cutoff_radius = 5.0  if cutoff_radius is None else cutoff_radius
+
     @setup_doc
     def setup(
         self,
@@ -6270,16 +6300,16 @@ class PairDistributionFunction(Observable):
     def update_args(self, **kwargs):
         # Update the attribute with the passed arguments
         self.__dict__.update(kwargs.copy())
-        
-        if self.cell_cutoff is None:
-            self.cell_cutoff = self.cutoff_radius # This is the rc from the potential.
-        
+
         # Ensure the cutoffs are set according to the coordinate system
-        if self.coord_system == "cylindrical":
-            self.cutoffs[1] = pi
-        elif self.coord_system == "spherical":
-            self.cutoffs[1] = pi / 2.0
-            self.cutoffs[2] = 2.0 * pi
+        # if self.coord_system == "cylindrical":
+        #     self.cutoffs[1] = pi
+        # elif self.coord_system == "spherical":
+        #     self.cutoffs[1] = pi / 2.0
+        #     self.cutoffs[2] = 2.0 * pi
+
+        # Update deltas after cutoffs are set
+        self.deltas_pdf = self.cutoffs / self.pdf_bins
 
         self.update_finish()
 
@@ -6288,217 +6318,421 @@ class PairDistributionFunction(Observable):
         t0 = self.timer.current()
         self.calc_slices_data()
         self.average_slices_data()
-        self.save_hdf()
         self.save_state()
         tend = self.timer.current()
-        time_stamp(self.log_file, self.__long_name__ + " Calculation", self.timer.time_division(tend - t0), self.verbose)
+        time_stamp(
+            self.log_file,
+            self.__long_name__ + " Calculation",
+            self.timer.time_division(tend - t0),
+            self.verbose,
+        )
 
     @calc_slices_doc
     def calc_slices_data(self):
-        
 
-        particles_names = full(self.total_num_ptcls, "", dtype=self.species_names.dtype)
-        particles_ids = zeros(self.total_num_ptcls, 0, dtype=int)
+        # Use particle IDs (integers) instead of names for Numba compatibility
+        particles_ids = zeros(self.total_num_ptcls, dtype='int64')
 
         species_start = 0
         species_end = 0
-        for name, n, i in zip(self.species_names, self.species_num, range(len(self.species_names))):
+        for i, n in enumerate(self.species_num):
             species_end += n
-            particles_names[species_start:species_end] = name
             particles_ids[species_start:species_end] = i
             species_start += n
 
-        # The histogram arrays are stored in a dictionary. Each key is a species pair.
-        column_names = [f"{sp1}-{sp2} PDF_slice {isl}" for isl in range(self.no_slices) for sp1 in self.species_names for sp2 in self.species_names]
-        # Create dict with the column names as the keys. This is needed to add the columns to the dataframe
-        hist_dict = {col_name: zeros((self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2]), dtype=int) for col_name in column_names}
-
-        from sarkas.algorithms.cell_list import LinkedCellList
-
+        num_species = len(self.species_names)
+        
+        # Calculate number of unique species pairs (including same-species)
+        num_pairs = num_species * (num_species + 1) // 2
+        
+        # Create a mapping from (i, j) to pair index for upper triangular matrix
+        pair_index_map = zeros((num_species, num_species), dtype='int64')
+        species_pairs = []
+        pair_counter = 0
+        for i in range(num_species):
+            for j in range(i, num_species):
+                pair_index_map[i, j] = pair_counter
+                pair_index_map[j, i] = pair_counter  # Symmetric
+                species_pairs.append(f"{self.species_names[i]}-{self.species_names[j]}")
+                pair_counter += 1
+        
         # Initialize the linked cell list solver
         lcl = LinkedCellList()
-        params = {"box_lengths": self.box_lengths,
-                  "cutoff_radius": self.cell_cutoff,
-                  "dimensions": self.dimensions,
-                  "total_num_density": self.total_num_density,
-                  "a_ws": self.a_ws,
-                  "units_dict": self.units_dict}
-        
-        lcl.setup(params)
+        # TODO: Find a better way to pass these parameters
+        parameters = Parameters()
+        params = {
+            "box_lengths": self.box_lengths,
+            "cutoff_radius": self.cutoff_radius,
+            "dimensions": self.dimensions,
+            "total_num_density": self.total_num_density,
+            "a_ws": self.a_ws,
+            "units_dict": self.units_dict,
+        }
+        parameters.from_dict(params)
+        lcl.setup(parameters)
 
         dump_init = 0
         dump_end = 0
-        step = self.dumps_per_slice - 1 # The -1 is due to zero indexing. The last dump is the number of dumps - 1.
+        step = self.dumps_per_slice - 1
 
+        # Create the cell structure
+        cells_per_dim, cell_length_per_dim = lcl.create_cells_array(self.box_lengths, self.cutoff_radius)
+
+        # Create zarr file for storing all slice data
+        zarr_path = os_path_join(self.saving_dir, f"{self.__name__}_slices.zarr")
+        if os_path_exists(zarr_path):
+            import shutil
+            shutil.rmtree(zarr_path)
+        
+        # Create zarr array: (num_slices, num_pairs, bins_u, bins_v, bins_w)
+        zarr_store = zarr.open(
+            zarr_path,
+            mode='w',
+            shape=(self.no_slices, num_pairs, self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2]),
+            chunks=(1, 1, self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2]),  # One chunk per slice per pair
+            dtype='float64'
+        )
+        
         with h5py.File(self.h5md_filepath, "r") as h5md_file:
             for isl in tqdm(range(self.no_slices), desc="Calculating PDF for slice", disable=not self.verbose):
                 dump_end += step
+                
+                # Use 4D array: (num_pairs, bins_u, bins_v, bins_w)
+                hist_array = zeros(
+                    (num_pairs, self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2]), 
+                    dtype='int64'
+                )
 
                 for it in range(dump_init, dump_end + 1):
-                    positions = h5md_file["particles"]["pos"][it, :, :]        
-                    
-                    # Create the cell structure
-                    cells_per_dim, cell_length_per_dim = lcl.create_cells_array(
-                        self.box_lengths, self.cell_cutoff
-                    )
+                    positions = h5md_file["particles"]["pos"][it, :, :]
 
                     # Create head and list arrays for the linked cell algorithm
-                    head, ls_array = lcl.create_head_list_arrays(
-                        positions, cell_length_per_dim, cells_per_dim
-                    )
-                    key_string = f" PDF_slice {isl}"
+                    head, ls_array = lcl.create_head_list_arrays(positions, cell_length_per_dim, cells_per_dim)
+                    
                     # Calculate distance histograms
-                    hist_dict = lcl.calculate_pdf_hist(
+                    hist_array = lcl.calculate_pdf_hist(
                         pos=positions,
-                        p_name=particles_names,
+                        p_ids=particles_ids,
+                        pair_index_map=pair_index_map,
                         cutoffs=self.cutoffs,
                         pdf_bins=self.pdf_bins,
-                        hist_dict = hist_dict,
-                        key_string=key_string,
+                        hist_array=hist_array,
                         head=head,
                         ls_array=ls_array,
                         cells_per_dim=cells_per_dim,
                         box_lengths=self.box_lengths,
-                        coord_system=self.coord_system  # or 'cylindrical' or 'spherical'
+                        coord_system=self.coord_system,
                     )
-                   
+
+                # Normalize this slice
+                timesteps_per_slice = self.dumps_per_slice
+                pdf_normalized_slice = self._normalize_single_slice(hist_array, timesteps_per_slice, species_pairs)
+                
+                # Save normalized slice to zarr
+                zarr_store[isl, :, :, :, :] = pdf_normalized_slice
+                
                 dump_init += step
                 dump_end += step
-        # Normalize the histograms
-    
 
-    def normalize_histograms(self, hist_dict, timesteps):
-        
+        # Store metadata
+        self.zarr_path = zarr_path
+        self.species_pairs = species_pairs
+
+    def _normalize_single_slice(self, hist_array, timesteps, species_pairs):
+        """
+        Normalize a single slice histogram.
+
+        Parameters
+        ----------
+        hist_array : numpy.ndarray
+            Raw histogram counts with shape (num_pairs, bins_u, bins_v, bins_w).
+        timesteps : int
+            Number of timesteps used to accumulate the histogram.
+        species_pairs : list
+            List of species pair names.
+
+        Returns
+        -------
+        numpy.ndarray
+            Normalized PDF with same shape as hist_array.
+        """
+        # Calculate pair densities
         pair_density = zeros((self.num_species, self.num_species))
-        # No. of pairs per volume
         for i, sp1 in enumerate(self.species_num):
             pair_density[i, i] = sp1 * (sp1 - 1) / self.box_volume
             if self.num_species > 1:
                 for j, sp2 in enumerate(self.species_num[i + 1 :], i + 1):
                     pair_density[i, j] = sp1 * sp2 / self.box_volume
+                    pair_density[j, i] = pair_density[i, j]
 
-        for i, sp1 in enumerate(self.species_names):
-            for j, sp2 in enumerate(self.species_names[i:], i):
-                key_string = f"{sp1}-{sp2} PDF_slice "
-    def norm_g_r_theta(hist_r_theta, rdf, timesteps):
+        # Calculate bin volumes
+        bin_volumes = self._calculate_bin_volumes()
 
-        g_r_theta = np.zeros_like(hist_r_theta)
+        # Normalize each species pair
+        pdf_normalized = zeros(hist_array.shape)
         
-        r_bins = hist_r_theta.shape[0]
-        theta_bins = hist_r_theta.shape[1]
+        for pair_idx, pair_name in enumerate(species_pairs):
+            sp1, sp2 = pair_name.split('-')
+            idx_i = list(self.species_names).index(sp1)
+            idx_j = list(self.species_names).index(sp2)
+            
+            symmetry_factor = 2.0 if idx_i != idx_j else 1.0
+            normalization = pair_density[idx_i, idx_j] * timesteps * bin_volumes * symmetry_factor
+            # Avoid division by zero
+            normalization = where(normalization > 0, normalization, 1.0)
+            
+            pdf_normalized[pair_idx, :, :, :] = hist_array[pair_idx, :, :, :] / normalization
         
-        bin_vol = np.zeros( (r_bins, theta_bins))
-        pair_density = np.zeros((rdf.num_species, rdf.num_species))
-        
-        
-        # N = positions.shape[0]
-        dr = rdf.rc / r_bins
-        dtheta = np.pi / theta_bins
-        
-        # Create the bin volume for normalization
-        for r_bin in range(r_bins):
-            r_inner = r_bin * dr
-            r_outer = (r_bin + 1) * dr
-            volume_shell = (4/3) * np.pi * (r_outer**3 - r_inner**3)
-            norm_factor = volume_shell
-            for theta_bin in range(theta_bins):
-                theta = (theta_bin + 0.5)*dtheta
-                bin_vol[r_bin, theta_bin] =  volume_shell * ( np.sin(theta) * dtheta ) 
-        
-        denom_const = pair_density * timesteps
-        
-        for i, sp1 in enumerate(rdf.species_names):
-            for j, sp2 in enumerate(rdf.species_names[i:], start = i):
-                g_r_theta[:, :, i, j] = hist_r_theta[:,:, i, j]/ (denom_const[i,j] * bin_vol * (2 - 1*(i == j) ) )
-        
-        return g_r_theta
-    
+        return pdf_normalized
+
     @avg_slices_doc
     def average_slices_data(self):
-        for i, sp1 in enumerate(self.species_names):
-            for j, sp2 in enumerate(self.species_names[i:], i):
-                col_str = [f"{sp1}-{sp2} RDF_slice {isl}" for isl in range(self.no_slices)]
 
-                col_name = f"{sp1}-{sp2} RDF_Mean"
-                col_data = self.dataframe_slices[col_str].mean(axis=1).values
-                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
+        if not hasattr(self, 'zarr_path'):
+            raise ValueError("No zarr data available. Run calc_slices_data first.")
+    
+        # Open zarr file
+        zarr_store = zarr.open(self.zarr_path, mode='r')
+        
+        # Calculate mean and std using zarr's built-in operations
+        # This is memory efficient as zarr reads chunks as needed
+        mean_data = zarr_store[:].mean(axis=0)  # Average over slices
+        std_data = zarr_store[:].std(axis=0)    # Std over slices
+        
+        # Create coordinate arrays
+        u_coords = (array(range(self.pdf_bins[0])) + 0.5) * self.deltas_pdf[0]
+        v_coords = (array(range(self.pdf_bins[1])) + 0.5) * self.deltas_pdf[1]
+        w_coords = (array(range(self.pdf_bins[2])) + 0.5) * self.deltas_pdf[2]
+        
+        # Set coordinate names
+        if self.coord_system == "cartesian":
+            coord_names = ['x', 'y', 'z']
+        elif self.coord_system == "cylindrical":
+            coord_names = ['rho', 'theta', 'z']
+        elif self.coord_system == "spherical":
+            coord_names = ['r', 'theta', 'phi']
+        else:
+            coord_names = ['u', 'v', 'w']
+        
+        # Create xarray DataArrays for mean and std
+        self.pdf_mean = xr.DataArray(
+            mean_data,
+            dims=['species_pair', coord_names[0], coord_names[1], coord_names[2]],
+            coords={
+                'species_pair': self.species_pairs,
+                coord_names[0]: u_coords,
+                coord_names[1]: v_coords,
+                coord_names[2]: w_coords,
+            },
+            attrs={
+                'description': 'Mean pair distribution function across all slices',
+                'coordinate_system': self.coord_system,
+                'units': 'dimensionless',
+            }
+        )
+        
+        self.pdf_std = xr.DataArray(
+            std_data,
+            dims=['species_pair', coord_names[0], coord_names[1], coord_names[2]],
+            coords={
+                'species_pair': self.species_pairs,
+                coord_names[0]: u_coords,
+                coord_names[1]: v_coords,
+                coord_names[2]: w_coords,
+            },
+            attrs={
+                'description': 'Standard deviation of pair distribution function across slices',
+                'coordinate_system': self.coord_system,
+                'units': 'dimensionless',
+            }
+        )
 
-                col_name = f"{sp1}-{sp2} RDF_Std"
-                col_data = self.dataframe_slices[col_str].std(axis=1).values
-                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-
-    def compute_sum_rule_integrals(self, potential):
+    def get_slice_data(self, species_pair, slice_idx):
         """
-        Compute integrals of the RDF used in sum rules. \n
-
-        The species dependent integrals are
-
-        .. math::
-
-            I_{AB}^{\\rm (Hartree, k)} = 2^{D - 2} \\pi  n_{A} n_{B} \\int_0^{\\infty} dr \\,
-            r^{D - 1 + k} \\frac{d^k}{dr^k} \\phi_{AB}(r),
-
-        .. math::
-
-            I_{AB}^{\\rm (Corr, k)} = 2^{D - 2} \\pi  n_{A} n_{B} \\int_0^{\\infty} dr \\,
-            r^{D - 1 + k} h_{AB} (r) \\frac{d^k}{dr^k} \\phi_{AB}(r),
-
-        where :math:`D` is the number of dimensions, :math:`k = {0, 1, 2}`,
-        and :math:`\\phi_{AB}(r)` is the potential between species :math:`A` and :math:`B`. \n
-        Only Coulomb and Yukawa potentials are supported at the moment.
+        Load PDF data for a specific species pair and slice from zarr file.
 
         Parameters
         ----------
-        potential : :class:`sarkas.potentials.core.Potential`
-            Sarkas Potential object. Needed for all its attributes.
+        species_pair : str
+            Species pair name (e.g., 'e-e', 'e-ion').
+        slice_idx : int
+            Slice index.
 
         Returns
         -------
-        hartrees : numpy.ndarray
-            Hartree integrals with :math:`k = {0, 1, 2}`. \n
-            Shape = ( :py:attr:`sarkas.tools.observables.Observable.no_obs`, 3).
-
-        corrs : numpy.ndarray
-            Correlational integrals with :math:`k = {0, 1, 2}`. \n
-            Shape = ( :py:attr:`sarkas.tools.observables.Observable.no_obs`, 3).
-
+        numpy.ndarray
+            3D PDF data for the specified species pair and slice.
         """
+        if not hasattr(self, 'zarr_path'):
+            raise ValueError("No zarr data available. Run calc_slices_data first.")
+        
+        # Open zarr in read mode
+        zarr_store = zarr.open(self.zarr_path, mode='r')
+        
+        # Find pair index
+        pair_idx = self.species_pairs.index(species_pair)
+        
+        # Load data for this slice and pair
+        return zarr_store[slice_idx, pair_idx, :, :, :]
 
-        r = self.dataframe[self.dataframe.columns[0]].to_numpy().copy()
+    def load_all_slices_to_xarray(self):
+        """
+        Load all slice data from zarr into an xarray DataArray.
+        Warning: This loads all data into memory.
 
-        dims = self.dimensions
-        dim_const = 2.0 ** (dims - 2) * pi
+        Returns
+        -------
+        xr.DataArray
+            Complete PDF data with all slices.
+        """
+        if not hasattr(self, 'zarr_path'):
+            raise ValueError("No zarr data available. Run calc_slices_data first.")
+        
+        # Open zarr and load all data
+        zarr_store = zarr.open(self.zarr_path, mode='r')
+        all_data = zarr_store[:]
+        
+        # Create coordinate arrays
+        u_coords = (array(range(self.pdf_bins[0])) + 0.5) * self.deltas_pdf[0]
+        v_coords = (array(range(self.pdf_bins[1])) + 0.5) * self.deltas_pdf[1]
+        w_coords = (array(range(self.pdf_bins[2])) + 0.5) * self.deltas_pdf[2]
+        
+        # Set coordinate names
+        if self.coord_system == "cartesian":
+            coord_names = ['x', 'y', 'z']
+        elif self.coord_system == "cylindrical":
+            coord_names = ['rho', 'theta', 'z']
+        elif self.coord_system == "spherical":
+            coord_names = ['r', 'theta', 'phi']
+        else:
+            coord_names = ['u', 'v', 'w']
+        
+        # Create xarray DataArray
+        pdf_all = xr.DataArray(
+            all_data,
+            dims=['slice', 'species_pair', coord_names[0], coord_names[1], coord_names[2]],
+            coords={
+                'slice': range(self.no_slices),
+                'species_pair': self.species_pairs,
+                coord_names[0]: u_coords,
+                coord_names[1]: v_coords,
+                coord_names[2]: w_coords,
+            },
+            attrs={
+                'description': 'Normalized pair distribution function',
+                'coordinate_system': self.coord_system,
+                'units': 'dimensionless',
+            }
+        )
+        
+        return pdf_all
 
-        if r[0] == 0.0:
-            r[0] = 1e-40
+    def _calculate_bin_volumes(self):
+        """
+        Calculate the volume of each bin based on the coordinate system.
 
-        corrs = zeros((self.no_obs, 3))
-        hartrees = zeros((self.no_obs, 3))
+        Returns
+        -------
+        bin_volumes : numpy.ndarray
+            Array of bin volumes with shape (pdf_bins[0], pdf_bins[1], pdf_bins[2]).
+        """
+        bin_volumes = zeros((self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2]))
 
-        obs_indx = 0
-        # TODO:Make this calculation for each slice and/or run
-        for sp1, sp1_name in enumerate(self.species_names):
-            for sp2, sp2_name in enumerate(self.species_names[sp1:], sp1):
-                h_r = self.dataframe[(f"{sp1_name}-{sp2_name} RDF", "Mean")].to_numpy() - 1.0
+        if self.coord_system == "cartesian":
+            # Cartesian: dV = dx * dy * dz
+            dV = self.deltas_pdf[0] * self.deltas_pdf[1] * self.deltas_pdf[2]
+            bin_volumes[:, :, :] = dV
 
-                # Calculate the derivatives of the potential
-                u_r, dv_dr, d2v_dr2 = potential.potential_derivatives(r, potential.matrix[sp1, sp2])
+        elif self.coord_system == "cylindrical":
+            # Cylindrical: dV = rho * drho * dtheta * dz
+            drho = self.deltas_pdf[0]
+            dtheta = self.deltas_pdf[1]
+            dz = self.deltas_pdf[2]
 
-                densities = self.species_num_dens[sp1] * self.species_num_dens[sp2]
+            for i in range(self.pdf_bins[0]):
+                rho_inner = i * drho
+                rho_outer = (i + 1) * drho
+                # Volume of cylindrical shell segment
+                dV = pi * (rho_outer**2 - rho_inner**2) * dz * (dtheta / (2.0 * pi))
+                bin_volumes[i, :, :] = dV
 
-                hartrees[obs_indx, 0] = dim_const * densities * trapz(u_r * r ** (dims - 1), x=r)
-                corrs[obs_indx, 0] = dim_const * densities * trapz(u_r * h_r * r ** (dims - 1), x=r)
+        elif self.coord_system == "spherical":
+            # Spherical: dV = r^2 * sin(theta) * dr * dtheta * dphi
+            dr = self.deltas_pdf[0]
+            dtheta = self.deltas_pdf[1]
+            dphi = self.deltas_pdf[2]
 
-                hartrees[obs_indx, 1] = dim_const * densities * trapz(dv_dr * r**dims, x=r)
-                corrs[obs_indx, 1] = dim_const * densities * trapz(dv_dr * h_r * r**dims, x=r)
+            for i in range(self.pdf_bins[0]):
+                r_inner = i * dr
+                r_outer = (i + 1) * dr
+                volume_shell = (4.0 / 3.0) * pi * (r_outer**3 - r_inner**3)
 
-                hartrees[obs_indx, 2] = dim_const * densities * trapz(d2v_dr2 * r ** (dims + 1), x=r)
-                corrs[obs_indx, 2] = dim_const * densities * trapz(d2v_dr2 * h_r * r ** (dims + 1), x=r)
+                for j in range(self.pdf_bins[1]):
+                    theta_center = (j + 0.5) * dtheta
+                    # Fraction of shell in this theta bin
+                    theta_fraction = sin(theta_center) * dtheta / 2.0
+                    # Fraction in phi direction
+                    phi_fraction = dphi / (2.0 * pi)
+                    
+                    bin_volumes[i, j, :] = volume_shell * theta_fraction * phi_fraction
 
-                obs_indx += 1
+        return bin_volumes
 
-        return hartrees, corrs
+    def reduce_to_2d(self, axis_to_average=2):
+        """
+        Reduce 3D PDF to 2D by averaging over one axis.
 
+        Parameters
+        ----------
+        axis_to_average : int, optional
+            Axis to average over (0, 1, or 2). Default is 2.
+            - Cartesian: 0=x, 1=y, 2=z
+            - Cylindrical: 0=rho, 1=theta, 2=z
+            - Spherical: 0=r, 1=theta, 2=phi
+
+        Returns
+        -------
+        pdf_2d : xr.DataArray
+            2D PDF as xarray DataArray.
+        """
+        # Get coordinate names
+        coord_names = list(self.pdf_normalized.dims)[2:]  # Skip 'slice' and 'species_pair'
+        axis_name = coord_names[axis_to_average]
+        
+        # Average over the specified axis
+        pdf_2d = self.pdf_normalized.mean(dim=axis_name)
+        
+        # Update attributes
+        pdf_2d.attrs['description'] = f'2D PDF (averaged over {axis_name})'
+        
+        return pdf_2d
+
+    def reduce_to_1d(self, axes_to_average=(1, 2)):
+        """
+        Reduce 3D PDF to 1D by averaging over two axes.
+
+        Parameters
+        ----------
+        axes_to_average : tuple of int, optional
+            Axes to average over. Default is (1, 2).
+
+        Returns
+        -------
+        pdf_1d : xr.DataArray
+            1D PDF as xarray DataArray.
+        """
+        # Get coordinate names
+        coord_names = list(self.pdf_normalized.dims)[2:]  # Skip 'slice' and 'species_pair'
+        axes_names = [coord_names[i] for i in axes_to_average]
+        
+        # Average over the specified axes
+        pdf_1d = self.pdf_normalized.mean(dim=axes_names)
+        
+        # Update attributes
+        pdf_1d.attrs['description'] = f'1D PDF (averaged over {", ".join(axes_names)})'
+        
+        return pdf_1d
+        
 # TODO: Review and fix this class
 class VelocityDistribution(Observable):
     """

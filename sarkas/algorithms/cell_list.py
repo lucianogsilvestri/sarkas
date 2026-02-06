@@ -33,6 +33,11 @@ class LinkedCellList(InteractionSolverBase):
         self.cutoff_radius = None
         self.cells_per_dim = zeros(3, dtype=int)
         self.cell_length_per_dim = zeros(3, dtype=float)
+        self.box_lengths = zeros(3, dtype=float)
+        self.total_num_density = None
+        self.units_dict = None
+        self.dimensions = None
+        self.a_ws = None
 
     def setup(self, params, **kwargs):
         """
@@ -57,7 +62,7 @@ class LinkedCellList(InteractionSolverBase):
         self.total_num_density = params.total_num_density
         self.units_dict = params.units_dict
         self.a_ws = params.a_ws
-        self.create_cells_array()
+        self.create_cells_array(box_lengths=self.box_lengths, cutoff=self.cutoff_radius)
 
     @staticmethod
     @jit(nopython=True)
@@ -152,7 +157,6 @@ class LinkedCellList(InteractionSolverBase):
         # every particle in the case of small rc. If two particle see each other than the p1,p2 position is updated to -1.
         # neighbors = zeros((N, N), dtype=int64)
         # neighbors.fill(-50)
-
 
         # Loop over all cells in x, y, and z direction
         for cz in range(d3_max):
@@ -281,6 +285,130 @@ class LinkedCellList(InteractionSolverBase):
 
         return hist_dict
     
+    
+    @staticmethod
+    @jit(nopython=True)
+    def calculate_pdf_hist(
+        pos, p_ids, pair_index_map, cutoffs, pdf_bins, hist_array, head, ls_array, 
+        cells_per_dim, box_lengths, coord_system='cartesian'
+    ):
+        """
+        Calculate PDF histogram using linked cell-list algorithm.
+
+        Parameters
+        ----------
+        pos : numpy.ndarray
+            Particles' positions.
+        p_ids : numpy.ndarray
+            Species ID of each particle (integer).
+        pair_index_map : numpy.ndarray
+            Map from (species_i, species_j) to pair index. Shape: (num_species, num_species).
+        cutoffs : numpy.ndarray
+            Cutoff distances for each coordinate.
+        pdf_bins : numpy.ndarray
+            Number of bins in each direction.
+        hist_array : numpy.ndarray
+            Histogram array with shape (num_pairs, bins_u, bins_v, bins_w).
+        head : numpy.ndarray
+            Head array of the linked cell list algorithm.
+        ls_array : numpy.ndarray
+            List array of the linked cell list algorithm.
+        cells_per_dim : numpy.ndarray
+            Number of cells per dimension.
+        box_lengths : numpy.ndarray
+            Array of box sides' length.
+        coord_system : str
+            Coordinate system: 'cartesian', 'cylindrical', or 'spherical'.
+
+        Returns
+        -------
+        hist_array : numpy.ndarray
+            Updated histogram array.
+        """
+
+        # Declare parameters
+        rshift = zeros(3)
+        
+        delta_u = cutoffs[0] / float(pdf_bins[0])
+        delta_v = cutoffs[1] / float(pdf_bins[1])
+        delta_w = cutoffs[2] / float(pdf_bins[2])
+
+        d3_min = min(cells_per_dim[2], 1)
+        d3_max = max(cells_per_dim[2], 1)
+        d2_min = min(cells_per_dim[1], 1)
+        d2_max = max(cells_per_dim[1], 1)
+        d1_min = min(cells_per_dim[0], 1)
+        d1_max = max(cells_per_dim[0], 1)
+
+        # Loop over all cells
+        for cz in range(d3_max):
+            for cy in range(d2_max):
+                for cx in range(d1_max):
+                    c = cx + cy * cells_per_dim[0] + cz * cells_per_dim[0] * cells_per_dim[1]
+
+                    for cz_N in range(cz - 1, (cz + 2) * d3_min):
+                        cz_shift = 0 + d3_max * (cz_N < 0) - cells_per_dim[2] * (cz_N >= cells_per_dim[2])
+                        rshift[2] = 0.0 - box_lengths[2] * (cz_N < 0) + box_lengths[2] * (cz_N >= cells_per_dim[2])
+
+                        for cy_N in range(cy - 1, (cy + 2) * d2_min):
+                            cy_shift = 0 + d2_max * (cy_N < 0) - cells_per_dim[1] * (cy_N >= cells_per_dim[1])
+                            rshift[1] = 0.0 - box_lengths[1] * (cy_N < 0) + box_lengths[1] * (cy_N >= cells_per_dim[1])
+
+                            for cx_N in range(cx - 1, (cx + 2) * d1_min):
+                                cx_shift = 0 + cells_per_dim[0] * (cx_N < 0) - cells_per_dim[0] * (cx_N >= cells_per_dim[0])
+                                rshift[0] = 0.0 - box_lengths[0] * (cx_N < 0) + box_lengths[0] * (cx_N >= cells_per_dim[0])
+
+                                c_N = (
+                                    (cx_N + cx_shift)
+                                    + (cy_N + cy_shift) * cells_per_dim[0]
+                                    + (cz_N + cz_shift) * cells_per_dim[0] * cells_per_dim[1]
+                                )
+
+                                i = head[c]
+                                while i >= 0:
+                                    j = head[c_N]
+
+                                    while j >= 0:
+                                        if i < j:
+                                            dx = pos[i, 0] - (pos[j, 0] + rshift[0])
+                                            dy = pos[i, 1] - (pos[j, 1] + rshift[1])
+                                            dz = pos[i, 2] - (pos[j, 2] + rshift[2])
+
+                                            if coord_system == 'cylindrical':
+                                                du = sqrt(dx**2 + dy**2)
+                                                dv = atan2(dy, dx)
+                                                dw = abs(dz)
+                                            elif coord_system == 'spherical':
+                                                du = sqrt(dx**2 + dy**2 + dz**2)
+                                                if du > 0:
+                                                    dv = arccos(dz / du)
+                                                else:
+                                                    dv = 0.0
+                                                dw = atan2(dy, dx)
+                                            else:
+                                                # Cartesian
+                                                du = abs(dx)
+                                                dv = abs(dy)
+                                                dw = abs(dz)
+
+                                            u_bin = int(du / delta_u)
+                                            v_bin = int(dv / delta_v)
+                                            w_bin = int(dw / delta_w)
+
+                                            # Get species IDs and look up pair index
+                                            sp1_id = p_ids[i]
+                                            sp2_id = p_ids[j]
+                                            pair_idx = pair_index_map[sp1_id, sp2_id]
+
+                                            # Update histogram if within bounds
+                                            if (u_bin < pdf_bins[0]) and (v_bin < pdf_bins[1]) and (w_bin < pdf_bins[2]):
+                                                hist_array[pair_idx, u_bin, v_bin, w_bin] += 1
+
+                                        j = ls_array[j]
+                                    i = ls_array[i]
+
+        return hist_array
+
     @jit(nopython=True)
     def particles_interaction_loop(
         pos, vel, p_mass, p_id, potential_matrix, rc, measure, force, rdf_hist, head, ls_array, cells_per_dim, box_lengths
