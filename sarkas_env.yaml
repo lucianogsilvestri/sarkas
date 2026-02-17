@@ -17,7 +17,9 @@ dependencies:
   # I/O
   - pyyaml
   - tqdm
-  - pyfiglet=0.8.post1
+  - pyfiglet
+  - zarr
+  - xarray
 
   # Analysis
   - jupyter
@@ -25,6 +27,7 @@ dependencies:
   - notebook
   - matplotlib
   - seaborn
+  - plotly
   
   # Documentation
   - sphinx=4.5.0

@@ -6312,23 +6312,9 @@ class PairDistributionFunction(Observable):
         self.deltas_pdf = self.cutoffs / self.pdf_bins
 
         self.update_finish()
-
-    @compute_doc
-    def compute(self):
-        t0 = self.timer.current()
-        self.calc_slices_data()
-        self.average_slices_data()
-        self.save_state()
-        tend = self.timer.current()
-        time_stamp(
-            self.log_file,
-            self.__long_name__ + " Calculation",
-            self.timer.time_division(tend - t0),
-            self.verbose,
-        )
-
-    @calc_slices_doc
-    def calc_slices_data(self):
+        
+        # Create zarr file for storing all slice data
+        self.zarr_path = os_path_join(self.saving_dir, f"{self.__name__}_slices.zarr")
 
         # Use particle IDs (integers) instead of names for Numba compatibility
         particles_ids = zeros(self.total_num_ptcls, dtype='int64')
@@ -6356,6 +6342,28 @@ class PairDistributionFunction(Observable):
                 species_pairs.append(f"{self.species_names[i]}-{self.species_names[j]}")
                 pair_counter += 1
         
+        self.species_pairs = species_pairs
+        self.particles_ids = particles_ids
+        self.pair_index_map = pair_index_map
+        self.num_pairs = num_pairs
+
+    @compute_doc
+    def compute(self):
+        t0 = self.timer.current()
+        self.calc_slices_data()
+        self.average_slices_data()
+        self.save_state()
+        tend = self.timer.current()
+        time_stamp(
+            self.log_file,
+            self.__long_name__ + " Calculation",
+            self.timer.time_division(tend - t0),
+            self.verbose,
+        )
+
+    @calc_slices_doc
+    def calc_slices_data(self):
+
         # Initialize the linked cell list solver
         lcl = LinkedCellList()
         # TODO: Find a better way to pass these parameters
@@ -6378,17 +6386,16 @@ class PairDistributionFunction(Observable):
         # Create the cell structure
         cells_per_dim, cell_length_per_dim = lcl.create_cells_array(self.box_lengths, self.cutoff_radius)
 
-        # Create zarr file for storing all slice data
-        zarr_path = os_path_join(self.saving_dir, f"{self.__name__}_slices.zarr")
-        if os_path_exists(zarr_path):
+        # Remove existing zarr file if it exists to avoid appending to old data
+        if os_path_exists(self.zarr_path):
             import shutil
-            shutil.rmtree(zarr_path)
+            shutil.rmtree(self.zarr_path)
         
         # Create zarr array: (num_slices, num_pairs, bins_u, bins_v, bins_w)
         zarr_store = zarr.open(
-            zarr_path,
+            self.zarr_path,
             mode='w',
-            shape=(self.no_slices, num_pairs, self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2]),
+            shape=(self.no_slices, self.num_pairs, self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2]),
             chunks=(1, 1, self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2]),  # One chunk per slice per pair
             dtype='float64'
         )
@@ -6399,7 +6406,7 @@ class PairDistributionFunction(Observable):
                 
                 # Use 4D array: (num_pairs, bins_u, bins_v, bins_w)
                 hist_array = zeros(
-                    (num_pairs, self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2]), 
+                    (self.num_pairs, self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2]), 
                     dtype='int64'
                 )
 
@@ -6412,8 +6419,8 @@ class PairDistributionFunction(Observable):
                     # Calculate distance histograms
                     hist_array = lcl.calculate_pdf_hist(
                         pos=positions,
-                        p_ids=particles_ids,
-                        pair_index_map=pair_index_map,
+                        p_ids=self.particles_ids,
+                        pair_index_map=self.pair_index_map,
                         cutoffs=self.cutoffs,
                         pdf_bins=self.pdf_bins,
                         hist_array=hist_array,
@@ -6426,17 +6433,13 @@ class PairDistributionFunction(Observable):
 
                 # Normalize this slice
                 timesteps_per_slice = self.dumps_per_slice
-                pdf_normalized_slice = self._normalize_single_slice(hist_array, timesteps_per_slice, species_pairs)
+                pdf_normalized_slice = self._normalize_single_slice(hist_array, timesteps_per_slice, self.species_pairs)
                 
                 # Save normalized slice to zarr
                 zarr_store[isl, :, :, :, :] = pdf_normalized_slice
                 
                 dump_init += step
                 dump_end += step
-
-        # Store metadata
-        self.zarr_path = zarr_path
-        self.species_pairs = species_pairs
 
     def _normalize_single_slice(self, hist_array, timesteps, species_pairs):
         """
@@ -6488,11 +6491,15 @@ class PairDistributionFunction(Observable):
     @avg_slices_doc
     def average_slices_data(self):
 
-        if not hasattr(self, 'zarr_path'):
+        # Check if zarr data is available 
+        if not os_path_exists(self.zarr_path):
             raise ValueError("No zarr data available. Run calc_slices_data first.")
-    
-        # Open zarr file
+        
         zarr_store = zarr.open(self.zarr_path, mode='r')
+        # Check if zarr data has the expected shape        
+        expected_shape = (self.no_slices, self.num_pairs, self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2])
+        if zarr_store.shape != expected_shape:
+            raise ValueError(f"Zarr file has shape {zarr_store.shape}, expected {expected_shape}")
         
         # Calculate mean and std using zarr's built-in operations
         # This is memory efficient as zarr reads chunks as needed
@@ -6563,7 +6570,7 @@ class PairDistributionFunction(Observable):
         numpy.ndarray
             3D PDF data for the specified species pair and slice.
         """
-        if not hasattr(self, 'zarr_path'):
+        if not os_path_exists(self.zarr_path):
             raise ValueError("No zarr data available. Run calc_slices_data first.")
         
         # Open zarr in read mode
@@ -6585,7 +6592,7 @@ class PairDistributionFunction(Observable):
         xr.DataArray
             Complete PDF data with all slices.
         """
-        if not hasattr(self, 'zarr_path'):
+        if not os_path_exists(self.zarr_path):
             raise ValueError("No zarr data available. Run calc_slices_data first.")
         
         # Open zarr and load all data
@@ -6627,10 +6634,15 @@ class PairDistributionFunction(Observable):
         
         return pdf_all
 
-    def _calculate_bin_volumes(self):
+    def _calculate_bin_volumes(self, coord_system=None):
         """
         Calculate the volume of each bin based on the coordinate system.
 
+        Parameters
+        ----------
+        coord_system : str, optional
+            Coordinate system to use for volume calculation. If `None`, uses the class attribute `self.coord_system`.
+        
         Returns
         -------
         bin_volumes : numpy.ndarray
@@ -6638,12 +6650,17 @@ class PairDistributionFunction(Observable):
         """
         bin_volumes = zeros((self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2]))
 
-        if self.coord_system == "cartesian":
+        if coord_system is not None:
+            coord_system = coord_system.lower()
+        else:
+            coord_system = self.coord_system
+            
+        if coord_system == "cartesian":
             # Cartesian: dV = dx * dy * dz
             dV = self.deltas_pdf[0] * self.deltas_pdf[1] * self.deltas_pdf[2]
             bin_volumes[:, :, :] = dV
 
-        elif self.coord_system == "cylindrical":
+        elif coord_system == "cylindrical":
             # Cylindrical: dV = rho * drho * dtheta * dz
             drho = self.deltas_pdf[0]
             dtheta = self.deltas_pdf[1]
@@ -6656,7 +6673,7 @@ class PairDistributionFunction(Observable):
                 dV = pi * (rho_outer**2 - rho_inner**2) * dz * (dtheta / (2.0 * pi))
                 bin_volumes[i, :, :] = dV
 
-        elif self.coord_system == "spherical":
+        elif coord_system == "spherical":
             # Spherical: dV = r^2 * sin(theta) * dr * dtheta * dphi
             dr = self.deltas_pdf[0]
             dtheta = self.deltas_pdf[1]
