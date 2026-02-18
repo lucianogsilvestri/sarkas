@@ -91,7 +91,6 @@ from .fit_functions import exponential, gaussian
 from ..algorithms.cell_list import LinkedCellList
 from ..core import Parameters
 from astropy import units as ast_u
-from astropy import constants as ast_c
 
 UNITS = [
     # MKS Units

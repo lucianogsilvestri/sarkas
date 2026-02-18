@@ -19,7 +19,6 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import h5py
-from astropy import units as u
 
 from numpy import (
     arange,
@@ -57,9 +56,6 @@ from .utilities.maths import force_error_analytic_pp, force_error_approx_pppm
 from .utilities.timing import SarkasTimer
 from .plotting.styles import get_msu_colors
 from .tools.observables import run_thermalization_tests
-
-# Get conversion factor from astropy
-K2eV = u.K.to(u.eV, equivalencies=u.temperature_energy())
 
 class Process:
     """Parent class for :class:`sarkas.process.PreProcess`, :class:`sarkas.process.Simulation`, and

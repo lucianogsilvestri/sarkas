@@ -30,21 +30,39 @@ classifiers = [
 ]
 
 dependencies = [
+    # Core scientific stack
     "numpy",
     "scipy",
     "pandas",
     "numba>=0.50",
-    "pyfftw",
+    "astropy",
+
+    # FFT
+    "pyfftw>=0.12.0",
+
+    # I/O
+    "h5py",
     "pyyaml",
     "tables",
     "tqdm",
-    "pyfiglet==0.8.post1",
+    "pyfiglet",
+    "zarr",
+    "xarray",
+
+    # Notebooks
+    "ipython",
     "jupyter",
     "jupyterlab",
     "notebook",
+
+    # Visualization
     "matplotlib>=3.5",
     "seaborn",
     "plotly>=5.0",
+
+    # Analysis
+    "arch",
+    "pymannkendall",
     "fmm3dpy",
 ]
 
@@ -60,16 +78,23 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
 ]
+docs = [
+    "sphinx==4.5.0",
+    "sphinx-book-theme==0.3.2",
+    "sphinx-design==0.4.1",
+    "sphinxcontrib-bibtex==2.4.2",
+    "sphinx-autodoc-typehints==1.18.3",
+    "recommonmark==0.7.1",
+    "sphinx-copybutton==0.5.0",
+    "nbsphinx==0.9.3",
+    "sphinxext-opengraph==0.6.3",
+]
 
 [project.urls]
 Homepage = "https://murillogroup.github.io/sarkas"
 Documentation = "https://murillogroup.github.io/sarkas"
 Repository = "https://github.com/murillo-group/sarkas"
 "Bug Tracker" = "https://github.com/murillo-group/sarkas/issues"
-
-[project.scripts]
-# Add any command-line scripts here if needed
-# example-script = "sarkas.module:function"
 
 [tool.setuptools]
 packages = ["sarkas"]
@@ -78,7 +103,6 @@ zip-safe = false
 [tool.setuptools.package-data]
 "sarkas.plotting" = ["*.mplstyle"]
 
-# Black profile
 [tool.black]
 line-length = 122
 exclude = '''
@@ -112,3 +136,6 @@ omit = ["*/tests/*", "*/test_*.py"]
 package = "sarkas"
 filename = "CHANGELOG.rst"
 directory = "changelog/"
+
+[tool.deptry]
+ignore_transitive = ["sarkas"]
