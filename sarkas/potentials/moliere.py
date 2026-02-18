@@ -38,13 +38,14 @@ The elements of the :attr:`sarkas.potentials.core.Potential.matrix` are:
     pot_matrix[6] = b_3
 
 """
+
 from numba import jit
 from numba.core.types import float64, UniTuple
 from numpy import array, exp, inf, pi, sqrt, zeros
 from scipy.integrate import quad
 
 
-def update_params(potential,species):
+def update_params(potential, species):
     """
     Assign potential dependent simulation's parameters.
 

@@ -1,20 +1,34 @@
 """
 Module handling the potential class.
 """
+
 from copy import deepcopy
 from fmm3dpy import hfmm3d, lfmm3d
-from numpy import array, full, inf, int32, int64, log, log2, ndarray, pi, round, sqrt, tanh, newaxis
+from numpy import (
+    array,
+    full,
+    inf,
+    int32,
+    int64,
+    log,
+    log2,
+    ndarray,
+    newaxis,
+    pi,
+    round,
+    sqrt,
+    tanh,
+)
 from warnings import warn
 
 from ..utilities.exceptions import AlgorithmWarning
 from ..utilities.fdints import fdm1h, invfd1h
-from .force_pm import FFTWObjects, force_optimized_green_function as gf_opt
-from .force_pm import calc_virial_coefficients
+from ..utilities.maths import force_error_approx_pppm
+from .force_pm import calc_virial_coefficients, FFTWObjects
+from .force_pm import force_optimized_green_function as gf_opt
 from .force_pm import update as pm_update
 from .force_pp import update as pp_update
 from .force_pp import update_0D as pp_update_0D
-
-from ..utilities.maths import force_error_approx_pppm
 
 
 class Potential:
@@ -117,7 +131,7 @@ class Potential:
     rc: float = None
     screening_length_type: str = "thomas-fermi"
     screening_length: float = None
-    
+
     num_species: int = 0
     species_charges: ndarray = None
     species_masses: ndarray = None
@@ -313,7 +327,6 @@ class Potential:
         """
 
         if self.method == "pp":
-                
             self.force_error = self.calc_force_error_quad(self)
 
         elif self.method == "pppm":
@@ -363,7 +376,6 @@ class Potential:
         self.total_num_ptcls = params.total_num_ptcls
         self.total_net_charge = params.total_net_charge
         self.total_num_density = params.total_num_density
-
 
     def from_dict(self, input_dict: dict):
         """
@@ -425,8 +437,8 @@ class Potential:
         msg += f"Tot Force Error = {self.force_error:.6e}\n"
 
         print(msg)
-    
-    def method_setup(self, species_list = None):
+
+    def method_setup(self, species_list=None):
         """Setup algorithm's specific parameters."""
 
         if self.method in ["pppm", "p3m"] and self.estimate_parameters:
@@ -443,11 +455,11 @@ class Potential:
         elif self.method in ["pp", "lcl"] and self.estimate_parameters:
             if self.force_error is None:
                 self.force_error = 1e-5
-            
+
             if self.type == "yukawa":
                 kappa = self.kappa
-                rescaling_const = sqrt(3.0/(4.0 * pi) ) * self.QFactor / (self.matrix[0,0,0] * self.total_num_ptcls)
-                rc = - log(self.force_error / rescaling_const/sqrt( 2.0 * pi *kappa) ) / kappa
+                rescaling_const = sqrt(3.0 / (4.0 * pi)) * self.QFactor / (self.matrix[0, 0, 0] * self.total_num_ptcls)
+                rc = -log(self.force_error / rescaling_const / sqrt(2.0 * pi * kappa)) / kappa
                 self.rc = rc * self.a_ws
             else:
                 self.estimate_pp_parameters(species_list)
@@ -505,12 +517,12 @@ class Potential:
     def estimate_pp_parameters(self, species_list):
         """
         Estimates optimal PP parameters based on system properties and target force error.
-        
+
         Parameters
         ----------
         species_list : list
             List of :class:`sarkas.plasma.Species` objects.
-        
+
         Raises
         ------
         AttributeError
@@ -522,26 +534,26 @@ class Potential:
     def estimate_pppm_parameters(self, species_list):
         """
         Estimates optimal PPPM parameters based on system properties and target force error.
-        
+
         Parameters
         ----------
         species_list : list
             List of :class:`sarkas.plasma.Species` objects.
-            
+
         Returns
         -------
         dict
             Dictionary of calculated PPPM parameters including rc, alpha, mesh, and cao
         """
-            
+
         # # Initialize counters
         # total_particles = 0
         # total_charge_squared = 0
         # total_number_density = 0
-        
+
         # # Process each species
         # for species in species_list:
-            
+
         #     # If background in species.name then continue
         #     if "background" in species.name.lower():
         #         continue
@@ -549,41 +561,41 @@ class Potential:
         #     num_particles = species.num
         #     charge = species.charge
         #     number_density = species.number_density
-            
+
         #     # Accumulate totals
         #     total_particles += num_particles
         #     total_charge_squared += num_particles * (charge**2)
         #     total_number_density += number_density
-        
-        # Initial mesh estimate: 
+
+        # Initial mesh estimate:
         pppm_h_array = full(3, 0.5 * self.a_ws, dtype=float)
         # Mesh size is power of 2 of L/h
         pppm_mesh = (self.box_lengths / pppm_h_array).astype(int32)
         # Find the closest power of 2
-        self.pppm_mesh = 2**(round(log2(pppm_mesh))).astype(int32)
+        self.pppm_mesh = 2 ** (round(log2(pppm_mesh))).astype(int32)
         self.pppm_h_array = self.box_lengths / self.pppm_mesh
 
         # Calculate rc from the force error formula, assuming pppm_alpha * rc = 3.6
         # Rearranging: force_error / np.sqrt(2) = 2 * total_charge_squared / np.sqrt(total_particles * volume) * exp(-(pppm_alpha * rc)^2) / sqrt(rc)
         # Given pppm_alpha * rc = 3.6, exp(-(pppm_alpha * rc)^2) = exp(-12.96)
-        
+
         # Solving for rc:
         # force_error / np.sqrt(2) * np.sqrt(total_particles * volume) / (2 * total_charge_squared) = exp(-12.96) / sqrt(rc)
-        
+
         # Set a minimum cutoff radius (e.g., Wigner-Seitz radius)
-        
+
         # First calculate alpha using the relation alpha = 0.3 * pppm_mesh[0] / box_length
         alpha_initial = 0.3 / min(self.pppm_h_array)
-        
+
         # Then calculate rc from alpha_initial using pppm_alpha * rc = 3.6
         rc_initial = 3.6 / alpha_initial
-        
+
         # Ensure rc is at least 3 times the Wigner-Seitz radius
         self.rc = max(rc_initial, 3 * self.a_ws)
-        
+
         # Recalculate alpha using the constraint pppm_alpha * rc = 3.6
         self.pppm_alpha_ewald = 3.6 / self.rc
-        
+
         # Choose an appropriate charge assignment order (cao)
         # Higher cao increases accuracy but adds computational cost
         # Typically 3-6 is a good range, let's choose based on force_error
@@ -595,7 +607,7 @@ class Potential:
             self.pppm_cao = full(3, 4, dtype=int64)
         else:
             self.pppm_cao = full(3, 3, dtype=int64)
-        
+
         self.pppm_aliases = array([3, 3, 3], dtype=int)
         # Print the parameters with :.6e format
         # print(f"Estimated PPPM parameters: rc = {self.rc:.6e}, alpha = {self.pppm_alpha_ewald:.6e}, mesh = {self.pppm_mesh[0]}, cao = {self.pppm_cao[0]}, force_error = {self.force_error:.6e}, pppm_h_array = {self.pppm_h_array[0]:.6e}")
@@ -659,15 +671,21 @@ class Potential:
         self.force_error = sqrt(self.pppm_pm_err**2 + self.pppm_pp_err**2)
 
         # Calculate the virial coefficients
-        self.pppm_vk_xx, self.pppm_vk_yy, self.pppm_vk_zz, self.pppm_vk_xy, self.pppm_vk_xz, self.pppm_vk_yz = calc_virial_coefficients(
-            self.pppm_kx, self.pppm_ky, self.pppm_kz, self.pppm_mesh, constants
-        )
-        
-        
+        (
+            self.pppm_vk_xx,
+            self.pppm_vk_yy,
+            self.pppm_vk_zz,
+            self.pppm_vk_xy,
+            self.pppm_vk_xz,
+            self.pppm_vk_yz,
+        ) = calc_virial_coefficients(self.pppm_kx, self.pppm_ky, self.pppm_kz, self.pppm_mesh, constants)
+
         # Uniform background charge correction
         if self.type != "lj":
             # The division by fourpie0 is needed for MKS units
-            self.background_charge_correction = -0.5 * pi * self.total_net_charge**2 / (self.fourpie0 * self.box_volume * self.pppm_alpha_ewald**2)
+            self.background_charge_correction = (
+                -0.5 * pi * self.total_net_charge**2 / (self.fourpie0 * self.box_volume * self.pppm_alpha_ewald**2)
+            )
         else:
             # For Lennard-Jones potential, the background charge correction is zero
             self.background_charge_correction = 0.0
@@ -702,7 +720,9 @@ class Potential:
         self.total_net_charge = sum([sp.charge * sp.num for sp in species if "background" not in sp.name.lower()])
 
         # QFactor
-        self.QFactor = sum([sp.num * sp.charge**2/self.fourpie0 for sp in species if "background" not in sp.name.lower()])
+        self.QFactor = sum(
+            [sp.num * sp.charge**2 / self.fourpie0 for sp in species if "background" not in sp.name.lower()]
+        )
 
         # Species Charges
         self.species_charges = array([sp.charge for sp in species if "background" not in sp.name.lower()], dtype=float)
@@ -710,8 +730,10 @@ class Potential:
         self.species_num = array([sp.num for sp in species if "background" not in sp.name.lower()], dtype=int)
 
         if self.type == "lj":
-            self.species_lj_sigmas = array([sp.sigma for sp in species if "background" not in sp.name.lower()], dtype=float)
-        
+            self.species_lj_sigmas = array(
+                [sp.sigma for sp in species if "background" not in sp.name.lower()], dtype=float
+            )
+
     def setup(self, params, species):
         """Set up the attributes and methods of the potential class.
 
@@ -722,7 +744,7 @@ class Potential:
 
         species : list
             List of :class:`sarkas.plasma.Species` objects.
-        
+
         """
 
         # Enforce consistency
@@ -735,7 +757,7 @@ class Potential:
         self.method_setup(species_list=species)
         # Update potential matrix with the new parameters in case of pppm
         self.pot_update_params(self, species)
-        
+
         self.calculate_force_error()
 
     def type_setup(self, species):
@@ -777,7 +799,6 @@ class Potential:
 
             self.calc_screening_length(species)
             self.pot_update_params = update_params
-
 
         elif self.type == "yukawa-friedel":
             # Yukawa-Friedel potential
@@ -851,7 +872,17 @@ class Potential:
             Particles data.
 
         """
-        ptcls.potential_energy, ptcls.acc, virial_xx_sr, virial_yy_sr, virial_zz_sr, virial_xy_sr, virial_xz_sr, virial_yz_sr, j_e = pp_update(
+        (
+            ptcls.potential_energy,
+            ptcls.acc,
+            virial_xx_sr,
+            virial_yy_sr,
+            virial_zz_sr,
+            virial_xy_sr,
+            virial_xz_sr,
+            virial_yz_sr,
+            j_e,
+        ) = pp_update(
             ptcls.pos,
             ptcls.vel,
             ptcls.id,
@@ -922,11 +953,11 @@ class Potential:
             self.pppm_vk_xy,
             self.pppm_vk_xz,
             self.pppm_vk_yz,
-            self.fftw_objects
+            self.fftw_objects,
         )
-        
+
         ptcls.acc += acc_l_r
-        
+
         # Self-energy correction to the total potential energy
         # Add the long-range part of the potential energy
         # The division by fourpie0 is needed for MKS units
@@ -936,8 +967,8 @@ class Potential:
 
         # Uniform background charge correction
         # The division by total number of particles is needed to have the same energy per particle
-        ptcls.potential_energy += self.background_charge_correction/self.total_num_ptcls
-    
+        ptcls.potential_energy += self.background_charge_correction / self.total_num_ptcls
+
         # J-M.Caillol, J Chem Phys 101 6080 (1994) https: // doi.org / 10.1063 / 1.468422
         # ptcls.calculate_dipole_energy()
         # ptcls.potential_energy += ptcls.dipole_energy.sum(axis = 1)

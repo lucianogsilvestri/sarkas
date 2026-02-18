@@ -146,49 +146,46 @@ class Integrator:
 
         # Parse adaptive thermalization configuration if present
         if "adaptive_thermalization" in input_dict.keys():
-            self.adaptive_thermalization = self._parse_adaptive_thermalization(
-                input_dict["adaptive_thermalization"]
-            )
+            self.adaptive_thermalization = self._parse_adaptive_thermalization(input_dict["adaptive_thermalization"])
 
     def _parse_adaptive_thermalization(self, config_dict):
         """
         Parse adaptive thermalization configuration from YAML.
-        
+
         Parameters
         ----------
         config_dict : dict
             Dictionary with adaptive thermalization parameters
-            
+
         Returns
         -------
         dict
             Validated configuration dictionary
         """
         default_config = {
-            'max_cycles': 11,
-            'nve_steps': None,  # Required
-            'observable': 'temperature',
-            'target_value': None,
-            'adf_significance': 0.05,
-            'kpss_significance': 0.01,
-            'max_mae': 0.01
+            "max_cycles": 11,
+            "nve_steps": None,  # Required
+            "observable": "temperature",
+            "target_value": None,
+            "adf_significance": 0.05,
+            "kpss_significance": 0.01,
+            "max_mae": 0.01,
         }
-        
+
         config = default_config.copy()
         config.update(config_dict)
-        
+
         # Validation
-        if config['nve_steps'] is None:
+        if config["nve_steps"] is None:
             raise ValueError("nve_steps must be specified in adaptive_thermalization config")
-        
-        if config['max_cycles'] < 1:
+
+        if config["max_cycles"] < 1:
             raise ValueError("max_cycles must be >= 1")
-        if config['nve_steps'] < 1000:
+        if config["nve_steps"] < 1000:
             raise ValueError("nve_steps should be >= 1000 for meaningful statistics")
-        
+
         return config
-    
-    
+
     def copy_params(self, params):
         """
         Copy necessary parameters.
@@ -744,7 +741,7 @@ class Integrator:
         # Periodic boundary condition
         # enforce_pbc(ptcls.pos, ptcls.pbc_cntr, self.box_lengths)
         self.enforce_bc(ptcls)
-        
+
         # Compute total potential energy and acceleration for second half step velocity update
         self.update_accelerations(ptcls)
 
@@ -1039,8 +1036,8 @@ class Integrator:
         t_wp = 2.0 * pi / wp_tot
 
         if self.thermalization:
-            N = (-log(0.01) / (self.thermalization_rate) ) # Number of timesteps to decay to 0.01
-            Np = ( N / (t_wp / self.dt) )# Number of plasma cycles to decay to 0.01
+            N = -log(0.01) / (self.thermalization_rate)  # Number of timesteps to decay to 0.01
+            Np = N / (t_wp / self.dt)  # Number of plasma cycles to decay to 0.01
             msg = (
                 f"\nTHERMOSTAT:\n"
                 f"Type: {self.thermostat_type}\n"
@@ -1193,7 +1190,7 @@ def enforce_pbc(pos, cntr, box_lengths):
     # Get the number of particles and dimensions
     N = pos.shape[0]
     D = pos.shape[1]
-    
+
     for i in range(N):
         for j in range(D):
             L = box_lengths[j]
@@ -1202,7 +1199,6 @@ def enforce_pbc(pos, cntr, box_lengths):
             cntr[i, j] += fold_count
             # Apply the boundary condition in-place
             pos[i, j] -= L * fold_count
-
 
     # # Loop over all particles
     # for p in arange(pos.shape[0]):
@@ -1242,22 +1238,22 @@ def enforce_abc(pos, vel, acc, charges, box_vector):
     # Get dimensions for later use
     n_particles = pos.shape[0]
     n_dims = pos.shape[1]
-    
+
     # Pre-allocate masks for particles that need modification
     outside_box = zeros(n_particles, dtype=bool_)
-    
+
     # First, identify all particles that are outside the box in any dimension
     for d in range(n_dims):
         for p in range(n_particles):
             if pos[p, d] >= box_vector[d] or pos[p, d] <= 0.0:
                 outside_box[p] = True
-                
+
                 # Fix positions at boundary
                 if pos[p, d] >= box_vector[d]:
                     pos[p, d] = box_vector[d]
                 else:
                     pos[p, d] = 0.0
-    
+
     # Now apply changes only to particles that need it
     for p in range(n_particles):
         if outside_box[p]:
@@ -1267,7 +1263,8 @@ def enforce_abc(pos, vel, acc, charges, box_vector):
                 acc[p, d] = 0.0
             charges[p] = 0.0
 
-@jit(nopython = True, cache=True)
+
+@jit(nopython=True, cache=True)
 def enforce_rbc(pos, vel, box_vector, dt):
     """
     Optimized Numba function to enforce reflecting boundary conditions.
@@ -1289,21 +1286,21 @@ def enforce_rbc(pos, vel, box_vector, dt):
     # Get dimensions for later use
     n_particles = pos.shape[0]
     n_dims = pos.shape[1]
-    
+
     # Pre-allocate arrays to avoid recreating them in loops
     outside_particles = zeros(n_particles, dtype=bool_)
-    
+
     # For each dimension, find particles outside boundaries and reflect them
     for d in range(n_dims):
         # Reset the outside particle flags for this dimension
         for p in range(n_particles):
             outside_particles[p] = False
-            
+
         # First, identify particles outside the box in this dimension
         for p in range(n_particles):
             if pos[p, d] > box_vector[d] or pos[p, d] < 0.0:
                 outside_particles[p] = True
-        
+
         # Then, apply reflections only to those particles
         for p in range(n_particles):
             if outside_particles[p]:

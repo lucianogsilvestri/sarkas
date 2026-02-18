@@ -1,27 +1,31 @@
 """
 Module for calculating physical quantities from Sarkas checkpoints.
 """
+
 import inspect
-from copy import deepcopy
-from typing import List
-from IPython import get_ipython
 import zarr
+from copy import deepcopy
+from IPython import get_ipython
+from typing import List
 
 if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
     from tqdm import tqdm_notebook as tqdm
 else:
     from tqdm import tqdm
 
+import h5py
 import matplotlib.pyplot as plt
+import pymannkendall as mk
 import scipy.stats as scp_stats
 import warnings
+import xarray as xr
 from arch.unitroot import ADF, KPSS
+from astropy import units as ast_u
 from matplotlib.gridspec import GridSpec
 from numba import njit
-import xarray as xr
-
+from numpy import allclose
+from numpy import append as np_append
 from numpy import (
-    allclose,
     argsort,
     array,
     asarray,
@@ -51,8 +55,6 @@ from numpy import (
     where,
     zeros,
 )
-from numpy import append as np_append
-
 from numpy.linalg import lstsq
 from numpy.polynomial import hermite_e
 from numpy.random import default_rng
@@ -70,10 +72,6 @@ from pandas import (
     Series,
     to_numeric,
 )
-
-import pymannkendall as mk
-import h5py
-
 from pickle import dump
 from pickle import load as pickle_load
 from scipy.fft import fft, fftfreq, fftshift
@@ -83,14 +81,13 @@ from scipy.optimize import curve_fit
 from scipy.special import erfc, factorial
 from seaborn import histplot as sns_histplot
 
-from ..utilities.io import print_to_logger, PortableStateSaver  # Adjust import path
+from ..algorithms.cell_list import LinkedCellList
+from ..core import Parameters
+from ..utilities.io import PortableStateSaver, print_to_logger  # Adjust import path
 from ..utilities.maths import correlationfunction
 from ..utilities.misc import add_col_to_df, calculate_beta
 from ..utilities.timing import datetime_stamp, SarkasTimer, time_stamp
 from .fit_functions import exponential, gaussian
-from ..algorithms.cell_list import LinkedCellList
-from ..core import Parameters
-from astropy import units as ast_u
 
 UNITS = [
     # MKS Units
@@ -476,16 +473,16 @@ class Observable:
             max_k_harmonics=self.max_k_harmonics,
             max_aa_harmonics=self.max_aa_harmonics,
         )
-    
+
     def get_save_format(self) -> str:
         """Check which save format is available"""
         config_filename = os_path_join(self.saving_dir, self.__long_name__.replace(" ", "") + "_config.json")
         pickle_filename = os_path_join(self.saving_dir, self.__long_name__.replace(" ", "") + ".pickle")
-        
+
         if os_path_exists(config_filename):
             return "portable_json"
         elif os_path_exists(pickle_filename):
-            return "legacy_pickle" 
+            return "legacy_pickle"
         else:
             return "none"
 
@@ -493,20 +490,20 @@ class Observable:
         """
         Check if the nkt_hdf_file exists and contains valid k_list data.
         """
-        if not hasattr(self, 'nkt_hdf_file') or not os_path_exists(self.nkt_hdf_file):
+        if not hasattr(self, "nkt_hdf_file") or not os_path_exists(self.nkt_hdf_file):
             return False
 
         try:
-            with h5py.File(self.nkt_hdf_file, 'r') as f:
-                if 'k_list' not in f:
+            with h5py.File(self.nkt_hdf_file, "r") as f:
+                if "k_list" not in f:
                     return False
-                
-                stored_k_list = f['k_list'][:]
-                
+
+                stored_k_list = f["k_list"][:]
+
                 # Check if the shapes match
                 if stored_k_list.shape != self.k_list.shape:
                     return False
-                
+
                 # Check if all elements are equal within a small tolerance
                 if not allclose(stored_k_list, self.k_list, rtol=1e-5, atol=1e-8):
                     return False
@@ -515,7 +512,7 @@ class Observable:
         except Exception as e:
             print(f"Error checking nkt_hdf_file: {e}")
             return False
-        
+
     def calc_nkt_data(self):
         """
         Calculate and store n(k,t) for all time steps and species using time chunking and HDF5 storage.
@@ -561,7 +558,7 @@ class Observable:
 
         total_steps = self.no_dumps
         n_k_values = len(self.k_list)
-        
+
         # Calculate the number of full chunks and the size of the last chunk
         n_full_chunks = total_steps // max_chunk_size
         last_chunk_size = total_steps % max_chunk_size
@@ -571,18 +568,20 @@ class Observable:
 
         # Define chunk shape for each species dataset
         chunk_shape = (n_k_values, max_chunk_size)
-        
-        with h5py.File(output_file, 'w') as f_out:
+
+        with h5py.File(output_file, "w") as f_out:
             # Create datasets for each species
             datasets = {}
             for sp_name in self.species_names:
-                dset = f_out.create_dataset(f'nkt_{sp_name}', 
-                                            shape=(n_k_values, total_steps),
-                                            maxshape=(n_k_values, None),  # Allow expansion along time axis
-                                            dtype=complex128,  
-                                            chunks=chunk_shape)
+                dset = f_out.create_dataset(
+                    f"nkt_{sp_name}",
+                    shape=(n_k_values, total_steps),
+                    maxshape=(n_k_values, None),  # Allow expansion along time axis
+                    dtype=complex128,
+                    chunks=chunk_shape,
+                )
                 datasets[sp_name] = dset
-            
+
             # Process chunks
             for chunk_index in tqdm(range(n_chunks), desc="Calculating n(k,t) in chunks", disable=not self.verbose):
                 chunk_start = chunk_index * max_chunk_size * self.dump_step
@@ -592,25 +591,25 @@ class Observable:
                     chunk_end = total_steps * self.dump_step
 
                 nkt_chunks = self.calc_nkt_chunk(chunk_start, chunk_end)
-                
+
                 # Write chunk to datasets
                 chunk_start_idx = chunk_start // self.dump_step
                 chunk_end_idx = chunk_end // self.dump_step
                 for sp_idx, sp_name in enumerate(self.species_names):
                     datasets[sp_name][:, chunk_start_idx:chunk_end_idx] = nkt_chunks[sp_idx]
-            
+
             # Store k_list
-            f_out.create_dataset('k_list', data=self.k_list)
-            
+            f_out.create_dataset("k_list", data=self.k_list)
+
             # Store general metadata
-            f_out.attrs['no_species'] = len(self.species_names)
-            f_out.attrs['species_names'] = self.species_names
-            f_out.attrs['no_dumps'] = self.no_dumps
-            f_out.attrs['dump_step'] = self.dump_step
-            f_out.attrs['max_chunk_size'] = max_chunk_size
+            f_out.attrs["no_species"] = len(self.species_names)
+            f_out.attrs["species_names"] = self.species_names
+            f_out.attrs["no_dumps"] = self.no_dumps
+            f_out.attrs["dump_step"] = self.dump_step
+            f_out.attrs["max_chunk_size"] = max_chunk_size
             f_out.attrs["max_k_harmonics"] = self.max_k_harmonics
             f_out.attrs["angle_averaging"] = self.angle_averaging
-        
+
         msg = f"n(k,t) stored in {output_file}"
         print_to_logger(msg, self.log_file, self.verbose)
 
@@ -618,23 +617,23 @@ class Observable:
     @njit
     def calc_nk(pos_data, k_list, species_np):
         """Calculate n(k) for a given species.
-        
+
         Parameters
         ----------
         pos_data : numpy.ndarray
             Array of shape (n_particles, 3) containing the positions of the particles.
-            
+
         k_list : numpy.ndarray
             Array of shape (n_k_vectors, 3) containing the k vectors.
-        
+
         species_np : numpy.ndarray
             Array of shape (n_species,) containing the number of particles of each species.
-        
+
         Returns
         -------
         nk : numpy.ndarray
             Array of shape (n_species, n_k_vectors) containing n(k) for each species.
-        
+
         """
         n_species = len(species_np)
         nk = zeros((n_species, len(k_list)), dtype=complex128)
@@ -642,47 +641,53 @@ class Observable:
         for i, sp in enumerate(species_np):
             sp_end = sp_start + sp
             for ik, k_vec in enumerate(k_list):
-                kr_i = 2.0 * pi * (k_vec[0] * pos_data[sp_start:sp_end, 0] + 
-                                      k_vec[1] * pos_data[sp_start:sp_end, 1] + 
-                                      k_vec[2] * pos_data[sp_start:sp_end, 2])
+                kr_i = (
+                    2.0
+                    * pi
+                    * (
+                        k_vec[0] * pos_data[sp_start:sp_end, 0]
+                        + k_vec[1] * pos_data[sp_start:sp_end, 1]
+                        + k_vec[2] * pos_data[sp_start:sp_end, 2]
+                    )
+                )
                 nk[i, ik] = exp(-1j * kr_i).sum()
             sp_start = sp_end
         return nk
 
     def calc_nkt_chunk(self, chunk_start, chunk_end):
         """Calculate n(k,t) for a chunk of time steps.
-        
+
         Parameters
         ----------
         chunk_start : int
             Start of the time chunk.
-        
+
         chunk_end : int
             End of the time chunk.
-        
+
         Returns
         -------
         nkt_chunks : numpy.ndarray
             Array of shape (n_species, len(k_list), chunk_size) containing n(k,t) for each species.
-        
+
         """
         chunk_size = (chunk_end - chunk_start) // self.dump_step
         n_species = len(self.species_num)
         nkt_chunks = zeros((n_species, len(self.k_list), chunk_size), dtype=complex128)
-        
+
         with h5py.File(self.h5md_filepath, "r") as h5md_file:
             for it, dump in enumerate(range(chunk_start, chunk_end, self.dump_step)):
                 indx = dump // self.dump_step
                 pos_data = h5md_file["particles/pos"][indx, :, :]
                 nkt_chunks[:, :, it] = self.calc_nk(pos_data, self.k_list, self.species_num)
-        
+
         return nkt_chunks
 
     def get_nkt_slice(self, hdf5_file, species_name, slice_start, slice_end):
         """Retrieve a slice of nkt data for a specific species from the HDF5 file."""
-        with h5py.File(hdf5_file, 'r') as f:
-            return f[f'nkt_{species_name}'][:, slice_start:slice_end]
-    
+        with h5py.File(hdf5_file, "r") as f:
+            return f[f"nkt_{species_name}"][:, slice_start:slice_end]
+
     # def calc_nkt_slices_data(self):
     #     """Calculate n(k,t) for each slice."""
     #     start_slice = 0
@@ -1246,31 +1251,31 @@ class Observable:
 
         """
         if nkt_flag:
-            if not hasattr(self, 'nkt_hdf_file') or not os_path_exists(self.nkt_hdf_file):
+            if not hasattr(self, "nkt_hdf_file") or not os_path_exists(self.nkt_hdf_file):
                 return False
 
             try:
-                with h5py.File(self.nkt_hdf_file, 'r') as f:
+                with h5py.File(self.nkt_hdf_file, "r") as f:
                     # Check for k_list
-                    if 'k_list' not in f:
+                    if "k_list" not in f:
                         return False
-                    
-                    stored_k_list = f['k_list'][:]
-                    
+
+                    stored_k_list = f["k_list"][:]
+
                     # Check if the shapes match
                     if stored_k_list.shape != self.k_list.shape:
                         return False
-                    
+
                     # Check if all elements are equal within a small tolerance
                     if not allclose(stored_k_list, self.k_list, rtol=1e-5, atol=1e-8):
                         return False
 
                     # Check for angle_averaging attribute
-                    if 'angle_averaging' not in f.attrs:
+                    if "angle_averaging" not in f.attrs:
                         return False
-                    
-                    stored_angle_averaging = f.attrs['angle_averaging']
-                    
+
+                    stored_angle_averaging = f.attrs["angle_averaging"]
+
                     # Compare angle_averaging
                     if stored_angle_averaging != self.angle_averaging:
                         return False
@@ -1502,23 +1507,23 @@ class Observable:
 
     def from_json(self):
         """Read the observable's info from portable format."""
-    
+
         # Try to load from new format first
         config_filename = os_path_join(self.saving_dir, self.__long_name__.replace(" ", "") + "_config.json")
-        
+
         if os_path_exists(config_filename):
             # Load from new portable format
-            
+
             saver = PortableStateSaver()
-            
+
             config = saver.load_observable_config(config_filename)
             saver.restore_observable_from_config(config, self)
-            
+
         else:
             # Fallback to old pickle format
             old_filename = os_path_join(self.saving_dir, self.__long_name__.replace(" ", "") + ".pickle")
             if os_path_exists(old_filename):
-               self.from_pickle()
+                self.from_pickle()
             else:
                 raise FileNotFoundError(f"Neither config file {config_filename} nor pickle file {old_filename} found")
 
@@ -1661,30 +1666,29 @@ class Observable:
     def save_pickle(self):
         """Save the observable's info into a pickle file."""
 
-
         self.filename_pickle = os_path_join(self.saving_dir, self.__long_name__.replace(" ", "") + ".pickle")
         with open(self.filename_pickle, "wb") as pickle_file:
             dump(self, pickle_file)
             pickle_file.close()
-    
+
     def save_state(self):
         """Save the observable's info into portable format."""
-    
+
         # Create PortableStateSaver
 
         saver = PortableStateSaver()
-        
+
         # Save observable configuration
         config_filename = os_path_join(self.saving_dir, self.__long_name__.replace(" ", "") + "_config.json")
         saver.save_observable(self, config_filename)
-        
+
         # Keep track of the config filename
         self.filename_config = config_filename
-        
+
         # Note: DataFrames are still saved via existing HDF5 methods (save_hdf)
         # print(f"Observable configuration saved to: {config_filename}")
         # print("Note: DataFrames should be saved separately using save_hdf() method")
-        
+
     def setup_init(
         self,
         params,
@@ -1839,11 +1843,15 @@ class Observable:
 
         # Get the total number of dumps by looking at the files in the directory
         self.dump_dir = self.directory_tree["postprocessing"][self.phase]["dumps"]["path"]
-        self.h5md_filepath = self.h5md_filenames_tree['postprocessing'][self.phase]
+        self.h5md_filepath = self.h5md_filenames_tree["postprocessing"][self.phase]
         # self.h5md_file = h5py.File(self.h5md_filepath, 'r')
 
-        self.prod_no_dumps = params.production_steps// params.prod_dump_step # len(listdir(self.directory_tree["postprocessing"]["production"]["dumps"]["path"]))
-        self.eq_no_dumps = params.equilibration_steps // params.eq_dump_step # len(listdir(self.directory_tree["postprocessing"]["equilibration"]["dumps"]["path"]))
+        self.prod_no_dumps = (
+            params.production_steps // params.prod_dump_step
+        )  # len(listdir(self.directory_tree["postprocessing"]["production"]["dumps"]["path"]))
+        self.eq_no_dumps = (
+            params.equilibration_steps // params.eq_dump_step
+        )  # len(listdir(self.directory_tree["postprocessing"]["equilibration"]["dumps"]["path"]))
 
         # Check for magnetized plasma options
         if self.magnetized and self.electrostatic_equilibration:
@@ -1851,23 +1859,23 @@ class Observable:
 
         # Assign dumps variables based on the choice of phase
         if self.phase == "equilibration":
-            self.no_dumps = 1 +  self.eq_no_dumps # Add 1 to include the initial dump
+            self.no_dumps = 1 + self.eq_no_dumps  # Add 1 to include the initial dump
             self.dump_step = self.eq_dump_step
             self.no_steps = self.equilibration_steps
 
         elif self.phase == "production":
-            self.no_dumps = 1 +  self.prod_no_dumps # Add 1 to include the initial dump
+            self.no_dumps = 1 + self.prod_no_dumps  # Add 1 to include the initial dump
             self.dump_step = self.prod_dump_step
             self.no_steps = self.production_steps
 
         elif self.phase == "magnetization":
-            self.no_dumps = 1 +  self.mag_no_dumps # Add 1 to include the initial dump
+            self.no_dumps = 1 + self.mag_no_dumps  # Add 1 to include the initial dump
             self.dump_step = self.mag_dump_step
             self.no_steps = self.magnetization_steps
 
         self.plasma_period = 2.0 * pi / self.total_plasma_frequency  # Plasma period in sec
         self.timesteps_per_plasma_period = int(self.plasma_period // self.dt)  # Number of timesteps per plasma period
-        
+
         # Needed for preprocessing pretty print
         self.update_block_attributes(
             independent_slices=independent_slices,
@@ -1936,12 +1944,12 @@ class Observable:
                 # Independent blocks = True and no_slices = 1
                 self.timesteps_shift = self.no_steps
                 self.timesteps_per_slice = self.no_steps
-                
+
                 self.plasma_periods_shift = int(self.timesteps_shift // self.timesteps_per_plasma_period)
                 self.plasma_periods_per_slice = int(self.no_steps * self.dt // self.plasma_period)
 
                 self.block_length = int(self.no_steps // self.dump_step) + 1
-                
+
                 self.dumps_per_slice = self.no_dumps
                 self.dumps_shift = self.no_dumps
                 self.dumps_per_block = self.no_dumps
@@ -1957,9 +1965,9 @@ class Observable:
                 self.timesteps_per_slice = int(self.no_steps // self.no_slices)
                 self.block_length = int(self.timesteps_per_slice // self.dump_step)
                 self.dumps_per_block = int(self.no_dumps // self.no_slices)
-                
-                self.dumps_per_slice = self.timesteps_per_slice//self.dump_step
-                self.dumps_shift = self.timesteps_shift//self.dump_step
+
+                self.dumps_per_slice = self.timesteps_per_slice // self.dump_step
+                self.dumps_shift = self.timesteps_shift // self.dump_step
 
                 self.plasma_periods_shift = int(self.timesteps_shift // self.timesteps_per_plasma_period)
                 self.plasma_periods_per_slice = int(self.block_length // self.timesteps_per_plasma_period)
@@ -2553,14 +2561,13 @@ class DiffusionFlux(Observable):
 
     @calc_slices_doc
     def calc_slices_data(self):
-
         # Prepare columns names
-        flux_cols = [ (f"Diffusion Flux {i}", f"{dim}") for i in range(self.no_fluxes) for dim in ["X", "Y", "Z"]]
-        
+        flux_cols = [(f"Diffusion Flux {i}", f"{dim}") for i in range(self.no_fluxes) for dim in ["X", "Y", "Z"]]
+
         start_index = 0  # Index to start the slicing
         end_index = self.block_length  # Last index  the acf calculation
 
-        step = rint(self.plasma_periods_shift * self.timesteps_per_plasma_period / self.dump_step).astype(int)      
+        step = rint(self.plasma_periods_shift * self.timesteps_per_plasma_period / self.dump_step).astype(int)
         # Collect data into lists and then passing those to the DataFrame constructor is faster than adding columns one by one.
         columns_list = [f"Total_Quantity_Time"]
         data_list = [self.simulation_dataframe.iloc[:end_index, 0].values]
@@ -2589,7 +2596,6 @@ class DiffusionFlux(Observable):
 
     @calc_acf_slices_doc
     def calc_acf_slices_data(self):
-
         start_index = 0  # Dump number to start the acf calculation
         end_index = self.block_length  # Dump number to end the acf calculation
 
@@ -2598,32 +2604,25 @@ class DiffusionFlux(Observable):
         columns_list = [f"{self.__long_name__}_Axis_Time"]
         data_list = [self.simulation_dataframe.iloc[:end_index, 0].values]
 
-        ### Slices loop     
+        ### Slices loop
         for isl in tqdm(
             range(self.no_slices),
             desc=f"\nCalculating {self.__long_name__} ACF for slice ",
             disable=not self.verbose,
             position=0,
         ):
-            
             for i in enumerate(self.no_fluxes):
-
                 total_acf = zeros(self.block_length)
                 for iax, ax in zip(range(self.dimensions), self.dim_labels):
-                        
                     # Auto-correlation function
-                    df1 = (
-                        self.simulation_dataframe[(f"Diffusion Flux {i}", f"{ax}")]
-                        .iloc[start_index:end_index]
-                        .values
-                    )
+                    df1 = self.simulation_dataframe[(f"Diffusion Flux {i}", f"{ax}")].iloc[start_index:end_index].values
 
                     acf = correlationfunction(df1, df1)
                     # Store in the dataframe
                     col_name = f"{self.__long_name__} {i} ACF_{ax}_slice {isl}"
                     columns_list.append(col_name)
                     data_list.append(acf)
-                    
+
                     total_acf += acf
 
                 # Store in the dataframe
@@ -2635,7 +2634,7 @@ class DiffusionFlux(Observable):
             start_index += step
             end_index += step
             # end of slice loop
-        
+
         self.dataframe_acf_slices = DataFrame(dict(zip(columns_list, data_list)))
 
         # start_slice = 0
@@ -2707,7 +2706,7 @@ class DiffusionFlux(Observable):
         df_str = "Diffusion Flux"
         # Average and std over the slices
         cols = ["Quantity_Time"]
-        data = [self.dataframe_slices.iloc[:,0].values]
+        data = [self.dataframe_slices.iloc[:, 0].values]
 
         for i in range(self.no_fluxes):
             for d, dim in zip(range(self.dimensions), ["X", "Y", "Z"]):
@@ -2723,7 +2722,6 @@ class DiffusionFlux(Observable):
                 data.append(col_data)
                 cols.append(col_name)
 
-
         self.dataframe = DataFrame(data, columns=cols)
 
     @avg_acf_slices_doc
@@ -2731,13 +2729,13 @@ class DiffusionFlux(Observable):
         df_acf_str = "Diffusion Flux"
 
         columns_list = [f"{self.__long_name__}_Axis_Time"]
-        data_list = [self.simulation_dataframe.iloc[:self.block_length, 0].values]
+        data_list = [self.simulation_dataframe.iloc[: self.block_length, 0].values]
 
         # Average and std over the slices
         for i in range(self.no_fluxes_acf):
             for d, dim in zip(range(self.dimensions), ["X", "Y", "Z"]):
                 dim_col_str = [df_acf_str + f" {i} ACF_{dim}_slice {isl}" for isl in range(self.no_slices)]
-                
+
                 col_name = df_acf_str + f" {i}_{dim}_Mean"
                 col_data = self.dataframe_acf_slices[dim_col_str].mean(axis=1).values
                 columns_list.append(col_name)
@@ -2763,20 +2761,22 @@ class DiffusionFlux(Observable):
         self.dataframe_acf = DataFrame(dict(zip(columns_list, data_list)))
 
     def read_data_from_dumps(self):
-
         cols = ["Quantity_Time"]
-        flux_cols = [ f"Diffusion Flux {i}_{dim}" for i in range(self.no_fluxes) for dim in ["X", "Y", "Z"]]
+        flux_cols = [f"Diffusion Flux {i}_{dim}" for i in range(self.no_fluxes) for dim in ["X", "Y", "Z"]]
         cols.extend(flux_cols)
-        
+
         data = zeros((self.no_dumps, len(cols)))
 
-        with h5py.File(self.h5md_filepath, 'r') as h5file:
-            data_ = h5file["observables/species_diffusion_flux"]["value"][:, :, :]  # shape = (no_dumps, no_fluxes, no_dim)
-            data[:,0] = h5file["observables/species_diffusion_flux"]["time"][:]
-        
-        data[:,1:] = data_.reshape((self.no_dumps, self.no_fluxes * self.dimensions))
+        with h5py.File(self.h5md_filepath, "r") as h5file:
+            data_ = h5file["observables/species_diffusion_flux"]["value"][
+                :, :, :
+            ]  # shape = (no_dumps, no_fluxes, no_dim)
+            data[:, 0] = h5file["observables/species_diffusion_flux"]["time"][:]
+
+        data[:, 1:] = data_.reshape((self.no_dumps, self.no_fluxes * self.dimensions))
 
         self.simulation_dataframe = DataFrame(data, columns=cols)
+
 
 class DynamicStructureFactor(Observable):
     """Dynamic Structure factor.
@@ -2802,8 +2802,9 @@ class DynamicStructureFactor(Observable):
         self.k_observable = True
 
     @setup_doc
-    def setup(self,
-              params,
+    def setup(
+        self,
+        params,
         phase: str = None,
         independent_slices: bool = None,
         no_slices: int = None,
@@ -2826,7 +2827,6 @@ class DynamicStructureFactor(Observable):
         )
         self.update_args(**kwargs)
 
-
     @arg_update_doc
     def update_args(self, **kwargs):
         # Update the attribute with the passed arguments
@@ -2843,7 +2843,6 @@ class DynamicStructureFactor(Observable):
         self.save_hdf()
         tend = self.timer.current()
         time_stamp(self.log_file, self.__long_name__ + " Calculation", self.timer.time_division(tend - t0), self.verbose)
-
 
     @calc_slices_doc
     def calc_slices_data(self):
@@ -2890,7 +2889,7 @@ class DynamicStructureFactor(Observable):
                     sp_indx += 1
 
         # self.data_manager.store_skw_data(self.skw_data, self.k_list, self.frequencies)
-        
+
         # Create the MultiIndex
         tuples = [tuple(c.split("_")) for c in self.dataframe_slices.columns]
         self.dataframe_slices.columns = MultiIndex.from_tuples(
@@ -2916,7 +2915,7 @@ class DynamicStructureFactor(Observable):
                 pair_indx += 1
 
         return Skw_all
-    
+
     # @calc_slices_doc
     # def calc_slices_data(self):
     #     # Parse nkt otherwise calculate it
@@ -2977,6 +2976,7 @@ class DynamicStructureFactor(Observable):
                 df_std = self.dataframe_slices[skw_name].T.groupby(level=1).std().T
                 df_std = df_std.rename(dict(zip(df_std.columns, ka_columns)), axis=1)
                 self.dataframe = concat([self.dataframe, df_mean, df_std], axis=1)
+
 
 class ElectricCurrent(Observable):
     """Electric Current Auto-correlation function."""
@@ -3069,7 +3069,7 @@ class ElectricCurrent(Observable):
         # Parse the particles from the dump files
         # Recall that species_electric_current has shape (self.num_species, self.dimensions)
         # Check that the h5md file contains the required observable
-        with h5py.File(self.h5md_filepath, 'r') as h5file:
+        with h5py.File(self.h5md_filepath, "r") as h5file:
             for isp, sp in enumerate(self.species_names):
                 group_name = f"observables/{sp}/{self.__hdf_key__}"
                 if group_name not in h5file:
@@ -3088,9 +3088,9 @@ class ElectricCurrent(Observable):
             if self.verbose:
                 print(f"{self.__long_name__} data not found in H5MD file. Calculating from dump files...")
             self.calculate_observable_from_dumps()
-        if self.verbose: 
-            print(f"Reading {self.__long_name__} data from H5MD file: {self.h5md_filepath}") 
-        with h5py.File(self.h5md_filepath, mode = 'r') as h5file:
+        if self.verbose:
+            print(f"Reading {self.__long_name__} data from H5MD file: {self.h5md_filepath}")
+        with h5py.File(self.h5md_filepath, mode="r") as h5file:
             for isp, sp in enumerate(self.species_names):
                 group_name = f"observables/{sp}/{self.__hdf_key__}"
                 species_current = h5file[group_name]["value"]
@@ -3112,7 +3112,7 @@ class ElectricCurrent(Observable):
         if not os_path_exists(self.h5md_filepath):
             raise FileNotFoundError(f"The H5MD file {self.h5md_filepath} does not exist.")
 
-        with h5py.File(self.h5md_filepath, 'a') as h5file:
+        with h5py.File(self.h5md_filepath, "a") as h5file:
             # Get the number of dumps from vel dataset
             num_dumps = h5file["particles/vel"].shape[0]
             time_ = h5file["particles/time"][:]
@@ -3128,10 +3128,10 @@ class ElectricCurrent(Observable):
                 if group_name not in h5file:
                     obs_group = h5file.create_group(group_name)
                     maxshape = (None, self.dimensions)
-                    dtype = 'f8'  # double precision float
+                    dtype = "f8"  # double precision float
                     obs_group.create_dataset(
                         "value",
-                        shape=(num_dumps,  self.dimensions),
+                        shape=(num_dumps, self.dimensions),
                         maxshape=maxshape,
                         chunks=True,
                         dtype=dtype,
@@ -3148,7 +3148,7 @@ class ElectricCurrent(Observable):
                         shape=(num_dumps,),
                         maxshape=(None,),
                         chunks=True,
-                        dtype='i8',  # integer
+                        dtype="i8",  # integer
                     )
                 else:
                     # If the dataset already exists, check if needs be resized
@@ -3159,9 +3159,9 @@ class ElectricCurrent(Observable):
                         obs_group["step"].resize((num_dumps,))
 
                 # Grab the velocities of the species
-                vel = h5file["particles/vel"][:, sp_start:sp_end, :].sum(axis = 1)  # shape (num_particles, dimensions)
+                vel = h5file["particles/vel"][:, sp_start:sp_end, :].sum(axis=1)  # shape (num_particles, dimensions)
                 current = self.species_charges[isp] * vel  # shape (num_particles, dimensions)
-                obs_group = h5file[group_name]    
+                obs_group = h5file[group_name]
                 # Store the data
                 obs_group["value"][:, :] = current
                 obs_group["time"][:] = time_
@@ -3207,65 +3207,65 @@ class ElectricCurrent(Observable):
             end_index += step
             # end of slice loop
         self.dataframe_slices = DataFrame(dict(zip(columns_list, data_list)))
-            ###OLD CODE
-            # # Parse the particles from the dump files
-            # species_current = zeros((self.num_species, self.dimensions, self.block_length))
-            # for it, dump in enumerate(range(start_slice, end_slice, self.dump_step)):
-            #     datap = load_from_restart(self.dump_dir, dump)
-            #     time[it] = datap["time"]
-            #     species_current[:, :, it] = datap["species_electric_current"]
-            # #
-            # if isl == 0:
-            #     self.dataframe["Time"] = time.copy()
-            #     self.dataframe_acf["Time"] = time.copy()
-            #     self.dataframe_slices["Time"] = time.copy()
-            #     self.dataframe_acf_slices["Time"] = time.copy()
+        ###OLD CODE
+        # # Parse the particles from the dump files
+        # species_current = zeros((self.num_species, self.dimensions, self.block_length))
+        # for it, dump in enumerate(range(start_slice, end_slice, self.dump_step)):
+        #     datap = load_from_restart(self.dump_dir, dump)
+        #     time[it] = datap["time"]
+        #     species_current[:, :, it] = datap["species_electric_current"]
+        # #
+        # if isl == 0:
+        #     self.dataframe["Time"] = time.copy()
+        #     self.dataframe_acf["Time"] = time.copy()
+        #     self.dataframe_slices["Time"] = time.copy()
+        #     self.dataframe_acf_slices["Time"] = time.copy()
 
-            # # species_current, total_current = calc_elec_current(vel, self.species_charges, self.species_num)
-            # total_current = species_current.sum(axis=0)
+        # # species_current, total_current = calc_elec_current(vel, self.species_charges, self.species_num)
+        # total_current = species_current.sum(axis=0)
 
-            # # Store species data
-            # for i, sp_name in enumerate(self.species_names):
-            #     sp_col_str = f"{sp_name} {self.__long_name__}"
-            #     sp_col_str_acf = f"{sp_name} {self.__long_name__} ACF"
-            #     sp_tot_acf = zeros(total_current.shape[1])
-            #     for d in range(self.dimensions):
-            #         dl = self.dim_labels[d]
-            #         col_name = sp_col_str + f"_{dl}_slice {isl}"
-            #         col_data = species_current[i, d, :]
-            #         self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
-            #         # Calculate ACF
-            #         col_data = correlationfunction(species_current[i, d, :], species_current[i, d, :])
-            #         col_name = sp_col_str_acf + f"_{dl}_slice {isl}"
-            #         self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
+        # # Store species data
+        # for i, sp_name in enumerate(self.species_names):
+        #     sp_col_str = f"{sp_name} {self.__long_name__}"
+        #     sp_col_str_acf = f"{sp_name} {self.__long_name__} ACF"
+        #     sp_tot_acf = zeros(total_current.shape[1])
+        #     for d in range(self.dimensions):
+        #         dl = self.dim_labels[d]
+        #         col_name = sp_col_str + f"_{dl}_slice {isl}"
+        #         col_data = species_current[i, d, :]
+        #         self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
+        #         # Calculate ACF
+        #         col_data = correlationfunction(species_current[i, d, :], species_current[i, d, :])
+        #         col_name = sp_col_str_acf + f"_{dl}_slice {isl}"
+        #         self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
 
-            #         sp_tot_acf += col_data
+        #         sp_tot_acf += col_data
 
-            #     # Store Total ACF of single species
-            #     col_name = sp_col_str_acf + f"_Total_slice {isl}"
-            #     col_data = sp_tot_acf
-            #     self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
+        #     # Store Total ACF of single species
+        #     col_name = sp_col_str_acf + f"_Total_slice {isl}"
+        #     col_data = sp_tot_acf
+        #     self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
 
-            # # Total current and its ACF
-            # tot_acf = zeros(total_current.shape[1])
-            # for d in range(self.dimensions):
-            #     dl = self.dim_labels[d]
-            #     col_name = f"{self.__long_name__}_{dl}_slice {isl}"
-            #     col_data = total_current[d, :]
-            #     self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
+        # # Total current and its ACF
+        # tot_acf = zeros(total_current.shape[1])
+        # for d in range(self.dimensions):
+        #     dl = self.dim_labels[d]
+        #     col_name = f"{self.__long_name__}_{dl}_slice {isl}"
+        #     col_data = total_current[d, :]
+        #     self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
 
-            #     # Calculate ACF
-            #     col_data = correlationfunction(total_current[d, :], total_current[d, :])
-            #     col_name = f"{self.__long_name__} ACF_{dl}_slice {isl}"
-            #     self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
-            #     tot_acf += col_data
+        #     # Calculate ACF
+        #     col_data = correlationfunction(total_current[d, :], total_current[d, :])
+        #     col_name = f"{self.__long_name__} ACF_{dl}_slice {isl}"
+        #     self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
+        #     tot_acf += col_data
 
-            # col_data = tot_acf
-            # col_name = f"{self.__long_name__} ACF_Total_slice {isl}"
-            # self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
+        # col_data = tot_acf
+        # col_name = f"{self.__long_name__} ACF_Total_slice {isl}"
+        # self.dataframe_acf_slices = add_col_to_df(self.dataframe_acf_slices, col_data, col_name)
 
-            # start_slice += self.block_length * self.dump_step
-            # end_slice += self.block_length * self.dump_step
+        # start_slice += self.block_length * self.dump_step
+        # end_slice += self.block_length * self.dump_step
 
     @calc_acf_slices_doc
     def calc_acf_slices_data(self):
@@ -3365,9 +3365,9 @@ class ElectricCurrent(Observable):
                 columns_list.append(col_name)
                 data_list.append(col_data)
                 # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-        
+
         self.dataframe = DataFrame(dict(zip(columns_list, data_list)))
-    
+
     @avg_acf_slices_doc
     def average_acf_slices_data(self):
         # ACF data
@@ -3392,7 +3392,7 @@ class ElectricCurrent(Observable):
                     col_name = f"{self.__long_name__} ACF_{sp1}-{sp2}_{ax}_Std"
                     columns_list.append(col_name)
                     data_list.append(col_data)
-        
+
         self.dataframe_acf = DataFrame(dict(zip(columns_list, data_list)))
 
 
@@ -3472,9 +3472,9 @@ class HeatFlux(Observable):
         columns.extend(cols)
 
         data = zeros((self.no_dumps, len(columns)))
-        
+
         # Read data from HDF5 file
-        with h5py.File(self.h5md_filepath, 'r') as h5md_file:
+        with h5py.File(self.h5md_filepath, "r") as h5md_file:
             # Read time from first species (assuming all have same time points)
             first_species = self.species_names[0]
             time_data = h5md_file[f"observables/{first_species}/heat_flux"]["time"][:]
@@ -3483,7 +3483,7 @@ class HeatFlux(Observable):
             for isp, sp in enumerate(self.species_names):
                 heat_flux_data = h5md_file[f"observables/{sp}/heat_flux"]["value"][:, :]
                 data[:, 1 + isp * self.dimensions : 1 + (isp + 1) * self.dimensions] = heat_flux_data
-            
+
         self.simulation_dataframe = DataFrame(data, columns=columns)
 
     @compute_acf_doc
@@ -3516,7 +3516,7 @@ class HeatFlux(Observable):
         # self.dataframe[f"{self.__long_name__}_Species_Axis_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
         # self.dataframe_slices[f"{self.__long_name__}_Species_Axis_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
 
-        with h5py.File(self.h5md_filepath, 'r') as h5md_file:
+        with h5py.File(self.h5md_filepath, "r") as h5md_file:
             # Create the time column
             columns_list = [f"{self.__long_name__}_Species_Axis_Time"]
             data_key = f"observables/{self.species_names[0]}/heat_flux"
@@ -3550,7 +3550,6 @@ class HeatFlux(Observable):
 
     @calc_acf_slices_doc
     def calc_acf_slices_data(self):
-
         start_index = 0  # Dump number to start the acf calculation
         end_index = self.block_length  # Dump number to end the acf calculation
 
@@ -3585,14 +3584,12 @@ class HeatFlux(Observable):
                         # k = int(self.num_species * isp - (isp - 1) * isp / 2 + (isp2 - isp))
 
                         # Auto-correlation function
-                        hf_sp1 = (
-                            self.dataframe_slices[(f"{self.__long_name__}", f"{sp1}", f"{ax}", f"slice {isl}")]
-                            .values
-                        )
-                        hf_sp2 = (
-                            self.dataframe_slices[(f"{self.__long_name__}", f"{sp2}", f"{ax}", f"slice {isl}")]
-                            .values
-                        )
+                        hf_sp1 = self.dataframe_slices[
+                            (f"{self.__long_name__}", f"{sp1}", f"{ax}", f"slice {isl}")
+                        ].values
+                        hf_sp2 = self.dataframe_slices[
+                            (f"{self.__long_name__}", f"{sp2}", f"{ax}", f"slice {isl}")
+                        ].values
 
                         delta_ec_sp1 = hf_sp1 - hf_sp1.mean(axis=-1)
                         delta_ec_sp2 = hf_sp2 - hf_sp2.mean(axis=-1)
@@ -3611,9 +3608,9 @@ class HeatFlux(Observable):
                 col_data = total_heat_flux[iax, :]
                 columns_list.append(col_name)
                 data_list.append(col_data)
-            
+
             # Finally add the total HF ACF (all axes)
-            total_hf_acf = total_heat_flux.sum(axis=0)/3
+            total_hf_acf = total_heat_flux.sum(axis=0) / 3
             col_name = f"{self.__long_name__} ACF_Total_Total_slice {isl}"
             columns_list.append(col_name)
             data_list.append(total_hf_acf)
@@ -3621,13 +3618,13 @@ class HeatFlux(Observable):
             start_index += step
             end_index += step
             # end of slice loop
-        
+
         self.dataframe_acf_slices = DataFrame(dict(zip(columns_list, data_list)))
 
     @avg_slices_doc
     def average_slices_data(self):
         columns_list = [f"{self.__long_name__}_Species_Axis_Time"]
-        data_list = [self.simulation_dataframe.iloc[:self.block_length, 0].values]
+        data_list = [self.simulation_dataframe.iloc[: self.block_length, 0].values]
 
         for isp, sp1 in enumerate(self.species_names):
             for _, ax in enumerate(self.dim_labels):
@@ -3654,7 +3651,7 @@ class HeatFlux(Observable):
         species_list = self.species_names
 
         columns_list = [f"{self.__long_name__}_Species_Axis_Time"]
-        data_list = [self.simulation_dataframe.iloc[:self.block_length, 0].values]
+        data_list = [self.simulation_dataframe.iloc[: self.block_length, 0].values]
         for isp, sp1 in enumerate(species_list):
             for isp2, sp2 in enumerate(species_list[isp:], isp):
                 for _, ax in enumerate(dim_labels):
@@ -3664,13 +3661,13 @@ class HeatFlux(Observable):
                     col_name = f"{self.__long_name__} ACF_{sp1}-{sp2}_{ax}_Mean"
                     columns_list.append(col_name)
                     data_list.append(col_data)
-                    
+
                     # Std
                     col_data = self.dataframe_acf_slices[columns].std(axis=1)
                     col_name = f"{self.__long_name__} ACF_{sp1}-{sp2}_{ax}_Std"
                     columns_list.append(col_name)
                     data_list.append(col_data)
-                    
+
         # Now the total HF ACF
         for _, ax in enumerate(dim_labels):
             columns = [f"{self.__long_name__} ACF_Total_{ax}_slice {isl}" for isl in range(self.no_slices)]
@@ -3678,7 +3675,7 @@ class HeatFlux(Observable):
             col_data = self.dataframe_acf_slices[columns].mean(axis=1)
             col_name = f"{self.__long_name__} ACF_Total_{ax}_Mean"
             columns_list.append(col_name)
-            data_list.append(col_data) 
+            data_list.append(col_data)
             # Std
             col_data = self.dataframe_acf_slices[columns].std(axis=1)
             col_name = f"{self.__long_name__} ACF_Total_{ax}_Std"
@@ -3699,9 +3696,8 @@ class HeatFlux(Observable):
 
         # Final dataframe
         self.dataframe_acf = DataFrame(dict(zip(columns_list, data_list)))
-    
-    def calc_better_acf_data(self, plasma_periods_shift: int = None):
 
+    def calc_better_acf_data(self, plasma_periods_shift: int = None):
         step = int(plasma_periods_shift * self.timesteps_per_plasma_period // self.dump_step)
 
         no_blocks = len(self.simulation_dataframe) // step
@@ -3765,16 +3761,19 @@ class HeatFlux(Observable):
         self.no_blocks = no_blocks
 
         # columns = [f"Heat Flux ACF {isl}" for isl in range(no_blocks)]
-        mean = all_acf.sum(axis = 0)/normalization
-        std = ((all_acf - mean)**2).sum(axis = 0)/normalization
+        mean = all_acf.sum(axis=0) / normalization
+        std = ((all_acf - mean) ** 2).sum(axis=0) / normalization
         std = sqrt(std)
         # columns = [f"Stress ACF {isl}" for isl in range(no_blocks)]
         # columns = ["Time", "Stress ACF Mean", "Stress ACF Std"]
         acf_df = DataFrame(
-            {"Time": self.simulation_dataframe.iloc[:actual_length,0].values, 
-            "Heat Flux ACF Mean": mean,
-            "Heat Flux ACF Std": std,
-            "Normalization": normalization})
+            {
+                "Time": self.simulation_dataframe.iloc[:actual_length, 0].values,
+                "Heat Flux ACF Mean": mean,
+                "Heat Flux ACF Std": std,
+                "Normalization": normalization,
+            }
+        )
         # acf_df = DataFrame(all_acf.transpose(), columns=columns)
         # acf_df = add_col_to_df(acf_df, normalization, "Normalization")
         # self.save_dataframe_to_hdf(acf_df, "hdf_acf_data")
@@ -3958,7 +3957,7 @@ class PressureTensor(Observable):
         step = rint(self.plasma_periods_shift * self.timesteps_per_plasma_period / self.dump_step).astype(int)
 
         # self.dataframe[f"Total_Quantity_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
-        
+
         # Collect data into lists and then passing those to the DataFrame constructor is faster than adding columns one by one.
         columns_list = [f"Total_Quantity_Time"]
         data_list = [self.simulation_dataframe.iloc[:end_index, 0].values]
@@ -3985,10 +3984,9 @@ class PressureTensor(Observable):
         # Make a dictionary and then pass it to the DataFrame constructor
         final_data = dict(zip(columns_list, data_list))
         self.dataframe_slices = DataFrame(final_data)
-    
+
     @calc_acf_slices_doc
     def calc_acf_slices_data(self):
-
         columns = [
             (f"Total", f"Pressure Tensor {ax1}{ax2}")
             for iax1, ax1 in enumerate(self.dim_labels)
@@ -4001,7 +3999,7 @@ class PressureTensor(Observable):
         step = rint(self.plasma_periods_shift * self.timesteps_per_plasma_period / self.dump_step).astype(int)
 
         # self.dataframe_acf[f"Quantity_Time"] = self.simulation_dataframe.iloc[:end_index, 0]
-        # self.dataframe_acf_slices[] = 
+        # self.dataframe_acf_slices[] =
         columns_list = [f"Quantity_Time"]
         data_list = [self.simulation_dataframe.iloc[:end_index, 0].values]
 
@@ -4029,12 +4027,12 @@ class PressureTensor(Observable):
                 # Get Total Pressure Tensor ax,ax from simulation data
                 col_data_1 = self.simulation_dataframe[col1].iloc[start_index:end_index].values
                 # Calculate fluctuations
-                delta_col1 = col_data_1 #- col_data_1.mean()
+                delta_col1 = col_data_1  # - col_data_1.mean()
                 for _, col2 in enumerate(columns[icol1:], icol1):
                     # Get Total Pressure Tensor ax,ax from simulation data
                     col_data_2 = self.simulation_dataframe[col2].iloc[start_index:end_index].values
                     # Calculate fluctuations
-                    delta_col2 = col_data_2 # - col_data_2.mean()
+                    delta_col2 = col_data_2  # - col_data_2.mean()
                     # Calculate ACF
                     acf = correlationfunction(delta_col1, delta_col2)
                     # Set column name
@@ -4190,7 +4188,7 @@ class PressureTensor(Observable):
         # pt_str = "Pressure Tensor"
 
         columns_list = [f"Total_Quantity_Time"]
-        data_list = [self.simulation_dataframe.iloc[:self.block_length, 0].values]
+        data_list = [self.simulation_dataframe.iloc[: self.block_length, 0].values]
 
         col_str = [f"Total_Pressure_slice {isl}" for isl in range(self.no_slices)]
         # Mean
@@ -4351,7 +4349,7 @@ class PressureTensor(Observable):
                 columns_list.append(col_name)
                 data_list.append(col_data)
                 # self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
-        
+
         self.dataframe_acf = DataFrame(dict(zip(columns_list, data_list)))
         # # Note: C_{abcd} = < sigma_{ab} sigma_{cd} >
         # for i, ax1 in enumerate(self.dim_labels):
@@ -4451,50 +4449,50 @@ class PressureTensor(Observable):
             columns.extend(sp_tensor_cols)
 
         # Read data from HDF5 file
-        with h5py.File(self.h5md_filepath, 'r') as h5md_file:
+        with h5py.File(self.h5md_filepath, "r") as h5md_file:
             # Read time from first species (assuming all have same time points)
             first_species = self.species_names[0]
             time_data = h5md_file[f"observables/{first_species}/pressure_tensor"]["time"][:]
-            
+
             # Pre-allocate array for all species tensors
             # Shape: (no_dumps, num_species, dimensions, dimensions)
             pt_temp = zeros((self.no_dumps, self.num_species, self.dimensions, self.dimensions))
-            
+
             # Read pressure tensor for each species
             for isp, sp in enumerate(self.species_names):
                 pt_temp[:, isp, :, :] = h5md_file[f"observables/{sp}/pressure_tensor"]["value"][:, :, :]
 
         # Vectorized computation of species pressures (trace / dimensions)
         species_pressure = pt_temp.trace(axis1=2, axis2=3) / self.dimensions  # (no_dumps, num_species)
-        
+
         # Total pressure across all species
         total_pressure = species_pressure.sum(axis=1)  # (no_dumps,)
-        
+
         # Extract upper triangular indices once
         triu_i, triu_j = triu_indices(self.dimensions)
         n_triu = len(triu_i)
-        
+
         # Vectorized extraction of upper triangular elements and sum across species
         total_tensor = pt_temp.sum(axis=1)  # (no_dumps, dimensions, dimensions)
         total_half_tensor = total_tensor[:, triu_i, triu_j]  # (no_dumps, n_triu_elements)
-        
+
         # Assemble the data array
         data = zeros((self.no_dumps, len(columns)))
         data[:, 0] = time_data
         data[:, 1] = total_pressure
-        data[:, 2:2+n_triu] = total_half_tensor
-        
+        data[:, 2 : 2 + n_triu] = total_half_tensor
+
         if self.num_species > 1:
             col_idx = 2 + n_triu
-            
+
             # Add species-specific pressures
-            data[:, col_idx:col_idx+self.num_species] = species_pressure
+            data[:, col_idx : col_idx + self.num_species] = species_pressure
             col_idx += self.num_species
-            
+
             # Add species-specific pressure tensors
             for isp in range(self.num_species):
                 species_half_tensor = pt_temp[:, isp, triu_i, triu_j]  # (no_dumps, n_triu_elements)
-                data[:, col_idx:col_idx+n_triu] = species_half_tensor
+                data[:, col_idx : col_idx + n_triu] = species_half_tensor
                 col_idx += n_triu
 
         self.simulation_dataframe = DataFrame(data, columns=columns)
@@ -4556,7 +4554,7 @@ class PressureTensor(Observable):
 
     def calc_better_acf_data(self, plasma_periods_shift: int = None, columns: List[str] = None):
         # self.update_block_attributes(plasma_periods_shift=plasma_periods_shift)
-        
+
         step = int(plasma_periods_shift * self.timesteps_per_plasma_period // self.dump_step)
 
         no_blocks = int(len(self.simulation_dataframe) // step)
@@ -4578,8 +4576,8 @@ class PressureTensor(Observable):
                 for _, ax2 in enumerate(self.dim_labels[iax1 + 1 :], iax1 + 1)
             ]
             # >>> [('Total', 'Pressure Tensor XY'),
-                # ('Total', 'Pressure Tensor XZ'),
-                # ('Total', 'Pressure Tensor YZ')]
+            # ('Total', 'Pressure Tensor XZ'),
+            # ('Total', 'Pressure Tensor YZ')]
         dof = len(columns)
 
         ### Slices loop
@@ -4608,16 +4606,19 @@ class PressureTensor(Observable):
             start_index += step
             end_index -= step
 
-        mean = all_acf.sum(axis = 0)/normalization
-        std = ((all_acf - mean)**2).sum(axis = 0)/normalization
+        mean = all_acf.sum(axis=0) / normalization
+        std = ((all_acf - mean) ** 2).sum(axis=0) / normalization
         std = sqrt(std)
         # columns = [f"Stress ACF {isl}" for isl in range(no_blocks)]
         # columns = ["Time", "Stress ACF Mean", "Stress ACF Std"]
         acf_df = DataFrame(
-            {"Time": self.simulation_dataframe.iloc[:actual_length,0].values, 
-            "Stress ACF Mean": mean,
-            "Stress ACF Std": std,
-            "Normalization": normalization})
+            {
+                "Time": self.simulation_dataframe.iloc[:actual_length, 0].values,
+                "Stress ACF Mean": mean,
+                "Stress ACF Std": std,
+                "Normalization": normalization,
+            }
+        )
         # acf_df = DataFrame(all_acf.transpose(), columns=columns)
         # acf_df = add_col_to_df(acf_df, normalization, "Normalization")
         # self.save_dataframe_to_hdf(acf_df, "hdf_acf_data")
@@ -4677,10 +4678,10 @@ class RadialDistributionFunction(Observable):
         # These definitions are needed for the print out.
         self.rc = self.cutoff_radius
         if not hasattr(self, "rdf_nbins"):
-            # Read it from the h5md file 
+            # Read it from the h5md file
             try:
                 with h5py.File(self.h5md_filepath, "r") as h5md_file:
-                    self.rdf_nbins = h5md_file["observables"]["rdf_hist"]['value'].shape[-1]
+                    self.rdf_nbins = h5md_file["observables"]["rdf_hist"]["value"].shape[-1]
             # Catch the error if the rdf_hist does not exist
             except KeyError:
                 # Warn the user that the rdf_hist does not exist and that the number of bins will be set to 0.05 of the total number of particles
@@ -4734,20 +4735,25 @@ class RadialDistributionFunction(Observable):
         self.dataframe_slices["Interparticle_Distance"] = r_values
 
         dump_init = 0
-        step = self.dumps_per_slice - 1 # The -1 is due to zero indexing. The last dump is the number of dumps - 1.
+        step = self.dumps_per_slice - 1  # The -1 is due to zero indexing. The last dump is the number of dumps - 1.
         dump_end = step
         self.bin_vol = bin_vol.copy()
-        column_names = [f"{sp1}-{sp2} RDF_slice {isl}" for isl in range(self.no_slices) for sp1 in self.species_names for sp2 in self.species_names]
+        column_names = [
+            f"{sp1}-{sp2} RDF_slice {isl}"
+            for isl in range(self.no_slices)
+            for sp1 in self.species_names
+            for sp2 in self.species_names
+        ]
         # Create dict with the column names as the keys. This is needed to add the columns to the dataframe
         columns_dict = {col_name: zeros(self.no_bins) for col_name in column_names}
         with h5py.File(self.h5md_filepath, "r") as h5md_file:
             for isl in tqdm(range(self.no_slices), desc="Calculating RDF for slice", disable=not self.verbose):
                 # Read data from dumps
-                data_init = h5md_file["observables"]["rdf_hist"]['value'][dump_init, :,:,:]
-                data_end = h5md_file["observables"]["rdf_hist"]['value'][dump_end, :,:,:]
+                data_init = h5md_file["observables"]["rdf_hist"]["value"][dump_init, :, :, :]
+                data_end = h5md_file["observables"]["rdf_hist"]["value"][dump_end, :, :, :]
                 # Loop over species pairs
                 for i, sp1 in enumerate(self.species_names):
-                    for j, sp2 in enumerate(self.species_names[i:], start = i):
+                    for j, sp2 in enumerate(self.species_names[i:], start=i):
                         denom_const = pair_density[i, j] * self.timesteps_per_slice
                         # Each slice should be considered as an independent system.
                         # The RDF is calculated from the difference between the last dump of the slice and the initial dump
@@ -5042,24 +5048,24 @@ class Thermodynamics(Observable):
         # Update the attribute with the passed arguments
         self.__dict__.update(kwargs.copy())
         self.update_finish()
-    
+
     def calculate_beta_slices(self, ensemble: str = "NVE"):
         """
         Calculate the inverse temperature by taking the mean of the temperature time series.
         This is stored in the :py:attr:`sarkas.tools.observables.Thermodynamics.beta_slices` attribute.
-        
+
         Parameters
         ----------
         ensemble : str, optional
             Ensemble to use. Default is "NVE".
-        
+
         Returns
         -------
         None
-        
+
         Notes
         -----
-        The inverse temperature is calculated by from the mean of the temperature time series if the ensemble is "NVE". 
+        The inverse temperature is calculated by from the mean of the temperature time series if the ensemble is "NVE".
         Otherwise (``ensemble = "NVT"``), it is set to the desired temperature (`self.T_desired`).
         The temperature time series is taken from :py:attr:`sarkas.tools.observables.Thermodynamics.dataframe_slices`.
         The :py:attr:`sarkas.tools.observables.Thermodynamics.beta_slices` attribute is used in the calculation of the specific heat capacity.
@@ -5067,18 +5073,18 @@ class Thermodynamics(Observable):
 
         if ensemble == "NVE":
             self.beta_slices = zeros(self.no_slices)
-            if len(self.species_names) > 1:               
+            if len(self.species_names) > 1:
                 for isl in range(self.no_slices):
                     col_name = ("Total", "Temperature", f"slice {isl}")
-                    col_data = self.dataframe_slices[col_name].mean()   
-                    self.beta_slices[isl] = calculate_beta(col_data, k_B = self.kB)
+                    col_data = self.dataframe_slices[col_name].mean()
+                    self.beta_slices[isl] = calculate_beta(col_data, k_B=self.kB)
             else:
                 for isl in range(self.no_slices):
                     col_name = (f"{self.species_names[0]}", "Temperature", f"slice {isl}")
                     col_data = self.dataframe_slices[col_name].mean()
-                    self.beta_slices[isl] = calculate_beta(col_data, k_B = self.kB)
+                    self.beta_slices[isl] = calculate_beta(col_data, k_B=self.kB)
         else:
-            self.beta_slices = ones(self.no_slices) * calculate_beta(self.T_desired, k_B = self.kB)
+            self.beta_slices = ones(self.no_slices) * calculate_beta(self.T_desired, k_B=self.kB)
 
     def calculate_heat_capacity_slices(self, ensemble: str = "NVE"):
         """Calculate the specific heat capacity from the fluctuations of the energy."""
@@ -5095,7 +5101,9 @@ class Thermodynamics(Observable):
                     self.specific_heat_volume_slice[isl] = 0.5 * self.dimensions * self.kB * self.total_num_ptcls / denom
             else:
                 for isl in range(self.no_slices):
-                    kin_2 = (self.dataframe_slices[(f"{self.species_names[0]}", "Kinetic Energy", f"slice {isl}")].std()) ** 2
+                    kin_2 = (
+                        self.dataframe_slices[(f"{self.species_names[0]}", "Kinetic Energy", f"slice {isl}")].std()
+                    ) ** 2
                     denom = 1 - 2.0 * self.beta_slices[isl] ** 2 * kin_2 / (self.dimensions * self.total_num_ptcls)
                     self.specific_heat_volume_slice[isl] = 0.5 * self.dimensions * self.kB * self.total_num_ptcls / denom
 
@@ -5103,17 +5111,17 @@ class Thermodynamics(Observable):
             self.specific_heat_volume_slice = zeros(self.no_slices)
             for isl in range(self.no_slices):
                 cols = [(f"{sp}", "Total Energy", f"slice {isl}") for sp in self.species_names]
-                deltaE_2 = (self.dataframe_slices[cols].sum(axis = 1).std()) ** 2
+                deltaE_2 = (self.dataframe_slices[cols].sum(axis=1).std()) ** 2
                 self.specific_heat_volume_slice[isl] = deltaE_2 * self.beta_slices[isl] ** 2 * self.kB
-        
+
     def calculate_beta_simulation(self, ensemble: str = "NVE"):
         """Calculate the inverse temperature by taking the mean of the temperature time series. This is stored in the :py:attr:`sarkas.tools.observables.Thermodynamics.beta` attribute.
-        
+
         Parameters
         ----------
         ensemble : str, optional
             Ensemble to use. Default is "NVE".
-        
+
         Returns
         -------
         None
@@ -5121,7 +5129,7 @@ class Thermodynamics(Observable):
         Notes
         -----
         The inverse temperature is calculated by from the mean of the temperature time series if the ensemble is "NVE".
-        Otherwise (``ensemble = "NVT"``), it is set to the desired temperature (`self.T_desired`). 
+        Otherwise (``ensemble = "NVT"``), it is set to the desired temperature (`self.T_desired`).
         The temperature time series is taken from :py:attr:`sarkas.tools.observables.Thermodynamics.simulation_dataframe`.
         The :py:attr:`sarkas.tools.observables.Thermodynamics.beta` attribute is used in the calculation of the specific heat capacity.
 
@@ -5129,20 +5137,20 @@ class Thermodynamics(Observable):
 
         if ensemble == "NVE":
             cols = [(f"{sp}", "Temperature") for sp in self.species_names]
-            self.beta = calculate_beta(self.simulation_dataframe[cols].mean(axis = 1).mean(), k_B = self.kB)
+            self.beta = calculate_beta(self.simulation_dataframe[cols].mean(axis=1).mean(), k_B=self.kB)
         else:
-            self.beta = calculate_beta(self.T_desired, k_B = self.kB)
-    
+            self.beta = calculate_beta(self.T_desired, k_B=self.kB)
+
     def calculate_heat_capacity_simulation(self, ensemble: str = "NVE"):
         """
-        Calculate the specific heat capacity from the fluctuations of the energy. 
+        Calculate the specific heat capacity from the fluctuations of the energy.
         The specific heat capacity is stored in the :py:attr:`sarkas.tools.observables.Thermodynamics.specific_heat_volume` attribute.
-        
+
         Parameters
         ----------
         ensemble : str, optional
             Ensemble to use. Default is "NVE".
-        
+
         Returns
         -------
         None
@@ -5151,41 +5159,39 @@ class Thermodynamics(Observable):
         -----
         The specific heat capacity is calculated from the fluctuations of the total energy, taken from :py:attr:`sarkas.tools.observables.Thermodynamics.simulation_dataframe`, divided by the number of dimensions and the number of particles.
         In the NVT ensemble (``ensemble = "NVT"``), the specific heat capacity is calculated as the standard deviation of the total energy
-        
+
         .. math::
             C_V = k_B\beta^2 \left \langle \Delta E^2 \right \rangle
-        
+
         In the NVE ensemble (``ensemble = "NVE"``), the specific heat capacity is calculated as
 
         .. math::
             C_V = \frac{dN k_B}{2} \left ( 1 - \frac{2\beta^2}{dN} \left \langle K^2 \right \rangle \right )^{-1}
-        
+
         where :math:`d` is the number of dimensions and :math:`\left \langle K^2 \right \rangle` is the standard deviation of the kinetic energy.
 
         """
 
         self.calculate_beta_simulation(ensemble=ensemble)
-        
-        if ensemble == "NVE":
 
+        if ensemble == "NVE":
             cols = [(f"{sp}", "Kinetic Energy") for sp in self.species_names]
-            kin_2 = (self.simulation_dataframe[cols].sum(axis = 1).std()) ** 2
-            
+            kin_2 = (self.simulation_dataframe[cols].sum(axis=1).std()) ** 2
+
             denom = 1 - 2.0 * self.beta**2 * kin_2 / (self.dimensions * self.total_num_ptcls)
             self.specific_heat_volume = 0.5 * self.dimensions * self.kB * self.total_num_ptcls / denom
         else:
             cols = [(f"{sp}", "Total Energy") for sp in self.species_names]
-            deltaE_2 = (self.simulation_dataframe[cols].sum(axis = 1).std()) ** 2
+            deltaE_2 = (self.simulation_dataframe[cols].sum(axis=1).std()) ** 2
 
             self.specific_heat_volume = deltaE_2 * self.beta**2 * self.kB
 
     @staticmethod
     def capitalize_words(s):
-        return ' '.join(word.capitalize() for word in s.split('_'))
-    
+        return " ".join(word.capitalize() for word in s.split("_"))
+
     @calc_slices_doc
     def calc_slices_data(self):
-
         start_index = 0  # Index of the simulation_dataframe to start the acf calculation
         end_index = self.block_length  # final index
 
@@ -5195,9 +5201,9 @@ class Thermodynamics(Observable):
             list_of_species = [*self.species_names, "Total"]
         else:
             list_of_species = self.species_names
-        
+
         # total_thermodynamics_data = {f"Species_Quantity_Time": time_data}
-        
+
         # for species in list_of_species:
         #     for key in self.thermodynamics_list:
         #         for isl in range(self.no_slices):
@@ -5206,11 +5212,16 @@ class Thermodynamics(Observable):
         #             else:
         #                 total_thermodynamics_data[f"{species}_{self.capitalize_words(key)}_slice {isl}"] = zeros(self.block_length)
 
-
         # Join the elements of a tuple with a _
         total_thermodynamics_data = {f"Species_Quantity_Time": self.simulation_dataframe.iloc[:end_index, 0].values}
         cols = self.simulation_dataframe.columns[1:]
-        total_thermodynamics_data.update({'_'.join(col).strip()+f"_slice {isl}" : zeros(self.block_length)  for col in cols for isl in range(self.no_slices)})
+        total_thermodynamics_data.update(
+            {
+                "_".join(col).strip() + f"_slice {isl}": zeros(self.block_length)
+                for col in cols
+                for isl in range(self.no_slices)
+            }
+        )
 
         for col_name_tuple in cols:
             start_index = 0  # Index of the simulation_dataframe to start the acf calculation
@@ -5224,13 +5235,13 @@ class Thermodynamics(Observable):
                 leave=False,
             ):
                 col_data = self.simulation_dataframe[col_name_tuple].iloc[start_index:end_index].values
-                dict_key = '_'.join(col_name_tuple).strip()+f"_slice {isl}"
+                dict_key = "_".join(col_name_tuple).strip() + f"_slice {isl}"
                 total_thermodynamics_data[dict_key] = col_data.copy()
 
                 start_index += step
                 end_index += step
             # end of slice loop
-        
+
         self.dataframe_slices = DataFrame(total_thermodynamics_data)
 
     @calc_acf_slices_doc
@@ -5276,9 +5287,9 @@ class Thermodynamics(Observable):
             list_cols = [*self.species_names, "Total"]
         else:
             list_cols = self.species_names
-        
+
         self.dataframe = {}
-        
+
         self.dataframe["Species_Quantity_Time"] = self.dataframe_slices["Species_Quantity_Time"].values.copy()
 
         for species in list_cols:
@@ -5419,12 +5430,12 @@ class Thermodynamics(Observable):
 
         for species in list_of_species:
             for key in self.thermodynamics_list:
-                if key.lower() == 'temperature':
-                    column_mapping[f"{species}__{key}"] = f'{species}_Temperature'
+                if key.lower() == "temperature":
+                    column_mapping[f"{species}__{key}"] = f"{species}_Temperature"
                 else:
                     column_mapping[f"{species}__{key}"] = f"{species}_{self.capitalize_words(key)}"
         return column_mapping
-    
+
     def read_data_from_dumps(self, phase=None):
         """
         Grab the simulation data and store it in a pandas DataFrame.
@@ -5443,11 +5454,11 @@ class Thermodynamics(Observable):
             h5md_filepath = self.h5md_filepath
 
         # Find the length of the thermodynamics data
-        with h5py.File(h5md_filepath, 'r') as file:
-            observables_group = file['observables']
+        with h5py.File(h5md_filepath, "r") as file:
+            observables_group = file["observables"]
             first_species_group = observables_group[self.species_names[0]]
             first_obs_data = first_species_group[self.thermodynamics_list[0]]
-            data_length = len(first_obs_data['value'][:])   
+            data_length = len(first_obs_data["value"][:])
         # Initialize storage with the correct column names based on number of species
         if len(self.species_names) > 1:
             total_thermodynamics_data = {
@@ -5457,48 +5468,50 @@ class Thermodynamics(Observable):
             }
         else:
             total_thermodynamics_data = {
-                f"{self.species_names[0]}__{key}":  zeros(data_length)
-                for key in self.thermodynamics_list
+                f"{self.species_names[0]}__{key}": zeros(data_length) for key in self.thermodynamics_list
             }
-            
+
         time_data = zeros(data_length)
-        with h5py.File(h5md_filepath, 'r') as file:
-            observables_group = file['observables']
+        with h5py.File(h5md_filepath, "r") as file:
+            observables_group = file["observables"]
             for sp_name in self.species_names:
                 species_group = observables_group[sp_name]
-                
+
                 for obs_name in self.thermodynamics_list:
                     try:
                         obs_data = species_group[obs_name]
-                        if obs_name == 'temperature': 
-                            time_data = obs_data['time'][:]
-                        total_thermodynamics_data[f"{sp_name}__{obs_name}"] = obs_data['value'][:]
-                        
+                        if obs_name == "temperature":
+                            time_data = obs_data["time"][:]
+                        total_thermodynamics_data[f"{sp_name}__{obs_name}"] = obs_data["value"][:]
+
                         # Add to total only if multiple species
                         if len(self.species_names) > 1:
-                            const = (species_group.attrs['particle_number']/self.total_num_ptcls 
-                                   if obs_name == 'temperature' else 1.0)
-                            total_thermodynamics_data[f"Total__{obs_name}"] += obs_data['value'][:] * const
+                            const = (
+                                species_group.attrs["particle_number"] / self.total_num_ptcls
+                                if obs_name == "temperature"
+                                else 1.0
+                            )
+                            total_thermodynamics_data[f"Total__{obs_name}"] += obs_data["value"][:] * const
 
                     except KeyError:
                         print(f"Observable '{obs_name}' not found for species '{sp_name}'")
-        
+
         # Add time data to the total thermodynamics data dictionary
-        total_thermodynamics_data['time'] = time_data
+        total_thermodynamics_data["time"] = time_data
 
         # Create a DataFrame from the total thermodynamics data
         self.simulation_dataframe = DataFrame(total_thermodynamics_data)
 
         # Create dynamic column mapping
         column_mapping = self._create_column_mapping()
-        column_mapping['time'] = 'Species_Time'  # Ensure 'time' is mapped to 'Time'
+        column_mapping["time"] = "Species_Time"  # Ensure 'time' is mapped to 'Time'
 
         # Rename columns according to the mapping
         self.simulation_dataframe.rename(columns=column_mapping, inplace=True)
 
         # Ensure 'Time' is the first column
         cols = self.simulation_dataframe.columns.tolist()
-        cols.insert(0, cols.pop(cols.index('Species_Time')))
+        cols.insert(0, cols.pop(cols.index("Species_Time")))
         self.simulation_dataframe = self.simulation_dataframe[cols]
         self.save_simulation_hdf()
 
@@ -5598,7 +5611,7 @@ class Thermodynamics(Observable):
         # Rescale quantities
         time = time_mul * time_arr
         Temperature = temp_mul * temperature
-        T_desired = temp_mul * self.T_desired * K2eV # Convert to eV
+        T_desired = temp_mul * self.T_desired * K2eV  # Convert to eV
 
         # Temperature rolling average
         T_cumavg = Temperature.expanding().mean()
@@ -5625,9 +5638,9 @@ class Thermodynamics(Observable):
             # where Cv is the heat capacity at constant volume.
             self.calculate_heat_capacity_simulation(ensemble="NVE")
             dN_2 = 0.5 * self.total_num_ptcls * self.dimensions
-            
+
             term = 1 - dN_2 * (self.kB / self.specific_heat_volume)
-            T_std = T_desired * sqrt(term / dN_2 )
+            T_std = T_desired * sqrt(term / dN_2)
             # TODO: Review this calculation.
             # T_std *= sqrt(1 - 0.5 *process.parameters.dimensions*process.parameters.total_num_ptcls/heat_capacity_v)
         else:
@@ -5658,7 +5671,7 @@ class Thermodynamics(Observable):
         # Calculate Energy plot's labels and multipliers
         cols = [(f"{sp}", "Total Energy") for sp in self.species_names]
 
-        tot_energy = self.simulation_dataframe[cols].sum(axis = 1) * enrg_2eV # Convert to eV
+        tot_energy = self.simulation_dataframe[cols].sum(axis=1) * enrg_2eV  # Convert to eV
         time_mul, energy_mul, _, _, time_lbl, energy_lbl = plot_labels(
             time_arr, tot_energy, "Time", "ElectronVolt", self.units
         )
@@ -5689,20 +5702,20 @@ class Thermodynamics(Observable):
         if self.phase == "production":
             self.calculate_heat_capacity_simulation(ensemble="NVE")
             dN_2 = 0.5 * self.dimensions * self.total_num_ptcls
-            beta_desired = calculate_beta(self.T_desired, k_B = self.kB)
+            beta_desired = calculate_beta(self.T_desired, k_B=self.kB)
             delta_E2 = (
                 self.dimensions
                 * self.total_num_ptcls
                 / beta_desired**2
-                * (1 - dN_2 * (self.kB / self.specific_heat_volume) )
+                * (1 - dN_2 * (self.kB / self.specific_heat_volume))
             )
         else:
             self.calculate_heat_capacity_simulation(ensemble="NVT")
 
-            delta_E2 = (self.specific_heat_volume / self.beta**2 / self.kB)
+            delta_E2 = self.specific_heat_volume / self.beta**2 / self.kB
 
         delta_E = sqrt(delta_E2) * enrg_2eV
-        
+
         # Calculate the theoretical distribution of the energy.
         # E_dist_desired is a Gaussian centered at the actual mean with actaul E_std. This is to confirm that we have a Gaussian process.
         E_dist_desired = scp_stats.norm(loc=Energy.mean(), scale=delta_E * energy_mul)
@@ -5716,9 +5729,7 @@ class Thermodynamics(Observable):
         E_hist_plot.set(ylabel=None, xlabel=None, ylim=E_main_plot.get_ylim(), xticks=[], yticks=[])
 
         if not publication:
-            dt_mul, _, _, _, dt_lbl, _ = plot_labels(
-                process.integrator.dt, tot_energy, "Time", "Energy", self.units
-            )
+            dt_mul, _, _, _, dt_lbl, _ = plot_labels(process.integrator.dt, tot_energy, "Time", "Energy", self.units)
 
             # Information section
             Info_plot.axis([0, 10, 0, 10])
@@ -5802,7 +5813,12 @@ class Thermodynamics(Observable):
         # Restore the previous rcParams
         plt.rcParams = current_rcParams
 
-        return fig,  {"main_plot": T_main_plot, "hist_plot": T_hist_plot, "delta_plot": T_delta_plot}, {"main_plot": E_main_plot,"hist_plot": E_hist_plot, "delta_plot": E_delta_plot}
+        return (
+            fig,
+            {"main_plot": T_main_plot, "hist_plot": T_hist_plot, "delta_plot": T_delta_plot},
+            {"main_plot": E_main_plot, "hist_plot": E_hist_plot, "delta_plot": E_delta_plot},
+        )
+
     # def gamma_plot(self, phase: str = None, figname: str = None, show: bool = False):
 
     #     if phase:
@@ -5944,13 +5960,12 @@ class VelocityAutoCorrelationFunction(Observable):
         columns = [f"Species_Particle_Time"]
         columns.extend(cols)
 
-        
         data = zeros((self.no_dumps, len(columns)))
         # start_dump_no = 0
-        # end_dump_no = self.no_dumps 
+        # end_dump_no = self.no_dumps
         # step = 1
-        
-        with h5py.File(self.h5md_filepath, "r") as h5md_file: 
+
+        with h5py.File(self.h5md_filepath, "r") as h5md_file:
             # # Parse the particles from the dump files
             # for it, dump in enumerate(
             #     tqdm(
@@ -5961,12 +5976,12 @@ class VelocityAutoCorrelationFunction(Observable):
             #         leave=False,
             #     )
             # ):
-                
+
             time_ = h5md_file["particles"]["time"][:]
             velocities = h5md_file["particles"]["vel"][:, self.particles_id, :]
             # Initialize the data dictionary with the time_ value
             data[:, 0] = time_
-            data[:, 1:] =  velocities.reshape( (velocities.shape[0], -1)) # velocities.flatten()
+            data[:, 1:] = velocities.reshape((velocities.shape[0], -1))  # velocities.flatten()
 
         self.simulation_dataframe = DataFrame(data, columns=columns)
 
@@ -6001,7 +6016,7 @@ class VelocityAutoCorrelationFunction(Observable):
                         # Auto-correlation function
                         vel = self.simulation_dataframe[(f"{sp1}", f"{ip}", f"{ax}")].iloc[start_index:end_index].values
                         # delta_v = vel  ## - vel.mean()
-                        acf += correlationfunction(vel,vel)
+                        acf += correlationfunction(vel, vel)
 
                     acf /= self.no_ptcls_per_species[isp]
                     # Store in the dataframe
@@ -6168,8 +6183,9 @@ class VelocityAutoCorrelationFunction(Observable):
             columns_list.append(col_name)
             data_list.append(col_data)
             # self.dataframe_acf = add_col_to_df(self.dataframe_acf, col_data, col_name)
-        
+
         self.dataframe_acf = DataFrame(dict(zip(columns_list, data_list)))
+
     # @jit Numba doesn't like Scipy
     def calculate_vacf(self, vel):
         """
@@ -6239,10 +6255,12 @@ class PairDistributionFunction(Observable):
         Cutoff radius for the linked cell list algorithm.
     delta_pdf : numpy.ndarray
         Bin widths in each dimension for the PDF histogram. Calculated as `cutoffs / pdf_bins`.
-    
+
     """
 
-    def __init__(self, coord_system: str = "cartesian", pdf_bins: array = None, cutoffs: array = None, cutoff_radius: float = None):
+    def __init__(
+        self, coord_system: str = "cartesian", pdf_bins: array = None, cutoffs: array = None, cutoff_radius: float = None
+    ):
         super().__init__()
         self.__name__ = "pdf"
         self.__long_name__ = "Pair Distribution Function"
@@ -6255,19 +6273,19 @@ class PairDistributionFunction(Observable):
                 self.dim_labels = ["x", "y", "z"]
                 self.pdf_bins = array([100, 100, 100]) if pdf_bins is None else pdf_bins
                 self.cutoffs = array([5.0, 5.0, 5.0]) if cutoffs is None else cutoffs
-        
+
             elif self.coord_system == "cylindrical":
                 self.dim_labels = ["r", "phi", "z"]
                 self.cutoffs = array([5.0, pi, 5.0]) if cutoffs is None else cutoffs
                 self.pdf_bins = array([100, 45, 100]) if pdf_bins is None else pdf_bins
-        
+
             elif self.coord_system == "spherical":
                 self.dim_labels = ["r", "theta", "phi"]
                 self.cutoffs = array([5.0, pi / 2.0, 2.0 * pi]) if cutoffs is None else cutoffs
                 self.pdf_bins = array([100, 45, 90]) if pdf_bins is None else pdf_bins
 
         self.deltas_pdf = self.cutoffs / self.pdf_bins
-        self.cutoff_radius = 5.0  if cutoff_radius is None else cutoff_radius
+        self.cutoff_radius = 5.0 if cutoff_radius is None else cutoff_radius
 
     @setup_doc
     def setup(
@@ -6311,12 +6329,12 @@ class PairDistributionFunction(Observable):
         self.deltas_pdf = self.cutoffs / self.pdf_bins
 
         self.update_finish()
-        
+
         # Create zarr file for storing all slice data
         self.zarr_path = os_path_join(self.saving_dir, f"{self.__name__}_slices.zarr")
 
         # Use particle IDs (integers) instead of names for Numba compatibility
-        particles_ids = zeros(self.total_num_ptcls, dtype='int64')
+        particles_ids = zeros(self.total_num_ptcls, dtype="int64")
 
         species_start = 0
         species_end = 0
@@ -6326,12 +6344,12 @@ class PairDistributionFunction(Observable):
             species_start += n
 
         num_species = len(self.species_names)
-        
+
         # Calculate number of unique species pairs (including same-species)
         num_pairs = num_species * (num_species + 1) // 2
-        
+
         # Create a mapping from (i, j) to pair index for upper triangular matrix
-        pair_index_map = zeros((num_species, num_species), dtype='int64')
+        pair_index_map = zeros((num_species, num_species), dtype="int64")
         species_pairs = []
         pair_counter = 0
         for i in range(num_species):
@@ -6340,7 +6358,7 @@ class PairDistributionFunction(Observable):
                 pair_index_map[j, i] = pair_counter  # Symmetric
                 species_pairs.append(f"{self.species_names[i]}-{self.species_names[j]}")
                 pair_counter += 1
-        
+
         self.species_pairs = species_pairs
         self.particles_ids = particles_ids
         self.pair_index_map = pair_index_map
@@ -6362,7 +6380,6 @@ class PairDistributionFunction(Observable):
 
     @calc_slices_doc
     def calc_slices_data(self):
-
         # Initialize the linked cell list solver
         lcl = LinkedCellList()
         # TODO: Find a better way to pass these parameters
@@ -6388,33 +6405,31 @@ class PairDistributionFunction(Observable):
         # Remove existing zarr file if it exists to avoid appending to old data
         if os_path_exists(self.zarr_path):
             import shutil
+
             shutil.rmtree(self.zarr_path)
-        
+
         # Create zarr array: (num_slices, num_pairs, bins_u, bins_v, bins_w)
         zarr_store = zarr.open(
             self.zarr_path,
-            mode='w',
+            mode="w",
             shape=(self.no_slices, self.num_pairs, self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2]),
             chunks=(1, 1, self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2]),  # One chunk per slice per pair
-            dtype='float64'
+            dtype="float64",
         )
-        
+
         with h5py.File(self.h5md_filepath, "r") as h5md_file:
             for isl in tqdm(range(self.no_slices), desc="Calculating PDF for slice", disable=not self.verbose):
                 dump_end += step
-                
+
                 # Use 4D array: (num_pairs, bins_u, bins_v, bins_w)
-                hist_array = zeros(
-                    (self.num_pairs, self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2]), 
-                    dtype='int64'
-                )
+                hist_array = zeros((self.num_pairs, self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2]), dtype="int64")
 
                 for it in range(dump_init, dump_end + 1):
                     positions = h5md_file["particles"]["pos"][it, :, :]
 
                     # Create head and list arrays for the linked cell algorithm
                     head, ls_array = lcl.create_head_list_arrays(positions, cell_length_per_dim, cells_per_dim)
-                    
+
                     # Calculate distance histograms
                     hist_array = lcl.calculate_pdf_hist(
                         pos=positions,
@@ -6433,10 +6448,10 @@ class PairDistributionFunction(Observable):
                 # Normalize this slice
                 timesteps_per_slice = self.dumps_per_slice
                 pdf_normalized_slice = self._normalize_single_slice(hist_array, timesteps_per_slice, self.species_pairs)
-                
+
                 # Save normalized slice to zarr
                 zarr_store[isl, :, :, :, :] = pdf_normalized_slice
-                
+
                 dump_init += step
                 dump_end += step
 
@@ -6472,85 +6487,84 @@ class PairDistributionFunction(Observable):
 
         # Normalize each species pair
         pdf_normalized = zeros(hist_array.shape)
-        
+
         for pair_idx, pair_name in enumerate(species_pairs):
-            sp1, sp2 = pair_name.split('-')
+            sp1, sp2 = pair_name.split("-")
             idx_i = list(self.species_names).index(sp1)
             idx_j = list(self.species_names).index(sp2)
-            
+
             symmetry_factor = 2.0 if idx_i != idx_j else 1.0
             normalization = pair_density[idx_i, idx_j] * timesteps * bin_volumes * symmetry_factor
             # Avoid division by zero
             normalization = where(normalization > 0, normalization, 1.0)
-            
+
             pdf_normalized[pair_idx, :, :, :] = hist_array[pair_idx, :, :, :] / normalization
-        
+
         return pdf_normalized
 
     @avg_slices_doc
     def average_slices_data(self):
-
-        # Check if zarr data is available 
+        # Check if zarr data is available
         if not os_path_exists(self.zarr_path):
             raise ValueError("No zarr data available. Run calc_slices_data first.")
-        
-        zarr_store = zarr.open(self.zarr_path, mode='r')
-        # Check if zarr data has the expected shape        
+
+        zarr_store = zarr.open(self.zarr_path, mode="r")
+        # Check if zarr data has the expected shape
         expected_shape = (self.no_slices, self.num_pairs, self.pdf_bins[0], self.pdf_bins[1], self.pdf_bins[2])
         if zarr_store.shape != expected_shape:
             raise ValueError(f"Zarr file has shape {zarr_store.shape}, expected {expected_shape}")
-        
+
         # Calculate mean and std using zarr's built-in operations
         # This is memory efficient as zarr reads chunks as needed
         mean_data = zarr_store[:].mean(axis=0)  # Average over slices
-        std_data = zarr_store[:].std(axis=0)    # Std over slices
-        
+        std_data = zarr_store[:].std(axis=0)  # Std over slices
+
         # Create coordinate arrays
         u_coords = (array(range(self.pdf_bins[0])) + 0.5) * self.deltas_pdf[0]
         v_coords = (array(range(self.pdf_bins[1])) + 0.5) * self.deltas_pdf[1]
         w_coords = (array(range(self.pdf_bins[2])) + 0.5) * self.deltas_pdf[2]
-        
+
         # Set coordinate names
         if self.coord_system == "cartesian":
-            coord_names = ['x', 'y', 'z']
+            coord_names = ["x", "y", "z"]
         elif self.coord_system == "cylindrical":
-            coord_names = ['rho', 'theta', 'z']
+            coord_names = ["rho", "theta", "z"]
         elif self.coord_system == "spherical":
-            coord_names = ['r', 'theta', 'phi']
+            coord_names = ["r", "theta", "phi"]
         else:
-            coord_names = ['u', 'v', 'w']
-        
+            coord_names = ["u", "v", "w"]
+
         # Create xarray DataArrays for mean and std
         self.pdf_mean = xr.DataArray(
             mean_data,
-            dims=['species_pair', coord_names[0], coord_names[1], coord_names[2]],
+            dims=["species_pair", coord_names[0], coord_names[1], coord_names[2]],
             coords={
-                'species_pair': self.species_pairs,
+                "species_pair": self.species_pairs,
                 coord_names[0]: u_coords,
                 coord_names[1]: v_coords,
                 coord_names[2]: w_coords,
             },
             attrs={
-                'description': 'Mean pair distribution function across all slices',
-                'coordinate_system': self.coord_system,
-                'units': 'dimensionless',
-            }
+                "description": "Mean pair distribution function across all slices",
+                "coordinate_system": self.coord_system,
+                "units": "dimensionless",
+            },
         )
-        
+
         self.pdf_std = xr.DataArray(
             std_data,
-            dims=['species_pair', coord_names[0], coord_names[1], coord_names[2]],
+            dims=["species_pair", coord_names[0], coord_names[1], coord_names[2]],
             coords={
-                'species_pair': self.species_pairs,
+                "species_pair": self.species_pairs,
                 coord_names[0]: u_coords,
                 coord_names[1]: v_coords,
                 coord_names[2]: w_coords,
             },
             attrs={
-                'description': 'Standard deviation of pair distribution function across slices',
-                'coordinate_system': self.coord_system,
-                'units': 'dimensionless',
-            }
+                "description": "Standard deviation of pair distribution function across slices",
+                "coordinate_system": self.coord_system,
+                "units": "dimensionless",
+            },
         )
 
     def get_slice_data(self, species_pair, slice_idx):
@@ -6571,13 +6585,13 @@ class PairDistributionFunction(Observable):
         """
         if not os_path_exists(self.zarr_path):
             raise ValueError("No zarr data available. Run calc_slices_data first.")
-        
+
         # Open zarr in read mode
-        zarr_store = zarr.open(self.zarr_path, mode='r')
-        
+        zarr_store = zarr.open(self.zarr_path, mode="r")
+
         # Find pair index
         pair_idx = self.species_pairs.index(species_pair)
-        
+
         # Load data for this slice and pair
         return zarr_store[slice_idx, pair_idx, :, :, :]
 
@@ -6593,44 +6607,44 @@ class PairDistributionFunction(Observable):
         """
         if not os_path_exists(self.zarr_path):
             raise ValueError("No zarr data available. Run calc_slices_data first.")
-        
+
         # Open zarr and load all data
-        zarr_store = zarr.open(self.zarr_path, mode='r')
+        zarr_store = zarr.open(self.zarr_path, mode="r")
         all_data = zarr_store[:]
-        
+
         # Create coordinate arrays
         u_coords = (array(range(self.pdf_bins[0])) + 0.5) * self.deltas_pdf[0]
         v_coords = (array(range(self.pdf_bins[1])) + 0.5) * self.deltas_pdf[1]
         w_coords = (array(range(self.pdf_bins[2])) + 0.5) * self.deltas_pdf[2]
-        
+
         # Set coordinate names
         if self.coord_system == "cartesian":
-            coord_names = ['x', 'y', 'z']
+            coord_names = ["x", "y", "z"]
         elif self.coord_system == "cylindrical":
-            coord_names = ['rho', 'theta', 'z']
+            coord_names = ["rho", "theta", "z"]
         elif self.coord_system == "spherical":
-            coord_names = ['r', 'theta', 'phi']
+            coord_names = ["r", "theta", "phi"]
         else:
-            coord_names = ['u', 'v', 'w']
-        
+            coord_names = ["u", "v", "w"]
+
         # Create xarray DataArray
         pdf_all = xr.DataArray(
             all_data,
-            dims=['slice', 'species_pair', coord_names[0], coord_names[1], coord_names[2]],
+            dims=["slice", "species_pair", coord_names[0], coord_names[1], coord_names[2]],
             coords={
-                'slice': range(self.no_slices),
-                'species_pair': self.species_pairs,
+                "slice": range(self.no_slices),
+                "species_pair": self.species_pairs,
                 coord_names[0]: u_coords,
                 coord_names[1]: v_coords,
                 coord_names[2]: w_coords,
             },
             attrs={
-                'description': 'Normalized pair distribution function',
-                'coordinate_system': self.coord_system,
-                'units': 'dimensionless',
-            }
+                "description": "Normalized pair distribution function",
+                "coordinate_system": self.coord_system,
+                "units": "dimensionless",
+            },
         )
-        
+
         return pdf_all
 
     def _calculate_bin_volumes(self, coord_system=None):
@@ -6641,7 +6655,7 @@ class PairDistributionFunction(Observable):
         ----------
         coord_system : str, optional
             Coordinate system to use for volume calculation. If `None`, uses the class attribute `self.coord_system`.
-        
+
         Returns
         -------
         bin_volumes : numpy.ndarray
@@ -6653,7 +6667,7 @@ class PairDistributionFunction(Observable):
             coord_system = coord_system.lower()
         else:
             coord_system = self.coord_system
-            
+
         if coord_system == "cartesian":
             # Cartesian: dV = dx * dy * dz
             dV = self.deltas_pdf[0] * self.deltas_pdf[1] * self.deltas_pdf[2]
@@ -6689,7 +6703,7 @@ class PairDistributionFunction(Observable):
                     theta_fraction = sin(theta_center) * dtheta / 2.0
                     # Fraction in phi direction
                     phi_fraction = dphi / (2.0 * pi)
-                    
+
                     bin_volumes[i, j, :] = volume_shell * theta_fraction * phi_fraction
 
         return bin_volumes
@@ -6714,13 +6728,13 @@ class PairDistributionFunction(Observable):
         # Get coordinate names
         coord_names = list(self.pdf_normalized.dims)[2:]  # Skip 'slice' and 'species_pair'
         axis_name = coord_names[axis_to_average]
-        
+
         # Average over the specified axis
         pdf_2d = self.pdf_normalized.mean(dim=axis_name)
-        
+
         # Update attributes
-        pdf_2d.attrs['description'] = f'2D PDF (averaged over {axis_name})'
-        
+        pdf_2d.attrs["description"] = f"2D PDF (averaged over {axis_name})"
+
         return pdf_2d
 
     def reduce_to_1d(self, axes_to_average=(1, 2)):
@@ -6740,15 +6754,16 @@ class PairDistributionFunction(Observable):
         # Get coordinate names
         coord_names = list(self.pdf_normalized.dims)[2:]  # Skip 'slice' and 'species_pair'
         axes_names = [coord_names[i] for i in axes_to_average]
-        
+
         # Average over the specified axes
         pdf_1d = self.pdf_normalized.mean(dim=axes_names)
-        
+
         # Update attributes
-        pdf_1d.attrs['description'] = f'1D PDF (averaged over {", ".join(axes_names)})'
-        
+        pdf_1d.attrs["description"] = f'1D PDF (averaged over {", ".join(axes_names)})'
+
         return pdf_1d
-        
+
+
 # TODO: Review and fix this class
 class VelocityDistribution(Observable):
     """
@@ -7420,58 +7435,58 @@ def calc_Sk(nkt, k_list, k_counts, species_np, no_dumps):
 
 
 # def calc_Skw(nkt, ka_list, species_np, no_dumps, dt, dump_step):
-    # """
-    # Calculate the Fourier transform of the correlation function of ``nkt``.
+# """
+# Calculate the Fourier transform of the correlation function of ``nkt``.
 
-    # Parameters
-    # ----------
-    # nkt :  complex, numpy.ndarray
-    #     Particles' density or velocity fluctuations.
-    #     Shape = ( ``no_species``, ``no_dumps``, ``no_k_list``)
+# Parameters
+# ----------
+# nkt :  complex, numpy.ndarray
+#     Particles' density or velocity fluctuations.
+#     Shape = ( ``no_species``, ``no_dumps``, ``no_k_list``)
 
-    # ka_list : list
-    #     List of :math:`k` indices in each direction with corresponding magnitude and index of ``ka_counts``.
-    #     Shape=(``no_ka_values``, 5)
+# ka_list : list
+#     List of :math:`k` indices in each direction with corresponding magnitude and index of ``ka_counts``.
+#     Shape=(``no_ka_values``, 5)
 
-    # species_np : numpy.ndarray
-    #     Array with one element giving number of particles.
+# species_np : numpy.ndarray
+#     Array with one element giving number of particles.
 
-    # no_dumps : int
-    #     Number of dumps.
+# no_dumps : int
+#     Number of dumps.
 
-    # dt : float
-    #     Time interval.
+# dt : float
+#     Time interval.
 
-    # dump_step : int
-    #     Snapshot interval.
+# dump_step : int
+#     Snapshot interval.
 
-    # Returns
-    # -------
-    # Skw_all : numpy.ndarray
-    #     DSF/CCF of each species and pair of species.
-    #     Shape = (``no_skw``, ``no_ka_values``, ``no_dumps``)
-    # """
-    # # Fourier transform normalization: norm = dt / Total time
-    # norm = dt / sqrt(no_dumps * dt * dump_step)
-    # # number of independent observables
-    # no_skw = int(len(species_np) * (len(species_np) + 1) / 2)
-    # # DSF
-    # # Skw = zeros((no_skw, len(ka_counts), no_dumps))
-    # Skw_all = zeros((no_skw, len(ka_list), no_dumps))
-    # pair_indx = 0
-    # for ip, si in enumerate(species_np):
-    #     for jp in range(ip, len(species_np)):
-    #         sj = species_np[jp]
-    #         dens_const = 1.0 / sqrt(si * sj)
-    #         for ik, ka in enumerate(ka_list):
-    #             # indx = int(ka[-1])
-    #             nkw_i = fft(nkt[ip, :, ik]) * norm
-    #             nkw_j = fft(nkt[jp, :, ik]) * norm
-    #             Skw_all[pair_indx, ik, :] = fftshift(real(nkw_i.conjugate() * nkw_j) * dens_const)
-    #             # Skw[pair_indx, indx, :] += Skw_all[pair_indx, ik, :] / ka_counts[indx]
-    #         pair_indx += 1
+# Returns
+# -------
+# Skw_all : numpy.ndarray
+#     DSF/CCF of each species and pair of species.
+#     Shape = (``no_skw``, ``no_ka_values``, ``no_dumps``)
+# """
+# # Fourier transform normalization: norm = dt / Total time
+# norm = dt / sqrt(no_dumps * dt * dump_step)
+# # number of independent observables
+# no_skw = int(len(species_np) * (len(species_np) + 1) / 2)
+# # DSF
+# # Skw = zeros((no_skw, len(ka_counts), no_dumps))
+# Skw_all = zeros((no_skw, len(ka_list), no_dumps))
+# pair_indx = 0
+# for ip, si in enumerate(species_np):
+#     for jp in range(ip, len(species_np)):
+#         sj = species_np[jp]
+#         dens_const = 1.0 / sqrt(si * sj)
+#         for ik, ka in enumerate(ka_list):
+#             # indx = int(ka[-1])
+#             nkw_i = fft(nkt[ip, :, ik]) * norm
+#             nkw_j = fft(nkt[jp, :, ik]) * norm
+#             Skw_all[pair_indx, ik, :] = fftshift(real(nkw_i.conjugate() * nkw_j) * dens_const)
+#             # Skw[pair_indx, indx, :] += Skw_all[pair_indx, ik, :] / ka_counts[indx]
+#         pair_indx += 1
 
-    # return Skw_all
+# return Skw_all
 
 
 @njit
@@ -7633,9 +7648,9 @@ def calc_moments(dist, max_moment, species_index_start):
 #     nkt : numpy.ndarray, complex
 #         Density fluctuations.  Shape = ( ``no_species``, ``no_dumps``, ``no_ka_values``)
 #     """
- 
+
 #     nkt = zeros((len(species_np), slices[2], len(k_list)), dtype=complex128)
- 
+
 #     with h5py.File(h5md_filepath, "r") as h5md_file:
 #         for it, dump in enumerate(
 #         tqdm(range(slices[0], slices[1], dump_step), desc="Timestep", position=1, disable=not verbose, leave=False)
@@ -8370,18 +8385,19 @@ def check_stationarity(data):
     print("\nKPSS Test Summary:")
     print(kpss_summary)
 
+
 @njit
 def remove_linear_trend(y, time_array):
     """
     Remove linear trend from a time series using simple linear regression.
-    
+
     Parameters
     ----------
     y : numpy.ndarray
         Time series data
     time_array : numpy.ndarray
         Time points corresponding to the measurements
-        
+
     Returns
     -------
     detrended : numpy.ndarray
@@ -8391,27 +8407,27 @@ def remove_linear_trend(y, time_array):
     slope : float
         Slope of the linear fit
     """
-    n = len(y)   
+    n = len(y)
     X = zeros((n, 2))
     X[:, 0] = 1.0  # Constant term
     X[:, 1] = time_array  # Time variable
-    
+
     coeffs = lstsq(X, y)[0]
     intercept = coeffs[0]
     slope = coeffs[1]
     trend = intercept + slope * time_array
     detrended = y - trend
-    
+
     return detrended, intercept, slope
 
 
 def run_thermalization_tests(data, time_array, adf_significance=0.05, kpss_significance=0.05):
     """
     Run comprehensive stationarity tests for thermalization verification.
-    
+
     This function performs trend removal followed by ADF, KPSS, and Mann-Kendall tests
     to determine if a system is properly thermalized.
-    
+
     Parameters
     ----------
     data : numpy.ndarray
@@ -8422,7 +8438,7 @@ def run_thermalization_tests(data, time_array, adf_significance=0.05, kpss_signi
         Significance level for ADF test. Default is 0.05.
     kpss_significance : float, optional
         Significance level for KPSS test. Default is 0.01.
-        
+
     Returns
     -------
     dict
@@ -8440,55 +8456,53 @@ def run_thermalization_tests(data, time_array, adf_significance=0.05, kpss_signi
     """
     # Remove linear trend
     detrended, intercept, slope = remove_linear_trend(data, time_array)
-    
+
     # Calculate RMSE and variance of first differences
     linear_fit = intercept + slope * time_array
     mse_fit = ((data - linear_fit) ** 2).sum() / len(data)
     rmse = sqrt(mse_fit)
-    
+
     delta_yt = detrended[1:] - detrended[:-1]
     epsilon = delta_yt.var(ddof=1)
-    
+
     # ADF Test
-    adftest = ADF(detrended, trend='c')
-    adf_passed = (adftest.pvalue < adf_significance and 
-                  adftest.stat < adftest.critical_values["5%"])
-    
+    adftest = ADF(detrended, trend="c")
+    adf_passed = adftest.pvalue < adf_significance and adftest.stat < adftest.critical_values["5%"]
+
     # KPSS Test
-    kpsstest = KPSS(detrended, trend='c')
-    kpss_passed = (kpsstest.pvalue > kpss_significance and 
-                   kpsstest.stat < kpsstest.critical_values["5%"])
-    
+    kpsstest = KPSS(detrended, trend="c")
+    kpss_passed = kpsstest.pvalue > kpss_significance and kpsstest.stat < kpsstest.critical_values["5%"]
+
     # Mann-Kendall Test
     mk_test = mk.original_test(data)
     mk_passed = bool(~mk_test.h)  # Pass if no trend detected
-    
+
     return {
-        'detrended': detrended,
-        'intercept': intercept,
-        'slope': slope,
-        'rmse': rmse,
-        'epsilon': epsilon,
-        'adf': {
-            'statistic': adftest.stat,
-            'pvalue': adftest.pvalue,
-            'critical_value': adftest.critical_values["5%"],
-            'passed': adf_passed
+        "detrended": detrended,
+        "intercept": intercept,
+        "slope": slope,
+        "rmse": rmse,
+        "epsilon": epsilon,
+        "adf": {
+            "statistic": adftest.stat,
+            "pvalue": adftest.pvalue,
+            "critical_value": adftest.critical_values["5%"],
+            "passed": adf_passed,
         },
-        'kpss': {
-            'statistic': kpsstest.stat,
-            'pvalue': kpsstest.pvalue,
-            'critical_value': kpsstest.critical_values["5%"],
-            'passed': kpss_passed
+        "kpss": {
+            "statistic": kpsstest.stat,
+            "pvalue": kpsstest.pvalue,
+            "critical_value": kpsstest.critical_values["5%"],
+            "passed": kpss_passed,
         },
-        'mann_kendall': {
-            's': mk_test.s,
-            'pvalue': mk_test.p,
-            'tau': mk_test.Tau,
-            'h': mk_test.h,
-            'trend': mk_test.trend,
-            'passed': mk_passed
+        "mann_kendall": {
+            "s": mk_test.s,
+            "pvalue": mk_test.p,
+            "tau": mk_test.Tau,
+            "h": mk_test.h,
+            "trend": mk_test.trend,
+            "passed": mk_passed,
         },
-        'all_conditions': [adf_passed, kpss_passed, mk_passed],
-        'verdict': all([adf_passed, kpss_passed, mk_passed])
+        "all_conditions": [adf_passed, kpss_passed, mk_passed],
+        "verdict": all([adf_passed, kpss_passed, mk_passed]),
     }

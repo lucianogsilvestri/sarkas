@@ -4,7 +4,6 @@ Module handling stages of an MD run: PreProcessing, Simulation, PostProcessing.
 
 from importlib import import_module
 from IPython import get_ipython
-from threading import Thread
 
 if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
     from tqdm import tqdm_notebook as tqdm
@@ -12,14 +11,11 @@ if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
 else:
     from tqdm import tqdm, trange
 
+import h5py
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 from matplotlib.cm import get_cmap, ScalarMappable
 from matplotlib.colors import LogNorm
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-
-import h5py
-
 from numpy import (
     arange,
     array,
@@ -30,17 +26,16 @@ from numpy import (
     log10,
     logspace,
     meshgrid,
-    pi,
     quantile,
     sqrt,
     zeros,
 )
-
 from os import listdir, mkdir
 from os import remove as os_remove
 from os import stat as os_stat
 from os.path import exists, join
 from pandas import DataFrame, read_csv
+from plotly.subplots import make_subplots
 from seaborn import scatterplot
 from warnings import warn
 
@@ -48,14 +43,14 @@ from warnings import warn
 from .core import Parameters
 from .particles import Particles
 from .plasma import Species
+from .plotting.styles import get_msu_colors
 from .potentials.core import Potential
 from .time_evolution.integrators import Integrator
-
+from .tools.observables import run_thermalization_tests
 from .utilities.io import InputOutput, print_to_logger
 from .utilities.maths import force_error_analytic_pp, force_error_approx_pppm
 from .utilities.timing import SarkasTimer
-from .plotting.styles import get_msu_colors
-from .tools.observables import run_thermalization_tests
+
 
 class Process:
     """Parent class for :class:`sarkas.process.PreProcess`, :class:`sarkas.process.Simulation`, and
@@ -287,14 +282,13 @@ class Process:
         """Calculate the size of the dumps directories and print them to logger."""
         # Estimate size of dump folder
         if self.__name__ == "preprocessing":
-            
             if self.parameters.equilibration_phase:
                 eq_dump_size = self.io.estimate_existing_file_size("equilibration")
             else:
                 eq_dump_size = 0
-                
+
             prod_dump_size = self.io.estimate_existing_file_size("production")
-            
+
             sizes = array([eq_dump_size, prod_dump_size])
 
             if self.parameters.magnetized and self.parameters.electrostatic_equilibration:
@@ -314,7 +308,6 @@ class Process:
                     # eq_dump_fldr_size = eq_dump_size # * (self.parameters.equilibration_steps / self.parameters.eq_dump_step)
             else:
                 eq_dump_size = 0
-                
 
             if not listdir(self.io.directory_tree[self.__name__]["production"]["path"]):
                 raise FileNotFoundError(
@@ -324,7 +317,7 @@ class Process:
 
             # Grab one file from the dump directory and get the size of it.
             prod_dump_size = os_stat(join(self.io.prod_dump_dir, listdir(self.io.prod_dump_dir)[0])).st_size
-            
+
             # Prepare arguments to pass for print out
             sizes = array([eq_dump_size, prod_dump_size])
             # Check for electrostatic equilibration
@@ -336,10 +329,10 @@ class Process:
                         "Re-run .time_n_space_estimate(loops) with loops > mag_dump_step"
                     )
                 # dump = self.parameters.mag_dump_step
-                mag_dump_size = os_stat(join(self.io.mag_dump_dir,  listdir(self.io.mag_dump_dir)[0])).st_size
-                sizes = array([eq_dump_size, prod_dump_size, mag_dump_size])            
+                mag_dump_size = os_stat(join(self.io.mag_dump_dir, listdir(self.io.mag_dump_dir)[0])).st_size
+                sizes = array([eq_dump_size, prod_dump_size, mag_dump_size])
         self.io.directory_size_report(sizes, process=self.__name__)
-        
+
     def evolve(self, phase, thermalization, it_start, it_end, dump_step):
         """
         Evolve the system forward in time.
@@ -370,9 +363,8 @@ class Process:
             self.integrator.update(self.particles)
 
             if (it + 1) % dump_step == 0:
-
                 self.particles.calculate_observables()
-                
+
                 # self.io.dump(phase, self.particles, it + 1)
                 time = self.integrator.dt * (it + 1)
                 self.io.save_timestep_data(it + 1, dump_step, time, self.particles)
@@ -399,7 +391,7 @@ class Process:
         self.particles.setup(self.parameters, self.species)
         time_ptcls = self.timer.current()
         self.parameters.particles_initialization_time = time_ptcls - t0
-        
+
         # Initialize potential and calculate initial potential
         self.potential.setup(self.parameters, self.species)
         self.potential.calc_acc_pot(self.particles)
@@ -418,10 +410,10 @@ class Process:
         # Copy some parameters needed for saving data
         self.io.copy_params(self.parameters)
         # For restart and backups.
-        self.io.setup_checkpoint(self.parameters, self.particles, phase = "equilibration")
+        self.io.setup_checkpoint(self.parameters, self.particles, phase="equilibration")
         if self.parameters.magnetized and self.parameters.electrostatic_equilibration:
-            self.io.setup_checkpoint(self.parameters, self.particles, phase = "magnetization")
-        self.io.setup_checkpoint(self.parameters, self.particles, phase = "production")
+            self.io.setup_checkpoint(self.parameters, self.particles, phase="magnetization")
+        self.io.setup_checkpoint(self.parameters, self.particles, phase="production")
 
         self.io.save_simulation_state(self)
 
@@ -531,11 +523,11 @@ class Process:
                 last_step = self.parameters.production_steps
                 self.parameters.restart_step = last_step
                 self.particles.setup(self.parameters, self.species)
-                
+
                 # Restore the original value for future use
                 self.parameters.load_method = old_method
                 # Update the log file. It is set to the simulation log in the parameters class, but it is correct in the IO class.
-                self.parameters.log_file = self.io.log_file      
+                self.parameters.log_file = self.io.log_file
         else:
             self.initialization()
 
@@ -587,7 +579,7 @@ class Process:
                 last_step = self.parameters.production_steps
                 self.parameters.restart_step = last_step
                 self.particles.setup(self.parameters, self.species)
-                
+
                 # Restore the original value for future use
                 self.parameters.load_method = old_method
                 # Update the log file. It is set to the simulation log in the parameters class, but it is correct in the IO class.
@@ -697,7 +689,7 @@ class PreProcess(Process):
         self.pp_cells = arange(3, 16, dtype=int64)
         super().__init__(input_file)
 
-    def analytical_approx_pppm(self, rcuts = None, alphas=None, rlims=None, alims=None, mesh_size = None, cao = None):
+    def analytical_approx_pppm(self, rcuts=None, alphas=None, rlims=None, alims=None, mesh_size=None, cao=None):
         """Calculate the total force error as given in :cite:`Dharuman2017`.
         Parameters
         ----------
@@ -731,12 +723,12 @@ class PreProcess(Process):
                 r_min, r_max = rlims
             else:
                 r_min = self.potential.rc * 0.5
-                r_max = self.potential.rc * 2.0       
+                r_max = self.potential.rc * 2.0
             rcuts = linspace(r_min, r_max, 101)
         else:
             r_min = rcuts.min()
             r_max = rcuts.max()
-        
+
         if alphas is None:
             if alims:
                 a_min, a_max = alims
@@ -749,7 +741,7 @@ class PreProcess(Process):
         else:
             a_min = alphas.min()
             a_max = alphas.max()
-        
+
         # Create the meshgrids
         pm_force_error = zeros(len(alphas))
         pp_force_error = zeros((len(alphas), len(rcuts)))
@@ -896,9 +888,19 @@ class PreProcess(Process):
             DeprecationWarning,
         )
         # Line Plot
-        self.make_pppm_line_plot(total_force_error=total_force_error, rcuts=rcuts, alphas=alphas, chosen_alpha=chosen_alpha, chosen_rcut=chosen_rcut, chosen_mesh=self.potential.pppm_mesh[0], chosen_cao=self.potential.pppm_cao[0])
+        self.make_pppm_line_plot(
+            total_force_error=total_force_error,
+            rcuts=rcuts,
+            alphas=alphas,
+            chosen_alpha=chosen_alpha,
+            chosen_rcut=chosen_rcut,
+            chosen_mesh=self.potential.pppm_mesh[0],
+            chosen_cao=self.potential.pppm_cao[0],
+        )
 
-    def make_pppm_line_plot(self, total_force_error, rcuts, alphas, chosen_alpha = None, chosen_rcut = None, chosen_mesh=None, chosen_cao=None):
+    def make_pppm_line_plot(
+        self, total_force_error, rcuts, alphas, chosen_alpha=None, chosen_rcut=None, chosen_mesh=None, chosen_cao=None
+    ):
         """
         Plot selected values of the total force error approximation.
 
@@ -951,7 +953,7 @@ class PreProcess(Process):
                 + r" a_{\rm ws}$"
             )
             ax[0].plot(rcuts, total_force_error[j, :], ls=lns, label=rc_lbl)
-            
+
             min_a = alphas[total_force_error[:, i].argmin()]
             a_lbl = (
                 r"$r_c = {:.2f}".format(rcuts[i])
@@ -967,10 +969,10 @@ class PreProcess(Process):
         if chosen_rcut is not None and chosen_alpha is not None:
             ax[0].axvline(chosen_rcut, ls="--", c="k")
             ax[1].axvline(chosen_alpha, ls="--", c="k")
-        
-        ax[0].axhline(self.potential.force_error, ls="--", c="k", label = "Actual Force Error")
-        ax[1].axhline(self.potential.force_error, ls="--", c="k", label = "Actual Force Error")
-            
+
+        ax[0].axhline(self.potential.force_error, ls="--", c="k", label="Actual Force Error")
+        ax[1].axhline(self.potential.force_error, ls="--", c="k", label="Actual Force Error")
+
         if rcuts[-1] * self.parameters.a_ws > 0.5 * self.parameters.box_lengths.min():
             ax[0].axvline(0.5 * self.parameters.box_lengths.min() / self.parameters.a_ws, c="r", label=r"$L/2$")
 
@@ -988,7 +990,9 @@ class PreProcess(Process):
         )
         fig.savefig(join(fig_path, "LinePlot_ForceError_" + self.io.job_id + ".png"))
 
-    def make_pppm_line_plot_interactive(self, total_force_error, rcuts, alphas, chosen_alpha = None, chosen_rcut = None, chosen_mesh = None, chosen_cao = None):
+    def make_pppm_line_plot_interactive(
+        self, total_force_error, rcuts, alphas, chosen_alpha=None, chosen_rcut=None, chosen_mesh=None, chosen_cao=None
+    ):
         """
         Create interactive line plots of the total force error approximation.
 
@@ -1012,71 +1016,70 @@ class PreProcess(Process):
 
         # Create subplots
         fig = make_subplots(
-            rows=1, cols=2,
-            subplot_titles=("Force Error vs r<sub>c</sub>", "Force Error vs α"),
-            horizontal_spacing=0.12
+            rows=1, cols=2, subplot_titles=("Force Error vs r<sub>c</sub>", "Force Error vs α"), horizontal_spacing=0.12
         )
-        
+
         # Get MSU colors
         msu_colors = get_msu_colors()
-        
+
         # Line styles
-        dash_styles = ['dot', 'dash', 'solid', 'dashdot', 'longdash']
+        dash_styles = ["dot", "dash", "solid", "dashdot", "longdash"]
         # Indexes is quantiles of the alphas and rcuts arrays
         r_indexes = quantile(arange(len(rcuts)), [0.3, 0.4, 0.5, 0.6, 0.7], method="nearest").astype(int)
         a_indexes = quantile(arange(len(alphas)), [0.3, 0.4, 0.5, 0.6, 0.7], method="nearest").astype(int)
-        
+
         if chosen_alpha is not None:
             a_index = (abs(alphas - chosen_alpha)).argmin()
             a_indexes[2] = a_index
         if chosen_rcut is not None:
             r_index = (abs(rcuts - chosen_rcut)).argmin()
             r_indexes[2] = r_index
-            
+
         # Left plot: Force error vs r_c for different alpha values
         for idx, (i, j, color, dash) in enumerate(zip(r_indexes, a_indexes, msu_colors[:5], dash_styles)):
-            rc_lbl = f"αa<sub>ws</sub> = {alphas[j]:.2f}" # min @ r<sub>c</sub> = {min_rc:.2f} a<sub>ws</sub>"
-            
+            rc_lbl = f"αa<sub>ws</sub> = {alphas[j]:.2f}"  # min @ r<sub>c</sub> = {min_rc:.2f} a<sub>ws</sub>"
+
             fig.add_trace(
                 go.Scatter(
                     x=rcuts,
                     y=total_force_error[j, :],
-                    mode='lines',
+                    mode="lines",
                     name=rc_lbl,
                     line=dict(color=color, dash=dash, width=2),
-                    hovertemplate='r<sub>c</sub>/a<sub>ws</sub>: %{x:.4e}<br>ΔF: %{y:.4e}<extra></extra>',
-                    legendgroup=f'group{idx}',
-                    showlegend=True
+                    hovertemplate="r<sub>c</sub>/a<sub>ws</sub>: %{x:.4e}<br>ΔF: %{y:.4e}<extra></extra>",
+                    legendgroup=f"group{idx}",
+                    showlegend=True,
                 ),
-                row=1, col=1
+                row=1,
+                col=1,
             )
-        
+
         # Right plot: Force error vs alpha for different r_c values
         for idx, (i, j, color, dash) in enumerate(zip(r_indexes, a_indexes, msu_colors[:5], dash_styles)):
+            a_lbl = f"r<sub>c</sub> = {rcuts[i]:.2f} a<sub>ws</sub>"  # min @ α<sub>min</sub>a<sub>ws</sub> = {min_a:.2f}"
 
-            a_lbl = f"r<sub>c</sub> = {rcuts[i]:.2f} a<sub>ws</sub>" # min @ α<sub>min</sub>a<sub>ws</sub> = {min_a:.2f}"
-            
             fig.add_trace(
                 go.Scatter(
                     x=alphas,
                     y=total_force_error[:, i],
-                    mode='lines',
+                    mode="lines",
                     name=a_lbl,
                     line=dict(color=color, dash=dash, width=2),
-                    hovertemplate='αa<sub>ws</sub>: %{x:.4e}<br>ΔF: %{y:.4e}<extra></extra>',
-                    legendgroup=f'group{idx}',
-                    showlegend=True
+                    hovertemplate="αa<sub>ws</sub>: %{x:.4e}<br>ΔF: %{y:.4e}<extra></extra>",
+                    legendgroup=f"group{idx}",
+                    showlegend=True,
                 ),
-                row=1, col=2
+                row=1,
+                col=2,
             )
-        
+
         # Add reference lines
         if chosen_rcut is not None and chosen_alpha is not None:
-            fig.add_vline(x=chosen_rcut, line_dash="dash", line_color="black", 
-                    row=1, col=1, annotation_text="chosen r<sub>c</sub>")
-            fig.add_vline(x=chosen_alpha, line_dash="dash", line_color="black",
-                    row=1, col=2, annotation_text="chosen α")
-        
+            fig.add_vline(
+                x=chosen_rcut, line_dash="dash", line_color="black", row=1, col=1, annotation_text="chosen r<sub>c</sub>"
+            )
+            fig.add_vline(x=chosen_alpha, line_dash="dash", line_color="black", row=1, col=2, annotation_text="chosen α")
+
         # fig.add_hline(y=self.potential.force_error, line_dash="dash", line_color="black",
         #             row=1, col=1, annotation_text="Actual Force Error")
         # fig.add_hline(y=self.potential.force_error, line_dash="dash", line_color="black",
@@ -1085,33 +1088,40 @@ class PreProcess(Process):
         # Add L/2 reference line if applicable
         if rcuts[-1] * self.parameters.a_ws > 0.5 * self.parameters.box_lengths.min():
             l_half = 0.5 * self.parameters.box_lengths.min() / self.parameters.a_ws
-            fig.add_vline(x=l_half, line_color="red", row=1, col=1,
-                        annotation_text="L/2", annotation_position="top")
-        
+            fig.add_vline(x=l_half, line_color="red", row=1, col=1, annotation_text="L/2", annotation_position="top")
+
         # Update axes
         fig.update_xaxes(title_text="r<sub>c</sub>/a<sub>ws</sub>", row=1, col=1)
-        fig.update_xaxes(title_text="α a<sub>ws</sub>", row=1, col=2, )
+        fig.update_xaxes(
+            title_text="α a<sub>ws</sub>",
+            row=1,
+            col=2,
+        )
         fig.update_yaxes(title_text="ΔF<sub>tot</sub><sup>approx</sup>", type="log", row=1, col=1)
         fig.update_yaxes(type="log", row=1, col=2)
-        
+
         # Update layout with MSUstyle template
-        title_text = (f"Parameters  N = {self.parameters.total_num_ptcls}, "
-                    f"M = {chosen_mesh if chosen_mesh is not None else self.potential.pppm_mesh[0]}, "
-                    f"p = {chosen_cao if chosen_cao is not None else self.potential.pppm_cao[0]}, "
-                    f"κ = {self.parameters.a_ws / self.potential.screening_length:.2f}")
-        
+        title_text = (
+            f"Parameters  N = {self.parameters.total_num_ptcls}, "
+            f"M = {chosen_mesh if chosen_mesh is not None else self.potential.pppm_mesh[0]}, "
+            f"p = {chosen_cao if chosen_cao is not None else self.potential.pppm_cao[0]}, "
+            f"κ = {self.parameters.a_ws / self.potential.screening_length:.2f}"
+        )
+
         fig.update_layout(
             template="MSUstyle",  # Use MSUstyle template
             title_text=title_text,
             height=600,
             width=1400,
-            hovermode='closest',
+            hovermode="closest",
             showlegend=True,
-            legend=dict(x=1.05, y=1, xanchor='left', yanchor='top')
+            legend=dict(x=1.05, y=1, xanchor="left", yanchor="top"),
         )
         return fig
 
-    def make_pppm_color_map_interactive(self, total_force_error, rcuts, alphas, chosen_alpha=None, chosen_rcut=None, chosen_mesh=None, chosen_cao=None):
+    def make_pppm_color_map_interactive(
+        self, total_force_error, rcuts, alphas, chosen_alpha=None, chosen_rcut=None, chosen_mesh=None, chosen_cao=None
+    ):
         """
         Create an interactive color map of the total force error approximation.
 
@@ -1132,30 +1142,27 @@ class PreProcess(Process):
         chosen_cao: int, optional
             Chosen Spline order per box length.
         """
-        
+
         # Create figure
         fig = go.Figure()
-        
+
         # Add heatmap with log scale
         fig.add_trace(
             go.Heatmap(
                 x=alphas,
                 y=rcuts,
                 z=log10(total_force_error + 1e-20).T,
-                colorscale='Viridis',
+                colorscale="Viridis",
                 colorbar=dict(
-                    title=dict(
-                        text="log<sub>10</sub>ΔF<sub>tot</sub><sup>approx</sup>(r<sub>c</sub>,α)",
-                        side="right"
-                    ),
-                    exponentformat='e',
-                    tickformat='.2e'
+                    title=dict(text="log<sub>10</sub>ΔF<sub>tot</sub><sup>approx</sup>(r<sub>c</sub>,α)", side="right"),
+                    exponentformat="e",
+                    tickformat=".2e",
                 ),
                 # hovertemplate='α a<sub>ws</sub>: %{x:.2f}<br>r<sub>c</sub>/a<sub>ws</sub>: %{y:.2f}<br>ΔF: %{z:.2e}<extra></extra>',
-                showlegend=False
+                showlegend=False,
             )
         )
-        
+
         # Add contour lines
         fig.add_trace(
             go.Contour(
@@ -1163,45 +1170,41 @@ class PreProcess(Process):
                 y=rcuts,
                 z=log10(total_force_error + 1e-20).T,
                 showscale=False,
-                contours=dict(
-                    showlabels=True,
-                    labelfont=dict(size=12, color='white'),
-                    coloring='none'
-                ),
-                line=dict(color='white', width=2),
+                contours=dict(showlabels=True, labelfont=dict(size=12, color="white"), coloring="none"),
+                line=dict(color="white", width=2),
                 ncontours=10,
-                hoverinfo='skip',
-                showlegend=False
+                hoverinfo="skip",
+                showlegend=False,
             )
         )
-        
+
         # Add chosen point
         if chosen_alpha is not None and chosen_rcut is not None:
             fig.add_trace(
                 go.Scatter(
                     x=[chosen_alpha],
                     y=[chosen_rcut],
-                    mode='markers',
-                    marker=dict(size=15, color='black', symbol='circle', 
-                            line=dict(width=2, color='white')),
+                    mode="markers",
+                    marker=dict(size=15, color="black", symbol="circle", line=dict(width=2, color="white")),
                     # name='Chosen parameters',
                     # hovertemplate='Chosen: α=%{x:.2f}, r<sub>c</sub>=%{y:.2f}<extra></extra>'
                     showlegend=False,
                 )
             )
-        
+
         # Add L/2 reference line if applicable
         if rcuts[-1] * self.parameters.a_ws > 0.5 * self.parameters.box_lengths.min():
             l_half = 0.5 * self.parameters.box_lengths.min() / self.parameters.a_ws
-            fig.add_hline(y=l_half, line_color="red", line_width=2,
-                        annotation_text="L/2", annotation_position="right")
-        
+            fig.add_hline(y=l_half, line_color="red", line_width=2, annotation_text="L/2", annotation_position="right")
+
         # Update layout with MSUstyle template
-        title_text = (f"Parameters  N = {self.parameters.total_num_ptcls}, "
-                    f"M = {chosen_mesh if chosen_mesh is not None else self.potential.pppm_mesh[0]}, "
-                    f"p = {chosen_cao if chosen_cao is not None else self.potential.pppm_cao[0]}, "
-                    f"κ = {self.parameters.a_ws / self.potential.screening_length:.2f}")
-        
+        title_text = (
+            f"Parameters  N = {self.parameters.total_num_ptcls}, "
+            f"M = {chosen_mesh if chosen_mesh is not None else self.potential.pppm_mesh[0]}, "
+            f"p = {chosen_cao if chosen_cao is not None else self.potential.pppm_cao[0]}, "
+            f"κ = {self.parameters.a_ws / self.potential.screening_length:.2f}"
+        )
+
         fig.update_layout(
             template="MSUstyle",  # Use MSUstyle template
             title_text=title_text,
@@ -1209,16 +1212,14 @@ class PreProcess(Process):
             yaxis_title="r<sub>c</sub>/a<sub>ws</sub>",
             height=700,
             width=900,
-            hovermode='closest'
+            hovermode="closest",
         )
 
         return fig
-        
-    def make_pppm_color_map(self, 
-                            total_force_error, 
-                            rcuts, alphas, 
-                            chosen_alpha = None,
-                            chosen_rcut = None, chosen_mesh = None, chosen_cao = None):
+
+    def make_pppm_color_map(
+        self, total_force_error, rcuts, alphas, chosen_alpha=None, chosen_rcut=None, chosen_mesh=None, chosen_cao=None
+    ):
         """
         Plot a color map of the total force error approximation.
 
@@ -1261,9 +1262,9 @@ class PreProcess(Process):
         CS = ax.pcolormesh(a_mesh, r_mesh, total_force_error, shading="auto", norm=LogNorm())
         CS2 = ax.contour(a_mesh, r_mesh, total_force_error, levels=10, colors="w", norm=LogNorm())
         ax.clabel(CS2, fmt="%1.0e", colors="w")
-        
+
         ax.scatter(chosen_alpha, chosen_rcut, s=200, c="k")
-        
+
         if rcuts[-1] * self.parameters.a_ws > 0.5 * self.parameters.box_lengths.min():
             ax.axhline(0.5 * self.parameters.box_lengths.min() / self.parameters.a_ws, c="r", label=r"$L/2$")
         # ax.tick_parameters(labelsize=fsz)
@@ -1443,7 +1444,7 @@ class PreProcess(Process):
         if not exists(self.pppm_plots_dir):
             mkdir(self.pppm_plots_dir)
 
-    def pppm_approximation(self, rcuts = None, alphas=None, rlims=None, alims=None):
+    def pppm_approximation(self, rcuts=None, alphas=None, rlims=None, alims=None):
         """
         Calculate the force error for a PPPM simulation using analytical approximations.\n
         Plot the force error in the parameter space.
@@ -1464,7 +1465,9 @@ class PreProcess(Process):
         self.make_pppm_plots_dir()
 
         # Calculate Force error from analytic approximation given in Dharuman et al. J Chem Phys 2017
-        total_force_error, _, _, rcuts, alphas = self.analytical_approx_pppm(rcuts=rcuts, alphas=alphas, rlims=rlims, alims=alims)
+        total_force_error, _, _, rcuts, alphas = self.analytical_approx_pppm(
+            rcuts=rcuts, alphas=alphas, rlims=rlims, alims=alims
+        )
 
         chosen_alpha = self.potential.pppm_alpha_ewald * self.parameters.a_ws
         chosen_rcut = self.potential.rc / self.parameters.a_ws
@@ -1474,8 +1477,13 @@ class PreProcess(Process):
         # Color Map
         self.make_pppm_color_map(
             total_force_error=total_force_error,
-            rcuts=rcuts, alphas=alphas,
-            chosen_alpha=chosen_alpha, chosen_rcut=chosen_rcut, chosen_mesh=chosen_mesh, chosen_cao=chosen_cao)
+            rcuts=rcuts,
+            alphas=alphas,
+            chosen_alpha=chosen_alpha,
+            chosen_rcut=chosen_rcut,
+            chosen_mesh=chosen_mesh,
+            chosen_cao=chosen_cao,
+        )
 
         # Line Plot
         self.make_pppm_line_plot(total_force_error, rcuts, alphas, chosen_alpha, chosen_rcut, chosen_mesh, chosen_cao)
@@ -1485,7 +1493,6 @@ class PreProcess(Process):
         self.io.write_to_logger(msg)
 
     def remove_preproc_dumps(self):
-
         # Delete dumps created during the estimation runs
         for npz in listdir(self.io.eq_dump_dir):
             os_remove(join(self.io.eq_dump_dir, npz))
@@ -1625,7 +1632,7 @@ class PreProcess(Process):
 
         if self.parameters.magnetized and self.parameters.electrostatic_equilibration:
             self.integrator.update = self.integrator.type_setup(self.integrator.magnetization_type)
-            self.io.open_h5md_file(phase = 'magnetization')
+            self.io.open_h5md_file(phase="magnetization")
             self.timer.start()
             self.evolve("magnetization", self.integrator.thermalization, 0, loops, self.parameters.mag_dump_step)
             self.io.close_h5md_file()
@@ -1685,10 +1692,12 @@ class PreProcess(Process):
 
         self.directory_sizes()
 
-    def timing_study_calculation(self, target_error=1e-5, pp_cells=None, pm_meshes=None, pm_caos=None, method="brute_force"):
+    def timing_study_calculation(
+        self, target_error=1e-5, pp_cells=None, pm_meshes=None, pm_caos=None, method="brute_force"
+    ):
         """
         Estimate optimal PPPM parameters balancing accuracy and performance.
-        
+
         Parameters
         ----------
         target_error : float, optional
@@ -1701,16 +1710,16 @@ class PreProcess(Process):
             Array of charge assignment orders. If None uses the attribute :attr:`PreProcess.pm_caos`.
         method : str, optional
             Method for parameter optimization: "brute_force" or "automated". Default is "brute_force".
-        
+
         Returns
         -------
         dict
             Dictionary containing the optimal parameters and Pareto-optimal configurations.
-        
+
         Notes
         -----
-        User-provided parameters are saved as attributes (self.user_pp_cells, 
-        self.user_pm_meshes, self.user_pm_caos) and are respected without modification. 
+        User-provided parameters are saved as attributes (self.user_pp_cells,
+        self.user_pm_meshes, self.user_pm_caos) and are respected without modification.
         """
         # Setup directories for outputs
         self.pppm_plots_dir = join(self.io.directory_tree["preprocessing"]["path"], "PPPM_Plots")
@@ -1729,34 +1738,34 @@ class PreProcess(Process):
 
         # Calculate maximum allowed cells based on minimum particle separation
         max_cells = int(0.5 * self.parameters.box_lengths.min() / self.parameters.a_ws)
-        
+
         # Rescaling constant for PP force error calculation
         rescaling_constant = (
-            sqrt(self.potential.total_num_ptcls) * self.potential.a_ws**2 / 
-            sqrt(self.potential.pbox_volume)
+            sqrt(self.potential.total_num_ptcls) * self.potential.a_ws**2 / sqrt(self.potential.pbox_volume)
         )
-        
+
         # Choose optimization method
         if method.lower() == "automated":
             return self._automated_parameter_selection(target_error, rescaling_constant, max_cells)
         else:  # Default to brute force
             return self._brute_force_parameter_selection(pp_cells, pm_meshes, pm_caos, target_error, max_cells)
 
-    def _brute_force_parameter_selection(self, pp_cells=None, pm_meshes=None, pm_caos=None, 
-                                        target_error=None, max_cells=None):
+    def _brute_force_parameter_selection(
+        self, pp_cells=None, pm_meshes=None, pm_caos=None, target_error=None, max_cells=None
+    ):
         """
         Perform brute force parameter sweep to find optimal PPPM parameters.
-        
+
         Parameters are the same as timing_study_calculation.
         """
         # Save user inputs in self attributes for reference
         if pp_cells is not None:
-            self.user_pp_cells = pp_cells.copy() if hasattr(pp_cells, 'copy') else pp_cells
+            self.user_pp_cells = pp_cells.copy() if hasattr(pp_cells, "copy") else pp_cells
         if pm_meshes is not None:
-            self.user_pm_meshes = pm_meshes.copy() if hasattr(pm_meshes, 'copy') else pm_meshes
+            self.user_pm_meshes = pm_meshes.copy() if hasattr(pm_meshes, "copy") else pm_meshes
         if pm_caos is not None:
-            self.user_pm_caos = pm_caos.copy() if hasattr(pm_caos, 'copy') else pm_caos
-        
+            self.user_pm_caos = pm_caos.copy() if hasattr(pm_caos, "copy") else pm_caos
+
         # Use provided parameters or defaults
         if pp_cells is None:
             # If no user input, calculate based on max_cells, but respect original defaults
@@ -1765,7 +1774,7 @@ class PreProcess(Process):
             else:
                 pp_cells = self.pp_cells
         # User input is respected - we don't modify it based on max_cells
-            
+
         if pm_meshes is None:
             pm_meshes = self.pm_meshes
         if pm_caos is None:
@@ -1776,9 +1785,9 @@ class PreProcess(Process):
 
         # Progress tracking for all parameter combinations
         total_combinations = len(pm_meshes) * len(pm_caos) * len(pp_cells)
-        progress = tqdm(total=total_combinations, 
-                    desc="Testing PPPM parameter combinations", 
-                    disable=not self.parameters.verbose)
+        progress = tqdm(
+            total=total_combinations, desc="Testing PPPM parameter combinations", disable=not self.parameters.verbose
+        )
 
         # Start the parameter sweep
         for _, m in enumerate(pm_meshes):
@@ -1789,10 +1798,10 @@ class PreProcess(Process):
 
             for _, cao in enumerate(pm_caos):
                 self.potential.pppm_cao = full(3, cao, dtype=int)
-                
+
                 # Update potential parameters
                 self.potential.pot_update_params(self.potential, self.species)
-                
+
                 # Calculate Green's function and PM error
                 green_time = self.green_function_timer()
 
@@ -1807,7 +1816,7 @@ class PreProcess(Process):
                 for _, cell in enumerate(pp_cells):
                     # Update progress bar
                     progress.update(1)
-                    
+
                     # Set cutoff radius based on cell size
                     self.potential.rc = self.potential.box_lengths.min() / cell
 
@@ -1823,7 +1832,7 @@ class PreProcess(Process):
 
                     # Total acceleration time
                     total_acc_time = pp_acc_time + pm_acc_time
-                    
+
                     # Error metrics
                     pp_pm_ratio = self.potential.pppm_pp_err / self.potential.pppm_pm_err
 
@@ -1850,7 +1859,7 @@ class PreProcess(Process):
                         green_time * 1.0e-9,
                         pp_acc_time * 1.0e-9,
                         pm_acc_time * 1.0e-9,
-                        total_acc_time * 1.0e-9,                        
+                        total_acc_time * 1.0e-9,
                         self.potential.pppm_pp_err,
                         self.potential.pppm_pm_err,
                         self.potential.force_error,
@@ -1892,20 +1901,19 @@ class PreProcess(Process):
             "force error [measured]",
             "pppm_pm_error [approx]",
             "force error [approx]",
-            "pp_pm_error_ratio"  # Added PP/PM error ratio
+            "pp_pm_error_ratio",  # Added PP/PM error ratio
         ]
 
         self.dataframe = DataFrame(data, columns=column_names)
-        csv_location = join(self.io.directory_tree["preprocessing"]["path"], 
-                            f"TimingStudy_data_{self.io.job_id}.csv")
+        csv_location = join(self.io.directory_tree["preprocessing"]["path"], f"TimingStudy_data_{self.io.job_id}.csv")
         self.dataframe.to_csv(csv_location, index=False)
 
         # Find and save Pareto-optimal configurations
         pareto_points, best_point = self.find_pareto_optimal_configs(target_error=target_error)
-        
+
         # Run the pppm_estimate for the best parameters
         self.potential.rc = best_point["r_cut"]
-        self.potential.pppm_mesh = best_point[["M_x", "M_y", "M_z"]].values.astype(int) 
+        self.potential.pppm_mesh = best_point[["M_x", "M_y", "M_z"]].values.astype(int)
         self.potential.pppm_alpha_ewald = best_point["pppm_alpha_ewald"]
         self.potential.pppm_cao = best_point[["pppm_cao_x", "pppm_cao_y", "pppm_cao_z"]].values.astype(int)
         self.potential.estimate_parameters = False
@@ -1916,10 +1924,10 @@ class PreProcess(Process):
         self.potential.pppm_mesh = self.input_mesh.copy()
         self.potential.pppm_alpha_ewald = self.input_alpha
         self.potential.pppm_cao = self.input_cao.copy()
-        # Set up potential with original parameters 
+        # Set up potential with original parameters
         self.potential.estimate_parameters = False
         self.potential.setup(self.parameters, self.species)
-                
+
         # Report file locations
         msg = (
             f"\nResults saved to:\n"
@@ -1928,36 +1936,36 @@ class PreProcess(Process):
             f"  Visualizations: {self.pppm_plots_dir}"
         )
         if self.parameters.verbose:
-                print(msg)
+            print(msg)
         self.io.write_to_logger(msg)
 
     def _automated_parameter_selection(self, target_error=1e-5, rescaling_constant=None, max_cells=None):
         """
         Perform automated parameter optimization using a directed search approach.
-        
+
         Instead of testing all combinations, this method uses iterative refinement and
         theoretical relationships to quickly converge on optimal parameters.
-        
+
         Parameters are the same as timing_study_calculation.
         """
         from scipy.optimize import minimize
-        
+
         self.io.write_to_logger(f"\nRunning automated parameter optimization (target error: {target_error:.2e})")
-        
+
         # Define parameter bounds
         cao_bounds = (1, 7)
         mesh_bounds = (8, 256)
         alpha_factor_bounds = (0.2, 0.5)  # Alpha typically = factor * mesh / box_length
         rc_factor_bounds = (0.4, 2.0)  # rc typically = box_length / (factor * mesh)
-        
+
         # Initialize data collection
         data = []
-        
+
         # First, determine optimal charge assignment order (CAO)
         # CAO primarily affects accuracy vs setup cost of PM
         cao_options = [3, 5, 7]
         cao_results = []
-        
+
         for cao in cao_options:
             # Use a medium mesh for testing
             mesh = 32
@@ -1965,76 +1973,78 @@ class PreProcess(Process):
             self.potential.pppm_cao = full(3, cao, dtype=int)
             self.potential.pppm_alpha_ewald = 0.3 * mesh / self.potential.box_lengths.min()
             self.potential.pppm_h_array = self.potential.box_lengths / self.potential.pppm_mesh
-            
+
             # Measure setup time (Green's function calculation)
             self.potential.pot_update_params(self.potential, self.species)
 
             green_time = self.green_function_timer()
-            
+
             # Measure PM time
             pm_acc_time = 0.0
             for it in range(3):
                 self.timer.start()
                 self.potential.update_pm(self.particles)
                 pm_acc_time += self.timer.stop() / 3.0
-            
+
             # Store results
-            cao_results.append({
-                'cao': cao,
-                'green_time': green_time * 1.0e-9,
-                'pm_time': pm_acc_time * 1.0e-9,
-                'pm_error': self.potential.pppm_pm_err
-            })
-        
+            cao_results.append(
+                {
+                    "cao": cao,
+                    "green_time": green_time * 1.0e-9,
+                    "pm_time": pm_acc_time * 1.0e-9,
+                    "pm_error": self.potential.pppm_pm_err,
+                }
+            )
+
         # Find best CAO based on error/time tradeoff
         for result in cao_results:
-            result['score'] = result['pm_error'] * result['pm_time']
-        
-        best_cao_result = min(cao_results, key=lambda x: x['score'])
-        best_cao = best_cao_result['cao']
-        
+            result["score"] = result["pm_error"] * result["pm_time"]
+
+        best_cao_result = min(cao_results, key=lambda x: x["score"])
+        best_cao = best_cao_result["cao"]
+
         msg = f"\nSelected optimal CAO: {best_cao}"
-    
+
         self.io.write_to_logger(msg)
-        
+
         # Now define the objective function for the optimizer
         def objective_function(params):
             """
             Objective function for parameter optimization.
-            
+
             Parameters
             ----------
             params : array-like
                 [mesh_size, alpha_factor, rc_factor]
-            
+
             Returns
             -------
             float
                 Weighted combination of time and error, or penalty if error exceeds target.
             """
             mesh_size, alpha_factor, rc_factor = params
-            
+
             # Convert parameters to actual values
             mesh = int(mesh_size)  # Round to nearest integer
             if mesh < mesh_bounds[0]:
                 mesh = mesh_bounds[0]
             if mesh > mesh_bounds[1]:
                 mesh = mesh_bounds[1]
-            
+
             alpha = alpha_factor * mesh / self.potential.box_lengths.min()
             rc = self.potential.box_lengths.min() / (rc_factor * mesh)
-            
+
             # Set parameters in potential
             self.potential.pppm_mesh = full(3, mesh, dtype=int)
             self.potential.pppm_alpha_ewald = alpha
             self.potential.pppm_cao = full(3, best_cao, dtype=int)
             self.potential.rc = rc
             self.potential.pppm_h_array = self.potential.box_lengths / self.potential.pppm_mesh
-            
+
             # Update potential
             self.potential.pot_update_params(self.potential, self.species)
             green_time = self.green_function_timer() * 1.0e-9
-            
+
             # Calculate error
             pp_err = force_error_analytic_pp(
                 self.potential.type,
@@ -2043,10 +2053,10 @@ class PreProcess(Process):
                 self.potential.pppm_alpha_ewald,
                 rescaling_constant,
             )
-            
+
             # Calculate total force error
             total_err = sqrt(pp_err**2 + self.potential.pppm_pm_err**2)
-            
+
             # Measure performance
             pm_acc_time = 0.0
             for it in range(3):
@@ -2054,16 +2064,16 @@ class PreProcess(Process):
                 self.potential.update_pm(self.particles)
                 pm_acc_time += self.timer.stop() / 3.0
             pm_acc_time *= 1.0e-9
-            
+
             pp_acc_time = 0.0
             for it in range(3):
                 self.timer.start()
                 self.potential.update_linked_list(self.particles)
                 pp_acc_time += self.timer.stop() / 3.0
             pp_acc_time *= 1.0e-9
-            
+
             total_time = pm_acc_time + pp_acc_time
-            
+
             # Store the data for this evaluation
             data_row = [
                 int(self.potential.box_lengths.min() / rc),  # pp_cells
@@ -2094,7 +2104,7 @@ class PreProcess(Process):
                 pp_err / self.potential.pppm_pm_err,  # PP/PM error ratio
             ]
             data.append(data_row)
-            
+
             # Return objective value
             if total_err <= target_error:
                 # If we meet the error target, minimize time
@@ -2102,53 +2112,43 @@ class PreProcess(Process):
             else:
                 # If we don't meet the error target, heavily penalize
                 return total_time + 1000 * (total_err / target_error - 1)
-        
+
         # Initial guess: balanced configuration
         initial_guess = [32, 0.3, 5.0]  # [mesh_size, alpha_factor, rc_factor]
-        
+
         # Set up bounds
-        bounds = [
-            mesh_bounds,
-            alpha_factor_bounds,
-            rc_factor_bounds
-        ]
-        
+        bounds = [mesh_bounds, alpha_factor_bounds, rc_factor_bounds]
+
         # Run the optimization
         if self.parameters.verbose:
             print("\nOptimizing mesh, alpha, and rc parameters...")
 
-        result = minimize(
-            objective_function,
-            initial_guess,
-            method='L-BFGS-B',
-            bounds=bounds,
-            options={'maxiter': 20}
-        )
-        
+        result = minimize(objective_function, initial_guess, method="L-BFGS-B", bounds=bounds, options={"maxiter": 20})
+
         # Get optimized parameters
         opt_mesh, opt_alpha_factor, opt_rc_factor = result.x
-        
+
         # Convert to actual values
         opt_mesh = int(round(opt_mesh))
         if opt_mesh < mesh_bounds[0]:
             opt_mesh = mesh_bounds[0]
         if opt_mesh > mesh_bounds[1]:
             opt_mesh = mesh_bounds[1]
-        
+
         opt_alpha = opt_alpha_factor * opt_mesh / self.potential.box_lengths.min()
         opt_rc = self.potential.box_lengths.min() / (opt_rc_factor * opt_mesh)
-        
+
         # Set optimal parameters and measure final performance
         self.potential.pppm_mesh = full(3, opt_mesh, dtype=int)
         self.potential.pppm_alpha_ewald = opt_alpha
         self.potential.pppm_cao = full(3, best_cao, dtype=int)
         self.potential.rc = opt_rc
         self.potential.pppm_h_array = self.potential.box_lengths / self.potential.pppm_mesh
-        
+
         # Update potential
         self.potential.pot_update_params(self.potential, self.species)
         green_time = self.green_function_timer() * 1.0e-9
-        
+
         # Calculate error
         pp_err = force_error_analytic_pp(
             self.potential.type,
@@ -2157,10 +2157,10 @@ class PreProcess(Process):
             self.potential.pppm_alpha_ewald,
             rescaling_constant,
         )
-        
+
         # Calculate total force error
         total_err = sqrt(pp_err**2 + self.potential.pppm_pm_err**2)
-        
+
         # Measure final performance
         pm_acc_time = 0.0
         for it in range(3):
@@ -2168,16 +2168,16 @@ class PreProcess(Process):
             self.potential.update_pm(self.particles)
             pm_acc_time += self.timer.stop() / 3.0
         pm_acc_time *= 1.0e-9
-        
+
         pp_acc_time = 0.0
         for it in range(3):
             self.timer.start()
             self.potential.update_linked_list(self.particles)
             pp_acc_time += self.timer.stop() / 3.0
         pp_acc_time *= 1.0e-9
-        
+
         total_time = pm_acc_time + pp_acc_time
-        
+
         # Create DataFrame with all results
         column_names = [
             "pp_cells",
@@ -2205,14 +2205,13 @@ class PreProcess(Process):
             "pppm_pp_error [measured]",
             "pppm_pm_error [measured]",
             "force error [measured]",
-            "pp_pm_error_ratio"  # Added PP/PM error ratio
+            "pp_pm_error_ratio",  # Added PP/PM error ratio
         ]
 
         self.dataframe = DataFrame(data, columns=column_names)
-        csv_location = join(self.io.directory_tree["preprocessing"]["path"], 
-                            f"AutomatedPPPM_data_{self.io.job_id}.csv")
+        csv_location = join(self.io.directory_tree["preprocessing"]["path"], f"AutomatedPPPM_data_{self.io.job_id}.csv")
         self.dataframe.to_csv(csv_location, index=False)
-        
+
         # Reset to original values
         self.potential.rc = self.input_rc
         self.potential.pppm_mesh = self.input_mesh.copy()
@@ -2221,7 +2220,7 @@ class PreProcess(Process):
         # Set up potential with original parameters
         self.potential.estimate_parameters = False
         self.potential.setup(self.parameters, self.species)
-        
+
         # Report optimal configuration
         msg = (
             f"\nOPTIMAL PPPM CONFIGURATION (AUTOMATED):\n"
@@ -2233,22 +2232,18 @@ class PreProcess(Process):
         if self.parameters.verbose:
             print(msg)
         self.io.write_to_logger(msg)
-        
+
         # Report file locations
-        msg = (
-            f"\nResults saved to:\n"
-            f"  Optimization data: {csv_location}\n"
-            f"  Visualizations: {self.pppm_plots_dir}"
-        )
+        msg = f"\nResults saved to:\n" f"  Optimization data: {csv_location}\n" f"  Visualizations: {self.pppm_plots_dir}"
         if self.parameters.verbose:
             print(msg)
         self.io.write_to_logger(msg)
-        
-    def find_pareto_optimal_configs(self, configuration_df = None, target_error=1e-5, show_plot=True):
+
+    def find_pareto_optimal_configs(self, configuration_df=None, target_error=1e-5, show_plot=True):
         """
-        Find the Pareto-optimal configurations (those where error or time cannot 
+        Find the Pareto-optimal configurations (those where error or time cannot
         be improved without worsening the other).
-        
+
         Parameters
         ----------
         configuration_df : pandas.DataFrame, optional
@@ -2258,7 +2253,7 @@ class PreProcess(Process):
             Target force error tolerance. Default is 1e-5.
 
         show_plot : bool
-            Whether to show the Pareto frontier plot. Default is True. 
+            Whether to show the Pareto frontier plot. Default is True.
             If False, only returns the Pareto points without plotting.
 
         Returns
@@ -2268,7 +2263,7 @@ class PreProcess(Process):
         """
         if configuration_df is None:
             configuration_df = self.dataframe
-        
+
         pareto_points = []
         for _, row in configuration_df.iterrows():
             # Check if this point is dominated by any other point
@@ -2276,26 +2271,29 @@ class PreProcess(Process):
             for _, other_row in configuration_df.iterrows():
                 # Point i is dominated by point j if j has better (lower) time AND error
                 # Or if one is equal and the other is better
-                if (other_row['tot_acc_time [s]'] <= row['tot_acc_time [s]'] and 
-                    other_row['force error [measured]'] < row['force error [measured]'] and
-                    (other_row['tot_acc_time [s]'] < row['tot_acc_time [s]'] or 
-                    other_row['force error [measured]'] <= row['force error [measured]'])):
+                if (
+                    other_row["tot_acc_time [s]"] <= row["tot_acc_time [s]"]
+                    and other_row["force error [measured]"] < row["force error [measured]"]
+                    and (
+                        other_row["tot_acc_time [s]"] < row["tot_acc_time [s]"]
+                        or other_row["force error [measured]"] <= row["force error [measured]"]
+                    )
+                ):
                     dominated = True
                     break
-            
+
             if not dominated:
                 pareto_points.append(row)
-        
+
         # Sort by error
-        pareto_points = sorted(pareto_points, key=lambda x: x['force error [measured]'])
-        
-        # Find absolute best configuration 
+        pareto_points = sorted(pareto_points, key=lambda x: x["force error [measured]"])
+
+        # Find absolute best configuration
         if len(pareto_points) > 0:
-            
             # Find the best configuration by finding the points which are less the force_error and then choosing the points with the smallest time
-            force_points = [point for point in pareto_points if point['force error [measured]'] <= target_error]
-            best_point = min(force_points, key=lambda x: x['tot_acc_time [s]'])    
-            
+            force_points = [point for point in pareto_points if point["force error [measured]"] <= target_error]
+            best_point = min(force_points, key=lambda x: x["tot_acc_time [s]"])
+
             # Report only the best configuration
             msg = (
                 f"\nOPTIMAL PPPM CONFIGURATION:\n"
@@ -2316,20 +2314,21 @@ class PreProcess(Process):
         if not pareto_points:
             print("No Pareto-optimal configurations found.")
             return None, None
-        
+
         # Create DataFrame from Pareto points and save to CSV
         pareto_df = DataFrame(pareto_points)
-        pareto_csv_path = join(self.io.directory_tree['preprocessing']['path'], 
-                            f'Pareto_optimal_PPPM_{self.io.job_id}.csv')
+        pareto_csv_path = join(
+            self.io.directory_tree["preprocessing"]["path"], f"Pareto_optimal_PPPM_{self.io.job_id}.csv"
+        )
         pareto_df.to_csv(pareto_csv_path, index=False)
         self.pareto_points_df = DataFrame(pareto_points)
 
         return pareto_points, best_point
-    
+
     def plot_error_vs_performance(self, configuration_df, pareto_points, best_point):
         """
         Generate a Pareto frontier visualization from the configuration DataFrame and Pareto points.
-        
+
         Parameters
         ----------
         configuration_df : pandas.DataFrame
@@ -2348,109 +2347,118 @@ class PreProcess(Process):
         fig, ax = plt.subplots(figsize=(12, 8))
 
         scatterplot(
-            data=configuration_df, 
-            x='force error [measured]', 
-            y='tot_acc_time [s]', 
-            size = 'pp_cells', 
-            sizes = (50, 200),  # Adjust size range for better visibility
-            style ='pppm_cao_x', 
-            palette='Dark2',  # Use a color palette
-            alpha=0.7, 
-            hue='M_x',
+            data=configuration_df,
+            x="force error [measured]",
+            y="tot_acc_time [s]",
+            size="pp_cells",
+            sizes=(50, 200),  # Adjust size range for better visibility
+            style="pppm_cao_x",
+            palette="Dark2",  # Use a color palette
+            alpha=0.7,
+            hue="M_x",
             ax=ax,
         )
-        
+
         if pareto_points is not None and len(pareto_points) > 0:
             # Sort Pareto points by force error for consistent plotting
 
             # Highlight Pareto-optimal points
-            pareto_errors = [p['force error [measured]'] for p in pareto_points]
-            pareto_times = [p['tot_acc_time [s]'] for p in pareto_points]
+            pareto_errors = [p["force error [measured]"] for p in pareto_points]
+            pareto_times = [p["tot_acc_time [s]"] for p in pareto_points]
 
-            ax.plot(pareto_errors, pareto_times, linewidth=2, markersize=8, alpha = 0.4,
-                    zorder=2, 
-                    markeredgecolor='black', 
-                    markerfacecolor='red', 
-                    linestyle='--', 
-                    marker='o',
-                label='Pareto Frontier')
+            ax.plot(
+                pareto_errors,
+                pareto_times,
+                linewidth=2,
+                markersize=8,
+                alpha=0.4,
+                zorder=2,
+                markeredgecolor="black",
+                markerfacecolor="red",
+                linestyle="--",
+                marker="o",
+                label="Pareto Frontier",
+            )
 
             if best_point is not None:
-                ax.scatter(best_point['force error [measured]'], best_point['tot_acc_time [s]'],
-                        color='orange', s=200, marker='*', alpha = 0.5, label='Best Configuration', zorder=2.5)
+                ax.scatter(
+                    best_point["force error [measured]"],
+                    best_point["tot_acc_time [s]"],
+                    color="orange",
+                    s=200,
+                    marker="*",
+                    alpha=0.5,
+                    label="Best Configuration",
+                    zorder=2.5,
+                )
 
         # Set labels and title
         ax.set(
-            xscale='log',
-            yscale='log',
-            xlabel=r'Force Error $[Q^2/a_{ws}^2]$',
-            ylabel='Computation Time (s)',
-            title='Error vs Performance'
+            xscale="log",
+            yscale="log",
+            xlabel=r"Force Error $[Q^2/a_{ws}^2]$",
+            ylabel="Computation Time (s)",
+            title="Error vs Performance",
         )
-        
+
         # Put the legend outside the plot
-        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-        
+        ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+
         fig.tight_layout()
-        fig.savefig(join(self.pppm_plots_dir, f'pareto_frontier_{self.io.job_id}.png'))
-        
+        fig.savefig(join(self.pppm_plots_dir, f"pareto_frontier_{self.io.job_id}.png"))
+
     def plot_error_balance(self):
         """
         Create visualization showing how balanced the PP and PM errors are
         for different parameter combinations.
         """
         fig, ax = plt.subplots()
-        
+
         # Group by mesh size
-        for mesh in self.dataframe['M_x'].unique():
-            subset = self.dataframe[self.dataframe['M_x'] == mesh]
-            
+        for mesh in self.dataframe["M_x"].unique():
+            subset = self.dataframe[self.dataframe["M_x"] == mesh]
+
             # For consistent cao
-            cao_filter = subset['pppm_cao_x'] == 4  # Choose a representative cao
+            cao_filter = subset["pppm_cao_x"] == 4  # Choose a representative cao
             if cao_filter.any():
                 filtered = subset[cao_filter]
-                
+
                 # Sort by rc
-                filtered = filtered.sort_values('r_cut')
-                
+                filtered = filtered.sort_values("r_cut")
+
                 # Plot PP/PM error ratio vs rc
                 ax.plot(
-                    filtered['r_cut'] / self.parameters.a_ws,  # Normalize rc by a_ws
-                    filtered['pp_pm_error_ratio'],
-                    label=f'Mesh={int(mesh)}'
+                    filtered["r_cut"] / self.parameters.a_ws,  # Normalize rc by a_ws
+                    filtered["pp_pm_error_ratio"],
+                    label=f"Mesh={int(mesh)}",
                 )
-                
+
                 # Find where PP error ≈ PM error (ratio ≈ 1)
-                optimal_idx = (filtered['pp_pm_error_ratio'] - 1).abs().idxmin()
+                optimal_idx = (filtered["pp_pm_error_ratio"] - 1).abs().idxmin()
                 optimal_row = filtered.loc[optimal_idx]
-                
-                ax.scatter(
-                    optimal_row['r_cut'] / self.parameters.a_ws,
-                    optimal_row['pp_pm_error_ratio'],
-                    marker='o'
-                )
-        
+
+                ax.scatter(optimal_row["r_cut"] / self.parameters.a_ws, optimal_row["pp_pm_error_ratio"], marker="o")
+
         # Add reference line for balanced errors
-        ax.axhline(y=1.0, color='k', linestyle='--', alpha=0.5, 
-                label='Balanced PP and PM Errors')
-        
+        ax.axhline(y=1.0, color="k", linestyle="--", alpha=0.5, label="Balanced PP and PM Errors")
+
         ax.set(
-            xlabel='Cutoff Radius (rc/a_ws)',
-            ylabel='PP Error / PM Error Ratio',
-            yscale='log',
-            title='Error Balance: Optimal rc for Each Mesh Size'
+            xlabel="Cutoff Radius (rc/a_ws)",
+            ylabel="PP Error / PM Error Ratio",
+            yscale="log",
+            title="Error Balance: Optimal rc for Each Mesh Size",
         )
         ax.grid(True, alpha=0.3)
         ax.legend()
-        
+
         fig.tight_layout()
-        fig.savefig(join(self.pppm_plots_dir, f'error_balance_{self.io.job_id}.png'))
+        fig.savefig(join(self.pppm_plots_dir, f"error_balance_{self.io.job_id}.png"))
 
     def plot_parameter_sensitivity(self):
         """
         Create visualizations showing how sensitive performance and error
         are to each parameter.
-        
+
         Only creates the visualizations without detailed logging.
         """
         # Get baseline parameters
@@ -2460,54 +2468,54 @@ class PreProcess(Process):
             baseline_rc = self.input_rc
         except:
             # If no baseline exists, use middle values
-            baseline_mesh = self.dataframe['M_x'].median()
-            baseline_cao = self.dataframe['pppm_cao_x'].median()
-            baseline_rc = self.dataframe['r_cut'].median()
-        
+            baseline_mesh = self.dataframe["M_x"].median()
+            baseline_cao = self.dataframe["pppm_cao_x"].median()
+            baseline_rc = self.dataframe["r_cut"].median()
+
         # Analyze mesh sensitivity
         # Filter data for constant cao and rc (closest to baseline)
-        rc_filter = abs(self.dataframe['r_cut'] - baseline_rc) < baseline_rc * 0.1
-        cao_filter = self.dataframe['pppm_cao_x'] == baseline_cao
-        mesh_sensitivity = self.dataframe[rc_filter & cao_filter].sort_values('M_x')
-        
+        rc_filter = abs(self.dataframe["r_cut"] - baseline_rc) < baseline_rc * 0.1
+        cao_filter = self.dataframe["pppm_cao_x"] == baseline_cao
+        mesh_sensitivity = self.dataframe[rc_filter & cao_filter].sort_values("M_x")
+
         if not mesh_sensitivity.empty:
             # Create figure with two subplots
             fig, ax = plt.subplots(1, 2, figsize=(12, 5))
-            
+
             # Plot time sensitivity
-            ax[0].plot(mesh_sensitivity['M_x'], mesh_sensitivity['tot_acc_time [s]'], 'o-')
+            ax[0].plot(mesh_sensitivity["M_x"], mesh_sensitivity["tot_acc_time [s]"], "o-")
             ax[0].set(
-                xscale='log', 
-                yscale='log',
-                xlabel='Mesh Size',
-                ylabel='Computation Time (s)',
-                title='Time Sensitivity to Mesh Size'
+                xscale="log",
+                yscale="log",
+                xlabel="Mesh Size",
+                ylabel="Computation Time (s)",
+                title="Time Sensitivity to Mesh Size",
             )
-            
+
             # Set x-ticks to actual mesh sizes
-            ax[0].set_xticks(mesh_sensitivity['M_x'].values)
-            ax[0].set_xticklabels(mesh_sensitivity['M_x'].values.astype(int))
+            ax[0].set_xticks(mesh_sensitivity["M_x"].values)
+            ax[0].set_xticklabels(mesh_sensitivity["M_x"].values.astype(int))
             ax[0].grid(True, alpha=0.3)
-            
+
             # Plot error sensitivity
-            ax[1].plot(mesh_sensitivity['M_x'], mesh_sensitivity['force error [measured]'], 'o-')
+            ax[1].plot(mesh_sensitivity["M_x"], mesh_sensitivity["force error [measured]"], "o-")
             ax[1].set(
-                xscale='log', 
-                yscale='log',
-                xlabel='Mesh Size',
-                ylabel='Force Error',
-                title='Error Sensitivity to Mesh Size'
+                xscale="log",
+                yscale="log",
+                xlabel="Mesh Size",
+                ylabel="Force Error",
+                title="Error Sensitivity to Mesh Size",
             )
-            
+
             # Set x-ticks to actual mesh sizes
-            ax[1].set_xticks(mesh_sensitivity['M_x'].values)
-            ax[1].set_xticklabels(mesh_sensitivity['M_x'].values.astype(int))
+            ax[1].set_xticks(mesh_sensitivity["M_x"].values)
+            ax[1].set_xticklabels(mesh_sensitivity["M_x"].values.astype(int))
             ax[1].grid(True, alpha=0.3)
-            
+
             # Adjust layout and save
             fig.tight_layout()
-            fig.savefig(join(self.pppm_plots_dir, f'sensitivity_mesh_{self.io.job_id}.png'))
-        
+            fig.savefig(join(self.pppm_plots_dir, f"sensitivity_mesh_{self.io.job_id}.png"))
+
 
 class Simulation(Process):
     """
@@ -2572,7 +2580,7 @@ class Simulation(Process):
         time_eq = self.timer.stop()
         self.io.close_h5md_file()
         self.io.time_stamp("Equilibration", self.timer.time_division(time_eq))
-        
+
     def magnetize(self):
         self.io.open_h5md_file(phase="magnetization")
         # Check for magnetization phase
@@ -2593,7 +2601,6 @@ class Simulation(Process):
         self.io.time_stamp("Magnetization", self.timer.time_division(time_eq))
 
     def produce(self):
-        
         self.io.open_h5md_file(phase="production")
         it_start = self.check_restart(phase="production")
         self.integrator.update = self.integrator.type_setup(self.integrator.production_type)
@@ -2633,31 +2640,31 @@ class Simulation(Process):
     def adaptive_thermalize(self):
         """
         Run adaptive thermalization using statistical tests to verify equilibration.
-        
+
         This method alternates between NVT (thermostat) and NVE (microcanonical) cycles
         until statistical tests confirm proper thermalization, or max_cycles is reached.
-        
+
         The NVT steps are automatically set to production_steps // 2 for reheating,
         while NVE steps (for testing) must be specified in the YAML configuration.
-        
+
         Returns
         -------
         pandas.DataFrame
             DataFrame containing thermalization statistics and test results
-            
+
         Examples
         --------
         >>> sim = Simulation(input_file='input.yaml')
         >>> sim.setup(read_yaml=True)
         >>> therm_results = sim.adaptive_thermalize()
         >>> sim.produce()
-        
+
         Notes
         -----
         YAML configuration:
-        
+
         .. code-block:: yaml
-        
+
             Parameters:
             adaptive_thermalization:
                 max_cycles: 10 # Optional, default 10
@@ -2675,27 +2682,27 @@ class Simulation(Process):
                 "Adaptive thermalization not configured. "
                 "Add 'adaptive_thermalization' section to Parameters in YAML file. See documentation for details."
             )
-        
+
         config = self.parameters.adaptive_thermalization
-        
-        if 'nve_steps' not in config or config['nve_steps'] is None:
-            config['nve_steps'] = self.parameters.equilibration_steps
-        
-        if 'nvt_steps' not in config or config['nvt_steps'] is None:
-            config['nvt_steps'] = self.parameters.equilibration_steps
-        
-        if 'dump_step' not in config or config['dump_step'] is None:
-            config['dump_step'] = self.parameters.eq_dump_step
-        
-        if 'max_cycles' not in config or config['max_cycles'] is None:
-            config['max_cycles'] = 10
-        if 'max_mae' not in config or config['max_mae'] is None:
-            config['max_mae'] = 0.01
-        if 'adf_significance' not in config or config['adf_significance'] is None:
-            config['adf_significance'] = 0.05
-        if 'kpss_significance' not in config or config['kpss_significance'] is None:
-            config['kpss_significance'] = 0.05
-        
+
+        if "nve_steps" not in config or config["nve_steps"] is None:
+            config["nve_steps"] = self.parameters.equilibration_steps
+
+        if "nvt_steps" not in config or config["nvt_steps"] is None:
+            config["nvt_steps"] = self.parameters.equilibration_steps
+
+        if "dump_step" not in config or config["dump_step"] is None:
+            config["dump_step"] = self.parameters.eq_dump_step
+
+        if "max_cycles" not in config or config["max_cycles"] is None:
+            config["max_cycles"] = 10
+        if "max_mae" not in config or config["max_mae"] is None:
+            config["max_mae"] = 0.01
+        if "adf_significance" not in config or config["adf_significance"] is None:
+            config["adf_significance"] = 0.05
+        if "kpss_significance" not in config or config["kpss_significance"] is None:
+            config["kpss_significance"] = 0.05
+
         # Log configuration
         msg = f"\n{'='*60}"
         msg += f"\nAdaptive Thermalization Configuration:"
@@ -2709,66 +2716,77 @@ class Simulation(Process):
         msg += f"\n  KPSS significance: {config['kpss_significance']}"
         msg += f"\n{'='*60}\n"
         self.io.write_to_logger(msg)
-        
+
         # Initialize thermalization data storage
-        self._init_thermalization_data_dict(config['observable'])
-        
+        self._init_thermalization_data_dict(config["observable"])
+
         # Prepare simulation
         self._prepare_adaptive_thermalization(config)
-        
+
         # Start timer
         self.timer.start()
 
         # Run initial NVE phase
-        self._run_initial_nve(config["nve_steps"], config['dump_step'], config)
-        
+        self._run_initial_nve(config["nve_steps"], config["dump_step"], config)
+
         # Continue with NVT-NVE cycles until thermalized
         cycle_counter = 0
-        while (not self._thermalization_data["Verdict"][-1] and 
-            cycle_counter < config['max_cycles']):
-            self._run_nvt_thermalization_cycle(config['nvt_steps'], config['dump_step'])
-            self._run_nve_thermalization_cycle(config['nve_steps'], config['dump_step'], config)
+        while not self._thermalization_data["Verdict"][-1] and cycle_counter < config["max_cycles"]:
+            self._run_nvt_thermalization_cycle(config["nvt_steps"], config["dump_step"])
+            self._run_nve_thermalization_cycle(config["nve_steps"], config["dump_step"], config)
             self._save_thermalization_results()
             cycle_counter += 1
-        
+
         time_eq = self.timer.stop()
         self.io.close_h5md_file()
         self.io.time_stamp("Adaptive Equilibration", self.timer.time_division(time_eq))
-        
+
         # Finalize
         self._finalize_adaptive_thermalization(cycle_counter, config)
-        
+
         return DataFrame(self._thermalization_data)
-    
+
     def _init_thermalization_data_dict(self, observable_name):
         """Initialize dictionary for storing thermalization results."""
-        obs_name = observable_name.replace('_', ' ').title()
-        
+        obs_name = observable_name.replace("_", " ").title()
+
         self._thermalization_data = {
             "Completed steps": [],
-            "NVT start": [], "NVT end": [],
-            "NVE start": [], "NVE end": [],
+            "NVT start": [],
+            "NVT end": [],
+            "NVE start": [],
+            "NVE end": [],
             "Cycle": [],
             f"Average {obs_name} Deviation": [],
             f"Mean {obs_name}": [],
             f"Std {obs_name}": [],
             f"MAE {obs_name}": [],
-            "Linear slope": [], "Linear intercept": [],
-            "Linear rmse_fit": [], "Epsilon": [],
-            "ADF Test": [], "ADF p-value": [], "ADF Critical Value": [],
-            "KPSS Test": [], "KPSS p-value": [], "KPSS Critical Value": [],
-            "MK Test": [], "MK p-value": [], "MK Tau": [],
-            "MK h": [], "MK Trend": [],
-            "Conditions": [], "Verdict": []
+            "Linear slope": [],
+            "Linear intercept": [],
+            "Linear rmse_fit": [],
+            "Epsilon": [],
+            "ADF Test": [],
+            "ADF p-value": [],
+            "ADF Critical Value": [],
+            "KPSS Test": [],
+            "KPSS p-value": [],
+            "KPSS Critical Value": [],
+            "MK Test": [],
+            "MK p-value": [],
+            "MK Tau": [],
+            "MK h": [],
+            "MK Trend": [],
+            "Conditions": [],
+            "Verdict": [],
         }
-        
+
         self._therm_step_counter = 0
         self._therm_dump_counter = 0
-    
+
     def _read_thermalization_observable(self, observable_name, start_dump, end_dump):
         """
         Read observable data from H5MD file for thermalization check.
-        
+
         Parameters
         ----------
         observable_name : str
@@ -2777,36 +2795,33 @@ class Simulation(Process):
             Starting dump index
         end_dump : int
             Ending dump index
-            
+
         Returns
         -------
         tuple
             (time_data, observable_data) - weighted average across species
         """
 
-        with h5py.File(self.io.h5md_filepath, 'r') as file:
+        with h5py.File(self.io.h5md_filepath, "r") as file:
             time_data = None
             observable_data = 0.0
-            
+
             # Compute weighted average across species using concentrations
-            for sp_name, concentration in zip(
-                self.parameters.species_names,
-                self.parameters.species_concentrations
-            ):
+            for sp_name, concentration in zip(self.parameters.species_names, self.parameters.species_concentrations):
                 path_base = f"observables/{sp_name}/{observable_name}"
-                
+
                 if time_data is None:
                     time_data = file[f"{path_base}/time"][start_dump:end_dump]
-                
+
                 species_data = file[f"{path_base}/value"][start_dump:end_dump]
                 observable_data += concentration * species_data
-        
+
         return time_data, observable_data
-    
+
     def _check_thermalization_statistics(self, observable_name, start_dump, end_dump, stats_config):
         """
         Check if system is thermalized using statistical tests.
-        
+
         Parameters
         ----------
         observable_name : str
@@ -2818,67 +2833,61 @@ class Simulation(Process):
         stats_config : dict
             Configuration for statistical tests
         """
-        obs_name = observable_name.replace('_', ' ').title()
-        
+        obs_name = observable_name.replace("_", " ").title()
+
         # Get target value
         target_value = self.parameters.T_desired
-        
+
         # Read observable data
-        time_data, observable_data = self._read_thermalization_observable(
-            observable_name, start_dump, end_dump
-        )
-        
+        time_data, observable_data = self._read_thermalization_observable(observable_name, start_dump, end_dump)
+
         # Calculate basic statistics
         mean_obs = observable_data.mean()
         std_obs = observable_data.std()
         relative_deviation = abs(mean_obs - target_value) / target_value
         mae = abs(observable_data - target_value).mean() / target_value
-        
+
         self._thermalization_data[f"Average {obs_name} Deviation"].append(relative_deviation)
         self._thermalization_data[f"Mean {obs_name}"].append(mean_obs)
         self._thermalization_data[f"Std {obs_name}"].append(std_obs)
         self._thermalization_data[f"MAE {obs_name}"].append(mae)
-        
+
         # Normalize time
         time_normalized = time_data / self.parameters.total_plasma_frequency
-        
+
         # Run statistical tests
         test_results = run_thermalization_tests(
-            observable_data, 
+            observable_data,
             time_normalized,
-            adf_significance=stats_config.get('adf_significance', 0.05),
-            kpss_significance=stats_config.get('kpss_significance', 0.05)
+            adf_significance=stats_config.get("adf_significance", 0.05),
+            kpss_significance=stats_config.get("kpss_significance", 0.05),
         )
-        
+
         # Check MAE condition
-        mae_condition = mae < stats_config.get('max_mae', 0.01)
-        
+        mae_condition = mae < stats_config.get("max_mae", 0.01)
+
         # Store results
-        self._thermalization_data["Linear intercept"].append(test_results['intercept'])
-        self._thermalization_data["Linear slope"].append(test_results['slope'])
-        self._thermalization_data["Linear rmse_fit"].append(test_results['rmse'])
-        self._thermalization_data["Epsilon"].append(test_results['epsilon'])
-        
-        self._thermalization_data["ADF Test"].append(test_results['adf']['statistic'])
-        self._thermalization_data["ADF p-value"].append(test_results['adf']['pvalue'])
-        self._thermalization_data["ADF Critical Value"].append(
-            test_results['adf']['critical_value']
-        )
-        
-        self._thermalization_data["KPSS Test"].append(test_results['kpss']['statistic'])
-        self._thermalization_data["KPSS p-value"].append(test_results['kpss']['pvalue'])
-        self._thermalization_data["KPSS Critical Value"].append(
-            test_results['kpss']['critical_value']
-        )
-        
-        self._thermalization_data["MK Test"].append(test_results['mann_kendall']['s'])
-        self._thermalization_data["MK p-value"].append(test_results['mann_kendall']['pvalue'])
-        self._thermalization_data["MK Tau"].append(test_results['mann_kendall']['tau'])
-        self._thermalization_data["MK h"].append(test_results['mann_kendall']['h'])
-        self._thermalization_data["MK Trend"].append(test_results['mann_kendall']['trend'])
-        
+        self._thermalization_data["Linear intercept"].append(test_results["intercept"])
+        self._thermalization_data["Linear slope"].append(test_results["slope"])
+        self._thermalization_data["Linear rmse_fit"].append(test_results["rmse"])
+        self._thermalization_data["Epsilon"].append(test_results["epsilon"])
+
+        self._thermalization_data["ADF Test"].append(test_results["adf"]["statistic"])
+        self._thermalization_data["ADF p-value"].append(test_results["adf"]["pvalue"])
+        self._thermalization_data["ADF Critical Value"].append(test_results["adf"]["critical_value"])
+
+        self._thermalization_data["KPSS Test"].append(test_results["kpss"]["statistic"])
+        self._thermalization_data["KPSS p-value"].append(test_results["kpss"]["pvalue"])
+        self._thermalization_data["KPSS Critical Value"].append(test_results["kpss"]["critical_value"])
+
+        self._thermalization_data["MK Test"].append(test_results["mann_kendall"]["s"])
+        self._thermalization_data["MK p-value"].append(test_results["mann_kendall"]["pvalue"])
+        self._thermalization_data["MK Tau"].append(test_results["mann_kendall"]["tau"])
+        self._thermalization_data["MK h"].append(test_results["mann_kendall"]["h"])
+        self._thermalization_data["MK Trend"].append(test_results["mann_kendall"]["trend"])
+
         # Overall verdict: all statistical tests + MAE condition
-        all_conditions = test_results['all_conditions'] + [mae_condition]
+        all_conditions = test_results["all_conditions"] + [mae_condition]
         self._thermalization_data["Conditions"].append(all_conditions)
         self._thermalization_data["Verdict"].append(all(all_conditions))
 
@@ -2891,33 +2900,28 @@ class Simulation(Process):
         msg += f"\n  MAE Condition (< {stats_config.get('max_mae', 0.01)}): {'Passed' if mae_condition else 'Failed'}"
         msg += f"\n  Overall Verdict: {'Thermalized' if all(all_conditions) else 'Not Thermalized'}\n"
         self.io.write_to_logger(msg)
-    
+
     def _prepare_adaptive_thermalization(self, config):
         """Prepare simulation for adaptive thermalization."""
         self.io.open_h5md_file(phase="equilibration")
         self.potential.measure = True
         # Save the initial configuration
         it_start = 0
-        if config.get('restart_step', None) is not None:
-            it_start = config['restart_step']
+        if config.get("restart_step", None) is not None:
+            it_start = config["restart_step"]
         self.io.save_timestep_data(it_start, config["dump_step"], self.integrator.dt * it_start, self.particles)
 
-    
     def _resize_thermalization_h5md(self, new_steps):
         """Resize H5MD file for additional thermalization steps."""
         self.io.close_h5md_file()
         self.parameters.equilibration_steps = new_steps
-        self.io.setup_checkpoint(
-            self.parameters,
-            self.particles,
-            phase="equilibration"
-        )
+        self.io.setup_checkpoint(self.parameters, self.particles, phase="equilibration")
         self.io.open_h5md_file(phase="equilibration")
         self.potential.measure = True
-    
+
     def _run_initial_nve(self, nve_steps, dump_step, config):
         """Run initial NVE phase for thermalization.
-        
+
         Parameters
         ----------
         nve_steps : int
@@ -2927,49 +2931,41 @@ class Simulation(Process):
         config : dict
             Configuration for statistical tests.
         """
-        
+
         nve_dumps = nve_steps // dump_step
-        
+
         msg = f"\nRunning initial NVE phase"
         msg += f"  Steps: {nve_steps}, Dumps: {nve_dumps}"
         self.io.write_to_logger(msg)
-        
+
         self._thermalization_data["NVT start"].append(0)
         self._thermalization_data["NVT end"].append(0)
         self._thermalization_data["NVE start"].append(0)
         self._thermalization_data["NVE end"].append(nve_dumps)
         self._thermalization_data["Cycle"].append(0)
-        
+
         # Update integrator to NVE
-        self.integrator.update = self.integrator.type_setup(
-            self.integrator.production_type
-        )
-        
+        self.integrator.update = self.integrator.type_setup(self.integrator.production_type)
+
         # Run NVE
-        self.evolve(
-            "equilibration", False,
-            self._therm_step_counter, nve_steps,
-            dump_step
-        )
-        
+        self.evolve("equilibration", False, self._therm_step_counter, nve_steps, dump_step)
+
         self.particles.remove_drift()
-        
+
         # Check thermalization
-        self._check_thermalization_statistics(
-            config["observable"], 0, nve_dumps, config
-        )
-        
+        self._check_thermalization_statistics(config["observable"], 0, nve_dumps, config)
+
         # Update counters
         self._therm_step_counter += nve_steps
         self._therm_dump_counter = nve_dumps
         self._thermalization_data["Completed steps"].append(self._therm_step_counter)
-        
+
         # Save results
         self._save_thermalization_results()
-    
+
     def _run_nvt_thermalization_cycle(self, nvt_steps, dump_step):
         """Run NVT (thermostat) cycle.
-        
+
         Parameters
         ----------
         nvt_steps : int
@@ -2977,47 +2973,38 @@ class Simulation(Process):
         dump_step : int
             Dump step interval.
         """
-        
+
         cycle_num = self._thermalization_data["Cycle"][-1] + 1
-        
+
         # Log NVT cycle info
         msg = f"\nCycle {cycle_num}: Running NVT phase\n"
         msg += f"  Steps: {nvt_steps}, Dumps: {nvt_steps // dump_step}\n"
         msg += f"  Total equilibration steps so far: {self._therm_step_counter}"
         self.io.write_to_logger(msg)
-    
+
         # Record starting dump index
-        self._thermalization_data["NVT start"].append(
-            self._therm_step_counter // dump_step
-        )
-        
+        self._thermalization_data["NVT start"].append(self._therm_step_counter // dump_step)
+
         # Resize H5MD file for additional NVT steps
         new_total_steps = self._therm_step_counter + nvt_steps
         self._resize_thermalization_h5md(new_total_steps)
-        
+
         # Update integrator to NVT
-        self.integrator.update = self.integrator.type_setup(
-            self.integrator.equilibration_type
-        )
-        
+        self.integrator.update = self.integrator.type_setup(self.integrator.equilibration_type)
+
         # Run NVT
-        self.evolve(
-            "equilibration", self.integrator.thermalization,
-            self._therm_step_counter,
-            new_total_steps,
-            dump_step
-        )
-        
+        self.evolve("equilibration", self.integrator.thermalization, self._therm_step_counter, new_total_steps, dump_step)
+
         self.particles.remove_drift()
-        
+
         # Update counters
         self._therm_step_counter = new_total_steps
         self._therm_dump_counter = new_total_steps // dump_step
         self._thermalization_data["NVT end"].append(self._therm_dump_counter)
-        
+
     def _run_nve_thermalization_cycle(self, nve_steps, dump_step, config):
         """Run NVE (microcanonical) cycle.
-        
+
         Parameters
         ----------
         nve_steps : int
@@ -3029,59 +3016,48 @@ class Simulation(Process):
         """
 
         cycle_num = self._thermalization_data["Cycle"][-1] + 1
-        
+
         msg = f"Cycle {cycle_num}: Running NVE phase\n"
         msg += f"  Steps: {nve_steps}, Dumps: {nve_steps // dump_step}\n"
         self.io.write_to_logger(msg)
-        
+
         self._thermalization_data["NVE start"].append(self._therm_dump_counter + 1)
-        
+
         end_nve_steps = self._therm_step_counter + nve_steps
-        
+
         # Update integrator to NVE
-        self.integrator.update = self.integrator.type_setup(
-            self.integrator.production_type
-        )
-        
+        self.integrator.update = self.integrator.type_setup(self.integrator.production_type)
+
         # Resize H5MD file
         self._resize_thermalization_h5md(end_nve_steps)
-        
+
         # Run NVE
-        self.evolve(
-            "equilibration", False,
-            self._therm_step_counter, end_nve_steps,
-            dump_step
-        )
-        
+        self.evolve("equilibration", False, self._therm_step_counter, end_nve_steps, dump_step)
+
         self.particles.remove_drift()
-        
+
         # Calculate ending dump index
         end_nve_dumps = end_nve_steps // dump_step
         self._thermalization_data["NVE end"].append(end_nve_dumps)
-        
+
         # Check thermalization
-        self._check_thermalization_statistics(
-            config['observable'], self._therm_dump_counter + 1, end_nve_dumps, config
-        )
-        
+        self._check_thermalization_statistics(config["observable"], self._therm_dump_counter + 1, end_nve_dumps, config)
+
         # Update counters
         self._therm_step_counter += nve_steps
         self._thermalization_data["Completed steps"].append(self._therm_step_counter)
-        
+
         # Increment cycle counter
         self._thermalization_data["Cycle"].append(cycle_num)
-    
+
     def _save_thermalization_results(self):
         """Save thermalization results to CSV."""
-        output_path = join(
-            self.parameters.directory_tree["simulation"]["path"],
-            f"AdaptiveThermalizationData.csv"
-        )
+        output_path = join(self.parameters.directory_tree["simulation"]["path"], f"AdaptiveThermalizationData.csv")
         DataFrame(self._thermalization_data).to_csv(output_path, index=False)
 
     def _finalize_adaptive_thermalization(self, cycle_counter, config):
         """Finalize adaptive thermalization."""
-        obs_name = config['observable'].replace('_', ' ').title()
+        obs_name = config["observable"].replace("_", " ").title()
         if self._thermalization_data["Verdict"][-1]:
             msg = f"\n{'='*60}"
             msg += f"\n  System thermalized after {cycle_counter} cycles"
@@ -3097,4 +3073,3 @@ class Simulation(Process):
             msg += f"\n  Consider adjusting parameters or running more cycles"
             msg += f"\n{'='*60}\n"
             self.io.write_to_logger(msg)
-    

@@ -53,6 +53,15 @@ dependencies:
   - recommonmark=0.7.1
   - sphinx-copybutton=0.5.0
 
+  # Development tools
+  - pre-commit
+  - isort
+  - black
+  - pipreqs
+  - deptry
+  - pytest
+  - pytest-cov
+
   - pip:
       - nbsphinx==0.9.3
       - sphinxext-opengraph==0.6.3

@@ -3,16 +3,20 @@ Module containing the basic class for handling particles properties.
 """
 
 import csv
+import h5py
 from copy import deepcopy
 from h5py import File as h5File
 from numba import float64, int64, jit, njit, void
-from numpy import arange, array, empty, exp, floor, full, histogram, int64, log, newaxis, pi, zeros_like
+from numpy import arange, array, empty, exp, floor, full, histogram, int64
 from numpy import load as np_load
 from numpy import (
     loadtxt,
+    log,
     meshgrid,
     ndarray,
+    newaxis,
     outer,
+    pi,
     rint,
     savetxt,
     savez,
@@ -20,8 +24,8 @@ from numpy import (
     sum,
     triu_indices,
     zeros,
+    zeros_like,
 )
-import h5py
 from numpy.random import Generator, PCG64
 from os.path import join
 from scipy.linalg import norm
@@ -30,6 +34,7 @@ from scipy.stats import moment, qmc
 from warnings import warn
 
 from .utilities.exceptions import ParticlesError, ParticlesWarning
+
 
 class Particles:
     """
@@ -122,7 +127,6 @@ class Particles:
     """
 
     def __init__(self):
-
         self.rdf_nbins = None
         self.kB = None
         self.fourpie0 = None
@@ -171,17 +175,21 @@ class Particles:
         self.species_temperature = None
         self.species_thermostat_temperatures = None
 
-        
         self.no_grs = None
         self.rdf_hist = None
 
         self.observables_list = ["Radial Distribution Function"]
-        self.observables_arrays_list = ['rdf_hist']
-        self.thermodynamics_list = ['total_energy', 'kinetic_energy', 'potential_energy', 'temperature'] # 'pressure', 'enthalpy']
-        
-        self.species_thermodynamics_data = {} # Associated method to initialize it
+        self.observables_arrays_list = ["rdf_hist"]
+        self.thermodynamics_list = [
+            "total_energy",
+            "kinetic_energy",
+            "potential_energy",
+            "temperature",
+        ]  # 'pressure', 'enthalpy']
+
+        self.species_thermodynamics_data = {}  # Associated method to initialize it
         self.species_thermodynamics_method_map = {}
-        
+
         self.species_observables_method_map = {
             "Momentum": self.calculate_species_momentum,
             "Velocity Moments": self.calculate_species_velocity_moments,
@@ -283,15 +291,15 @@ class Particles:
             Simulation's parameters.
 
         """
-        
+
         self.process_directory_tree = deepcopy(params.process_directory_tree)
         self.filenames_tree = deepcopy(params.filenames_tree)
         self.h5md_filenames_tree = deepcopy(params.h5md_filenames_tree)
         self.process_h5md_filepath_dict = deepcopy(params.process_h5md_filepath_dict)
-        
+
         self.kB = params.kB
         self.fourpie0 = params.fourpie0
-        
+
         self.box_lengths = params.box_lengths.copy()
         self.pbox_lengths = params.pbox_lengths.copy()
         self.total_num_ptcls = params.total_num_ptcls
@@ -310,7 +318,7 @@ class Particles:
             self.qmc_sequence = params.qmc_sequence
         if hasattr(params, "qmc_seed"):
             self.qmc_seed = params.qmc_seed
-            
+
         if hasattr(params, "max_velocity_distribution_moment"):
             self.max_velocity_distribution_moment = params.max_velocity_distribution_moment
             self.species_velocity_moments = zeros((self.num_species, self.max_velocity_distribution_moment, 3))
@@ -319,8 +327,8 @@ class Particles:
         # Needed for restarts
         self.eq_dump_step = params.eq_dump_step
         self.prod_dump_step = params.prod_dump_step
-        self.mag_dump_step = params.mag_dump_step 
-        
+        self.mag_dump_step = params.mag_dump_step
+
         self.particles_input_file = params.particles_input_file
         self.load_perturb = params.load_perturb
         self.load_rejection_radius = params.load_rejection_radius
@@ -329,15 +337,15 @@ class Particles:
         for obs in params.observables_list:
             if obs not in self.observables_list:
                 self.observables_list.append(obs)
-        
+
         for obs in params.thermodynamics_list:
             if obs not in self.thermodynamics_list:
                 self.thermodynamics_list.append(obs)
-        
+
         # These array_names are the key of the species_observables_method_map used to calculate the observables.
         for array_name in params.observables_arrays_list:
             if array_name not in self.observables_arrays_list:
-                self.observables_arrays_list.append(array_name) 
+                self.observables_arrays_list.append(array_name)
 
         if hasattr(params, "np_per_side"):
             self.np_per_side = params.np_per_side
@@ -546,15 +554,15 @@ class Particles:
         # Each component is a 2D array of shape (total_num_ptcls, 2)
         # The first column is the value from the short-range term of the potential
         # The second column is the value from the long-range term of the potential
-        self.virial_xx = zeros( self.total_num_ptcls)
-        self.virial_xy = zeros( self.total_num_ptcls)
-        self.virial_xz = zeros( self.total_num_ptcls)
-        self.virial_yy = zeros( self.total_num_ptcls)
-        self.virial_yz = zeros( self.total_num_ptcls)
-        self.virial_zz = zeros( self.total_num_ptcls)
+        self.virial_xx = zeros(self.total_num_ptcls)
+        self.virial_xy = zeros(self.total_num_ptcls)
+        self.virial_xz = zeros(self.total_num_ptcls)
+        self.virial_yy = zeros(self.total_num_ptcls)
+        self.virial_yz = zeros(self.total_num_ptcls)
+        self.virial_zz = zeros(self.total_num_ptcls)
 
         self.heat_flux = zeros((self.total_num_ptcls, 3))  # Heat flux of each particle
-        
+
         self.pbc_cntr = zeros((self.total_num_ptcls, 3))
 
         self.masses = zeros(self.total_num_ptcls)  # mass of each particle
@@ -568,9 +576,9 @@ class Particles:
 
         self.species_initial_velocity = zeros((self.num_species, 3))
         self.species_thermal_velocity = zeros((self.num_species, 3))
-        
+
         self.species_thermal_speed = zeros(self.num_species)
-        self.species_kl_divergence = zeros( (self.num_species, 3))
+        self.species_kl_divergence = zeros((self.num_species, 3))
 
         self.species_initial_spatial_distribution = empty((self.num_species, 3), dtype=str)
         self.species_initial_velocity_distribution = empty((self.num_species, 3), dtype=str)
@@ -579,8 +587,7 @@ class Particles:
         self.species_potential_energy = zeros(self.num_species)
         self.species_temperature = zeros(self.num_species)
         self.species_thermostat_temperatures = zeros(self.num_species)
-        
-        
+
         # # Virial tensor components per species
         # self.species_virial_xx = zeros(self.num_species)
         # self.species_virial_xy = zeros(self.num_species)
@@ -588,27 +595,27 @@ class Particles:
         # self.species_virial_yy = zeros(self.num_species)
         # self.species_virial_yz = zeros(self.num_species)
         # self.species_virial_zz = zeros(self.num_species)
-        
+
         self.species_virial_tensor = zeros((self.num_species, 3, 3))
 
         self.no_grs = int64(self.num_species * (self.num_species + 1) / 2)
-        
+
         if "Radial Distribution Function" in self.observables_list:
             self.rdf_hist = zeros((self.num_species, self.num_species, self.rdf_nbins))
-            if 'rdf_hist' not in self.observables_arrays_list:
-                self.observables_arrays_list.append('rdf_hist')
+            if "rdf_hist" not in self.observables_arrays_list:
+                self.observables_arrays_list.append("rdf_hist")
 
         if "Momentum" in self.observables_list:
             self.momentum = zeros((self.total_num_ptcls, 3))
             self.species_momentum = zeros((self.num_species, 3))
-            if 'species_momentum' not in self.observables_arrays_list:
-                self.observables_arrays_list.append('species_momentum')
-                
+            if "species_momentum" not in self.observables_arrays_list:
+                self.observables_arrays_list.append("species_momentum")
+
         if "Electric Current" in self.observables_list:
             self.electric_current = zeros((self.total_num_ptcls, 3))
             self.species_electric_current = zeros((self.num_species, 3))
-            if 'species_electric_current' not in self.observables_arrays_list:
-                self.observables_arrays_list.append('species_electric_current')
+            if "species_electric_current" not in self.observables_arrays_list:
+                self.observables_arrays_list.append("species_electric_current")
 
         if "Pressure Tensor" in self.observables_list:
             self.pressure = zeros(self.total_num_ptcls)
@@ -618,21 +625,21 @@ class Particles:
             self.species_pressure_pot_tensor = zeros((self.num_species, 3, 3))
             self.species_pressure_tensor = zeros((self.num_species, 3, 3))
 
-            if 'species_pressure_tensor' not in self.observables_arrays_list:
-                self.observables_arrays_list.append('species_pressure_tensor')
-            if 'species_pressure_kin_tensor' not in self.observables_arrays_list:
-                self.observables_arrays_list.append('species_pressure_kin_tensor')
-            if 'species_pressure_pot_tensor' not in self.observables_arrays_list:
-                self.observables_arrays_list.append('species_pressure_pot_tensor')
+            if "species_pressure_tensor" not in self.observables_arrays_list:
+                self.observables_arrays_list.append("species_pressure_tensor")
+            if "species_pressure_kin_tensor" not in self.observables_arrays_list:
+                self.observables_arrays_list.append("species_pressure_kin_tensor")
+            if "species_pressure_pot_tensor" not in self.observables_arrays_list:
+                self.observables_arrays_list.append("species_pressure_pot_tensor")
 
         if "enthalpy" in self.thermodynamics_list:
             self.enthalpy = zeros(self.total_num_ptcls)
             self.species_enthalpy = zeros(self.num_species)
-        
+
         if "dipole_moment_energy" in self.thermodynamics_list:
             self.dipole_moment_energy = zeros(self.total_num_ptcls)
             self.species_dipole_moment_energy = zeros(self.num_species)
-        
+
         if "dipole_moment" in self.observables_arrays_list:
             self.dipole_moment = zeros((self.total_num_ptcls, 3))
             self.species_dipole_moment = zeros((self.num_species, 3))
@@ -640,19 +647,19 @@ class Particles:
         if "Heat Flux" in self.observables_list:
             self.heat_flux = zeros((self.total_num_ptcls, 3))
             self.species_heat_flux = zeros((self.num_species, 3))
-            if 'species_heat_flux' not in self.observables_arrays_list:
-                self.observables_arrays_list.append('species_heat_flux')
+            if "species_heat_flux" not in self.observables_arrays_list:
+                self.observables_arrays_list.append("species_heat_flux")
 
         if "Velocity Moments" in self.observables_list:
             self.species_velocity_moments = zeros((self.num_species, self.max_velocity_distribution_moment, 3))
-            if 'species_velocity_moments' not in self.observables_arrays_list:
-                self.observables_arrays_list.append('species_velocity_moments')
+            if "species_velocity_moments" not in self.observables_arrays_list:
+                self.observables_arrays_list.append("species_velocity_moments")
 
         if "Diffusion Flux" in self.observables_list:
             self.species_diffusion_flux = zeros((self.num_species - 1, 3))
-            if 'species_diffusion_flux' not in self.observables_arrays_list:
-                self.observables_arrays_list.append('species_diffusion_flux')
-                
+            if "species_diffusion_flux" not in self.observables_arrays_list:
+                self.observables_arrays_list.append("species_diffusion_flux")
+
     def initialize_positions(self, species: list = None):
         """
         Initialize particles' positions based on the load method.
@@ -675,9 +682,7 @@ class Particles:
             self.halton_reject(self.load_halton_bases, self.load_rejection_radius)
 
         elif self.load_method in ["uniform", "random_no_reject"]:
-            self.pos = self.uniform_no_reject(
-                0.0 * self.pbox_lengths, self.pbox_lengths
-            )
+            self.pos = self.uniform_no_reject(0.0 * self.pbox_lengths, self.pbox_lengths)
 
         elif self.load_method == "gaussian":
             if self.load_gauss_sigma is None:
@@ -695,7 +700,7 @@ class Particles:
         elif self.load_method in ["qmc", "quasi_monte_carlo"]:
             # Ensure that we are not making silly typos
             self.qmc_sequence = self.qmc_sequence.lower()
-                
+
             if self.qmc_sequence not in self.available_qmc_sequences:
                 raise AttributeError(
                     f"Quasi Monte Carlo sequence not recognized. Please choose from {self.available_qmc_sequences}"
@@ -705,7 +710,9 @@ class Particles:
             else:
                 kwargs = {}
 
-            self.pos = self.quasi_monte_carlo(self.qmc_sequence, self.total_num_ptcls, self.dimensions, self.pbox_lengths, **kwargs)
+            self.pos = self.quasi_monte_carlo(
+                self.qmc_sequence, self.total_num_ptcls, self.dimensions, self.pbox_lengths, **kwargs
+            )
 
         elif self.load_method == "species_specific":
             sp_start = 0
@@ -717,7 +724,7 @@ class Particles:
                     if sp.initial_spatial_distribution in ["uniform", "random_no_reject"]:
                         self.pos[sp_start:sp_end, :] = self.uniform_no_reject(
                             0.0 * self.pbox_lengths,
-                             self.pbox_lengths,
+                            self.pbox_lengths,
                         )
                     elif sp.initial_spatial_distribution == "gaussian":
                         if sp.gaussian_sigma is None:
@@ -1033,7 +1040,7 @@ class Particles:
             dy_lattice = self.pbox_lengths[1] / (0.5 * self.total_num_ptcls) ** (1.0 / 3.0)  # Lattice spacing
             dz_lattice = self.pbox_lengths[2] / (0.5 * self.total_num_ptcls) ** (1.0 / 3.0)  # Lattice spacing
 
-            # Create x, y, and z position arrays. 
+            # Create x, y, and z position arrays.
             # Note that the lattice is shifted by 0.5 * dx_lattice this is to ensure periodic boundary conditions. There are no particles at the corner [0,0,0] while there is one at [Lx, Ly, Lz]
             x = arange(0, self.pbox_lengths[0], dx_lattice) + 0.5 * dx_lattice
             y = arange(0, self.pbox_lengths[1], dy_lattice) + 0.5 * dy_lattice
@@ -1048,11 +1055,11 @@ class Particles:
             Z += self.rnd_gen.uniform(-0.5, 0.5, Z.shape) * perturb * dz_lattice
 
             half_Np = int(self.total_num_ptcls / 2)
-            
+
             self.pos[:half_Np, 0] = X.ravel() + self.box_lengths[0] / 2 - self.pbox_lengths[0] / 2
             self.pos[:half_Np, 1] = Y.ravel() + self.box_lengths[1] / 2 - self.pbox_lengths[1] / 2
             self.pos[:half_Np, 2] = Z.ravel() + self.box_lengths[2] / 2 - self.pbox_lengths[2] / 2
-            
+
             self.pos[half_Np:, 0] = X.ravel() + 0.5 * dx_lattice + self.box_lengths[0] / 2 - self.pbox_lengths[0] / 2
             self.pos[half_Np:, 1] = Y.ravel() + 0.5 * dy_lattice + self.box_lengths[1] / 2 - self.pbox_lengths[1] / 2
             self.pos[half_Np:, 2] = Z.ravel() + 0.5 * dz_lattice + self.box_lengths[2] / 2 - self.pbox_lengths[2] / 2
@@ -1226,7 +1233,7 @@ class Particles:
 
         self.load_from_checkpoint(phase, it)
 
-    def load_from_checkpoint(self, phase, it= None):
+    def load_from_checkpoint(self, phase, it=None):
         """
         Load particles' data from a checkpoint of a previous run
 
@@ -1253,11 +1260,11 @@ class Particles:
             index = self.restart_step // dump_step
         else:
             index = it // dump_step
-        
+
         with h5py.File(file_name, "r") as file:
             self.pos = file["particles/pos"][index]
             self.vel = file["particles/vel"][index]
-            if 'rdf_hist' in file["observables"].keys():
+            if "rdf_hist" in file["observables"].keys():
                 self.rdf_hist = file["observables/rdf_hist/value"][index]
 
     def calculate_electric_current(self):
@@ -1288,7 +1295,9 @@ class Particles:
         """Calculate the dipole energy of each particle and store it into :attr:`dipole_moment_energy`."""
         self.calculate_dipole_moment()
 
-        self.dipole_moment_energy = 2.0 * pi * (self.dipole_moment**2).sum(axis = -1) / ( 3.0* self.box_volume) # TODO: add eps0 in the denominator
+        self.dipole_moment_energy = (
+            2.0 * pi * (self.dipole_moment**2).sum(axis=-1) / (3.0 * self.box_volume)
+        )  # TODO: add eps0 in the denominator
 
     def calculate_species_dipole_moment_energy(self):
         """Calculate the dipole energy of each species and store it into :attr:`species_dipole_moment_energy`."""
@@ -1298,7 +1307,7 @@ class Particles:
     def calculate_observables(self):
         """Calculate the observables in :attr:`observables_list`."""
         for key in self.species_observables_method_map.keys():
-            self.species_observables_method_map[key]()      
+            self.species_observables_method_map[key]()
 
     def calculate_species_electric_current(self):
         """Calculate the electric current of each species from :attr:`vel` and stores it into :attr:`species_electric_current`."""
@@ -1312,7 +1321,7 @@ class Particles:
     def calculate_species_diffusion_flux(self):
         """Calculate the diffusion fluxes."""
         self.species_diffusion_flux = calc_species_diffusion_flux(self.vel, self.species_masses, self.species_num)
-        
+
     def calculate_species_enthalpy(self):
         energy = scalar_species_loop(self.kinetic_energy + self.potential_energy, self.species_num)
         self.enthalpy = energy + self.species_pressure * self.box_volume
@@ -1323,7 +1332,7 @@ class Particles:
         """Calculate the kinetic energy of each species and store it into :attr:`species_kinetic_energy`."""
         self.calculate_kinetic_energy()
         self.species_kinetic_energy = scalar_species_loop(self.kinetic_energy, self.species_num)
-    
+
     def calculate_species_total_energy(self):
         """Calculate the total energy of each species and store it into :attr:`species_total_energy`."""
         self.calculate_species_kinetic_energy()
@@ -1350,7 +1359,7 @@ class Particles:
 
     def calculate_species_temperature(self):
         """Calculate the temperature of each species and store it into :attr:`species_temperature`.
-        
+
         Note
         ----
         Redundant with :meth:`calculate_species_kinetic_temperature`.
@@ -1376,7 +1385,7 @@ class Particles:
 
     def calculate_species_kl_divergence(self):
         """Calculate the Kullback-Leibler divergence of the velocity distribution of each species and stores it into :attr:`species_kl_divergence`."""
-        
+
         # TODO: this is a temporary solution. The number of bins should be user defined. Maybe?
         nbins = self.total_num_ptcls // 10
 
@@ -1395,7 +1404,7 @@ class Particles:
         species_virial_yy = scalar_species_loop(self.virial_yy, self.species_num)
         species_virial_yz = scalar_species_loop(self.virial_yz, self.species_num)
         species_virial_zz = scalar_species_loop(self.virial_zz, self.species_num)
-            
+
         self.species_virial_tensor[:, 0, 0] = species_virial_xx
         self.species_virial_tensor[:, 0, 1] = species_virial_xy
         self.species_virial_tensor[:, 0, 2] = species_virial_xz
@@ -1408,14 +1417,14 @@ class Particles:
 
     def calculate_species_pressure_tensor(self):
         """Calculate the pressure, the kinetic part of the pressure tensor, the potential part of the kinetic tensor of each species and store them into :attr:`species_pressure`, :attr:`species_pressure_kin_tensor`, :attr:`species_pressure_pot_tensor`."""
-        
+
         self.calculate_species_virial_tensor()
 
         self.species_pressure, self.species_pressure_kin_tensor, self.species_pressure_pot_tensor = calc_pressure_tensor(
             self.vel, self.species_virial_tensor, self.species_masses, self.species_num, self.box_volume, self.dimensions
         )
         self.species_pressure_tensor = self.species_pressure_kin_tensor + self.species_pressure_pot_tensor
-        
+
     def calculate_species_pressure(self):
         """
         Calculate the pressure, the kinetic part of the pressure tensor, the potential part of the kinetic tensor of each species and store them into :attr:`species_pressure`, :attr:`species_pressure_kin_tensor`, :attr:`species_pressure_pot_tensor`.
@@ -1452,9 +1461,9 @@ class Particles:
         self.calculate_species_pressure_tensor()
         self.total_pressure = self.species_pressure.sum()
 
-    def make_species_observables_method_map(self, observables_list = None):
+    def make_species_observables_method_map(self, observables_list=None):
         """Make a dictionary where each key is an element of observables_list and each value is a method of Particles."""
-        
+
         if observables_list is None:
             observables_list = self.observables_list
         else:
@@ -1462,7 +1471,7 @@ class Particles:
                 if obs not in self.observables_list:
                     self.observables_list.append(obs)
             observables_list = self.observables_list
-        
+
         key_list = list(self.species_observables_method_map.keys())
         for key in key_list:
             if key not in observables_list:
@@ -1481,35 +1490,35 @@ class Particles:
         """
         # Check that tehrmodynamics_list is not None
         if thermodynamics_list is None:
-            thermodynamics_list = self.thermodynamics_list # ['total_energy', 'kinetic_energy', 'potential_energy', 'temperature']
+            thermodynamics_list = (
+                self.thermodynamics_list
+            )  # ['total_energy', 'kinetic_energy', 'potential_energy', 'temperature']
         else:
             for prop in thermodynamics_list:
                 if prop not in self.thermodynamics_list:
                     self.thermodynamics_list.append(prop)
             thermodynamics_list = self.thermodynamics_list
-        
+
         # Create a dictionary where each key is an element of thermodynamics_list and each value is None
         thermo_keys = {key: None for key in thermodynamics_list}
 
         # Create a new dictionary where each key is a species name and each value is a copy of thermodynamics_data
-        self.species_thermodynamics_data = {
-            species: thermo_keys.copy() for species in self.species_names
-        }
+        self.species_thermodynamics_data = {species: thermo_keys.copy() for species in self.species_names}
 
         self.make_species_thermodynamics_method_map(thermodynamics_list)
 
     def make_species_thermodynamics_method_map(self, thermodynamics_list):
         """
         Make the dictionary :attr:`species_thermodynamics_method_map` with the new thermodynamic quantities.
-        
+
         Parameters
         ----------
         thermodynamics_list : list
             List of thermodynamic quantities to calculate for each species.
-        
+
         Notes
         -----
-        This is used to make the dictionary :attr:`species_thermodynamics_method_map` with the new thermodynamic quantities. 
+        This is used to make the dictionary :attr:`species_thermodynamics_method_map` with the new thermodynamic quantities.
         The dictionary is a map of the thermodynamic quantities to the method to calculate them.
 
         """
@@ -1676,7 +1685,7 @@ class Particles:
         self.copy_params(params)
         self.initialize_arrays()
         self.update_attributes(species)
-        
+
         self.make_species_thermodynamics_dictionary(thermodynamics_list=self.thermodynamics_list)
         self.make_species_thermodynamics_method_map(thermodynamics_list=self.thermodynamics_list)
         self.make_species_observables_method_map(observables_list=self.observables_list)
@@ -1810,7 +1819,7 @@ def calc_pressure_tensor(vel, species_virial_tensor, species_masses, species_num
     """
     # Rescale vel of each particle by their individual mass
     pressure = zeros(species_num.shape[0])
-    pressure_kin = zeros((species_num.shape[0], 3, 3 ))
+    pressure_kin = zeros((species_num.shape[0], 3, 3))
     pressure_pot = zeros((species_num.shape[0], 3, 3))
     temp_kin_tensor = zeros((3, 3, vel.shape[0]))
 
@@ -1826,13 +1835,15 @@ def calc_pressure_tensor(vel, species_virial_tensor, species_masses, species_num
     p_kin = tensor_species_loop(temp_kin_tensor, species_num) / box_volume
     pressure_kin = zeros_like(p_kin)
     for i in range(species_num.shape[0]):
-        pressure_kin[i,:,:] = species_masses[i] * p_kin[i,:,:]
+        pressure_kin[i, :, :] = species_masses[i] * p_kin[i, :, :]
 
     # Sum over the species
-    pressure_pot =  species_virial_tensor/box_volume 
+    pressure_pot = species_virial_tensor / box_volume
     pressure_tensor = pressure_kin + pressure_pot
     for isp in range(species_num.shape[0]):
-        pressure[isp] += (pressure_tensor[isp, 0, 0] + pressure_tensor[isp, 1, 1] + pressure_tensor[isp, 2, 2]) / dimensions
+        pressure[isp] += (
+            pressure_tensor[isp, 0, 0] + pressure_tensor[isp, 1, 1] + pressure_tensor[isp, 2, 2]
+        ) / dimensions
 
     return pressure, pressure_kin, pressure_pot
 
@@ -1918,7 +1929,7 @@ def tensor_species_loop(observable, species_num):
     """
     sp_start = 0
     sp_end = 0
-    sp_obs = zeros(( species_num.shape[0], 3, 3))
+    sp_obs = zeros((species_num.shape[0], 3, 3))
     for sp, sp_num in enumerate(species_num):
         sp_end += sp_num
         sp_obs[sp, :, :] = observable[:, :, sp_start:sp_end].sum(axis=-1)
@@ -1948,7 +1959,7 @@ def tensor_cross_species_loop(observable, species_num):
     # for sp in range(species_num.shape[0]):
     #     sp_obs[sp, :, :] = observable[sp, :, :, :].sum(axis=0)
 
-    return sum(observable, axis = 0)
+    return sum(observable, axis=0)
 
 
 @njit
@@ -1977,7 +1988,8 @@ def remove_drift_nb(vel, nums):
         vel[species_start:species_end, :] -= vel[species_start:species_end, :].sum(axis=0) / sp_num
         species_start += sp_num
 
-@njit   
+
+@njit
 def calc_species_diffusion_flux(vel, species_masses, species_num):
     """
     Calculates the diffusion flux for each species based on their velocities, masses, and concentrations.
@@ -2013,11 +2025,12 @@ def calc_species_diffusion_flux(vel, species_masses, species_num):
     for i, m_alpha in enumerate(species_masses[:-1]):
         for j, m_beta in enumerate(species_masses):
             delta_ab = 1 * (m_alpha == m_beta)
-            species_diffusion_flux[i, :] += (m_bar * delta_ab - species_concentrations[i] * m_beta) * species_net_velocity[j, :]
+            species_diffusion_flux[i, :] += (
+                m_bar * delta_ab - species_concentrations[i] * m_beta
+            ) * species_net_velocity[j, :]
         species_diffusion_flux[i, :] *= m_alpha / m_bar
 
     return species_diffusion_flux
-
 
 
 @jit(nopython=True)
@@ -2025,12 +2038,12 @@ def kl_divergence(vel, species_num, species_thermal_velocity, n_bins=100):
     """
     Calculate KL divergence between samples and a standard normal distribution.
     Manually calculates probability density from histogram counts.
-    
+
     Parameters:
     -----------
     vel : numpy.ndarray
         Array of particle velocities, shape=(num_particles, 3)
-    
+
     species_num : numpy.ndarray
         Number of particles for each species, shape=(num_species,)
 
@@ -2039,7 +2052,7 @@ def kl_divergence(vel, species_num, species_thermal_velocity, n_bins=100):
 
     n_bins : int
         Number of bins for histogram estimation
-        
+
     Returns:
     --------
     float
@@ -2047,32 +2060,32 @@ def kl_divergence(vel, species_num, species_thermal_velocity, n_bins=100):
     """
     # Set fixed range for standard normal: ±4 sigma covers 99.993% of distribution
     range_min, range_max = -5.0, 5.0
-    
-    species_kl_div = zeros( (len(species_num), vel.shape[1]) )
+
+    species_kl_div = zeros((len(species_num), vel.shape[1]))
     species_start = 0
     species_end = 0
     for ic, sp_num in enumerate(species_num):
         species_end += sp_num
-        
+
         for d in range(vel.shape[1]):
-            samples = vel[species_start:species_end, d]/ species_thermal_velocity[ic,d]
+            samples = vel[species_start:species_end, d] / species_thermal_velocity[ic, d]
             # Calculate histogram counts (not density)
-            hist, bin_edges = histogram(samples, bins=n_bins, range=(range_min, range_max))    
+            hist, bin_edges = histogram(samples, bins=n_bins, range=(range_min, range_max))
             # Calculate bin width and centers
             bin_width = (range_max - range_min) / n_bins
             bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-            
+
             # Convert counts to probability density
             # density = count / (N * bin_width) where N is total number of samples
             hist = hist / (len(samples) * bin_width)
-            
+
             # Calculate standard normal PDF at bin centers
             # Using the simplified formula since mean=0, std=1
             normal_pdf = exp(-0.5 * bin_centers**2) / sqrt(2 * pi)
-            
+
             # Calculate KL divergence only where hist > 0 to avoid log(0)
             mask = hist > 0
-            species_kl_div[ic,d] = sum(hist[mask] * log(hist[mask] / normal_pdf[mask]))
+            species_kl_div[ic, d] = sum(hist[mask] * log(hist[mask] / normal_pdf[mask]))
         species_start += sp_num
 
     return species_kl_div

@@ -91,6 +91,7 @@ else
     matrix[5] = 1.0 / gamma_plus
 
 """
+
 from numba import jit
 from numba.core.types import float64, UniTuple
 from numpy import cos, cosh, exp, inf, pi, sin, sqrt, tanh, zeros
@@ -142,9 +143,9 @@ def update_params(potential, species):
         # eq. (32) of Ref. [1]_
         h = Ntheta / Dtheta * tanh(1.0 / theta)
         # grad h(x)
-        gradh = -(Ntheta / Dtheta) / cosh(1 / theta) ** 2 / (theta**2) - tanh(  # derivative of tanh(1/x)
+        gradh = -(Ntheta / Dtheta) / cosh(1 / theta) ** 2 / (theta**2) - tanh(
             1.0 / theta
-        ) * (
+        ) * (  # derivative of tanh(1/x)
             Ntheta * (7.8862 * theta + 31.6552 * theta**3) / Dtheta**2  # derivative of 1/Dtheta
             + (5.6686 * theta - 0.6453 * theta**2 + 21.1036 * theta**3) / Dtheta
         )  # derivative of Ntheta
@@ -178,9 +179,7 @@ def update_params(potential, species):
     potential.matrix[:, :, 1] = potential.nu
 
     for i, q1 in enumerate(potential.species_charges):
-
         for j, q2 in enumerate(potential.species_charges):
-
             if potential.nu <= 1:
                 potential.matrix[i, j, 0] = q1 * q2 / potential.fourpie0
                 potential.matrix[i, j, 2] = 1.0 + potential.alpha
@@ -210,7 +209,7 @@ def update_params(potential, species):
     # The rescaling constant is sqrt ( na^4 ) = sqrt( 3 a/(4pi) )
     rescaling_constant = sqrt(3.0 * potential.a_ws / (4.0 * pi))
     potential.force_error = force_error_analytic_lcl(potential.type, potential.rc, potential.matrix, rescaling_constant)
-    potential.force_error = calc_force_error_quad(potential.a_ws, potential.rc, potential.matrix[0,0])
+    potential.force_error = calc_force_error_quad(potential.a_ws, potential.rc, potential.matrix[0, 0])
 
 
 @jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
@@ -402,7 +401,6 @@ def pretty_print_info(potential):
 
 
 def force_error_integrand(r, pot_matrix):
-
     _, dv_dr, _ = potential_derivatives(r, pot_matrix)
 
     return 4.0 * pi * r**2 * dv_dr**2

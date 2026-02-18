@@ -648,11 +648,13 @@ class Diffusion(TransportCoefficients):
                     # Grab vacf data of each slice
                     integrand = observable.dataframe_acf_slices[(vacf_str, sp, "Total", f"slice {isl}")].values
                     df_str = f"{sp} Diffusion_slice {isl}"
-                    data = const * cumulative_trapezoid(integrand, x=self.time_array, initial=0.0) #fast_integral_loop(time=self.time_array, integrand=integrand)
+                    data = const * cumulative_trapezoid(
+                        integrand, x=self.time_array, initial=0.0
+                    )  # fast_integral_loop(time=self.time_array, integrand=integrand)
                     columns_list.append(df_str)
                     data_list.append(data)
-            
-            self.dataframe_slices = DataFrame( {col: data for col, data in zip(columns_list, data_list)})
+
+            self.dataframe_slices = DataFrame({col: data for col, data in zip(columns_list, data_list)})
             columns_list = []
             data_list = []
             columns_list.append("Integration_Interval")
@@ -673,8 +675,8 @@ class Diffusion(TransportCoefficients):
                 columns_list.append(col_name)
                 data_list.append(col_data)
                 # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-            
-            self.dataframe = DataFrame( {col: data for col, data in zip(columns_list, data_list)})
+
+            self.dataframe = DataFrame({col: data for col, data in zip(columns_list, data_list)})
 
         else:
             # Loop over time slices
@@ -687,7 +689,9 @@ class Diffusion(TransportCoefficients):
                     par_vacf_str = (vacf_str, sp, "Z", f"slice {isl}")
                     integrand_par = observable.dataframe_acf_slices[par_vacf_str].to_numpy()
 
-                    col_data = cumulative_trapezoid(integrand_par, x=self.time_array, initial=0.0) #fast_integral_loop(time=self.time_array, integrand=integrand_par)
+                    col_data = cumulative_trapezoid(
+                        integrand_par, x=self.time_array, initial=0.0
+                    )  # fast_integral_loop(time=self.time_array, integrand=integrand_par)
                     col_name = f"{sp} Diffusion_Parallel_slice {isl}"
                     self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
 
@@ -699,7 +703,9 @@ class Diffusion(TransportCoefficients):
                         observable.dataframe_acf_slices[x_vacf_str].to_numpy()
                         + observable.dataframe_acf_slices[y_vacf_str].to_numpy()
                     )
-                    col_data = cumulative_trapezoid(integrand_perp, x=self.time_array, initial=0.0) # fast_integral_loop(time=self.time_array, integrand=integrand_perp)
+                    col_data = cumulative_trapezoid(
+                        integrand_perp, x=self.time_array, initial=0.0
+                    )  # fast_integral_loop(time=self.time_array, integrand=integrand_perp)
                     col_name = f"{sp} Diffusion_Perpendicular_slice {isl}"
                     self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
 
@@ -795,7 +801,7 @@ class Diffusion(TransportCoefficients):
         # Check if scaling is provided if it is a single value then make it a tuple
         if not isinstance(scaling, tuple):
             scaling = (scaling, 1.0)
-        
+
         if observable.magnetized:
             for isp, sp in enumerate(observable.species_names):
                 # sp_vacf_str = f"{sp} " + vacf_str
@@ -1120,7 +1126,7 @@ class Viscosity(TransportCoefficients):
 
         columns_list = ["Integration_Interval"]
         data_list = [self.time_array]
-        
+
         col_name = "Bulk Viscosity_Mean"
         col_data = self.dataframe_slices[col_str].mean(axis=1).values
         columns_list.append(col_name)
@@ -1461,13 +1467,14 @@ class ElectricalConductivity(TransportCoefficients):
 
 class ThermalConductivity(TransportCoefficients):
     """The thermal conductivity is calculated from the Green-Kubo formula
-    
+
     .. math::
             \\kappa_t = k_B \\frac{\\beta^2}{3 V} \\int_0^{t} d\\tau
             \\langle \\mathbf {J}_{Q}(0) \\cdot \\mathbf {J}_{Q}(\\tau) \\rangle,
-    
+
     where :math:`\\mathbf {J}_{Q}(t)` is the heat flux calculated by the :class:`sarkas.tools.observables.HeatFlux` class.
     """
+
     def __init__(self):
         self.__name__ = "ThermalConductivity"
         self.__long_name__ = "Thermal Conductivity"
@@ -1500,17 +1507,15 @@ class ThermalConductivity(TransportCoefficients):
         # Initialize Timer
         t0 = self.timer.current()
 
-        const = self.kB * self.beta_slices**2  / self.box_volume
+        const = self.kB * self.beta_slices**2 / self.box_volume
         sp_vacf_str = f"{observable.__long_name__} ACF"
 
         data_dict = {"Integration_Interval": self.time_array}
 
         # Loop over time slices
-        for isl in tqdm(range(self.no_slices), disable=not observable.verbose):            
+        for isl in tqdm(range(self.no_slices), disable=not observable.verbose):
             # Grab vacf data of each slice
-            integrand = observable.dataframe_acf_slices[
-                (sp_vacf_str, f"Total", "Total", f"slice {isl}")
-            ].values
+            integrand = observable.dataframe_acf_slices[(sp_vacf_str, f"Total", "Total", f"slice {isl}")].values
             df_str = f"{self.__long_name__}_slice {isl}"
             # self.dataframe_slices[df_str] = const[isl] * fast_integral_loop(
             #     time=self.time_array, integrand=integrand
@@ -1531,7 +1536,7 @@ class ThermalConductivity(TransportCoefficients):
         col_data = self.dataframe_slices[col_str].std(axis=1).values
         col_name = f"{self.__long_name__}_Std"
         data_dict[col_name] = col_data
-        
+
         self.dataframe = DataFrame(data_dict)
         # Time stamp
         tend = self.timer.current()
@@ -1582,7 +1587,7 @@ class ThermalConductivity(TransportCoefficients):
             acf_data=column_stack((acf_avg, acf_std)),
             tc_data=column_stack((tc_avg, tc_std)),
             acf_name=sp_vacf_str,
-            tc_name=f'{self.__long_name__}',
+            tc_name=f"{self.__long_name__}",
             figname=f"{self.__name__}_Plot.png",
             show=display_plot,
         )

@@ -25,16 +25,18 @@ The elements of the :attr:`sarkas.potentials.core.Potential.matrix` are:
     pot_matrix[6] = a_rs
 
 """
+
 from math import erfc
 from numba import jit
 from numba.core.types import float64, UniTuple
-from numpy import exp, inf, pi, sqrt, zeros, cos, sin
+from numpy import cos, exp, inf, pi, sin, sqrt, zeros
 from scipy.integrate import quad
 from warnings import warn
 
 from ..utilities.maths import force_error_analytic_lcl, force_error_analytic_pp
 
 __all__ = ["yukawa_force", "potential_derivatives", "pretty_print_info", "update_params", "calc_force_error_quad"]
+
 
 @jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
 def yukawa_ft_force(r, pot_matrix):
@@ -73,8 +75,8 @@ def yukawa_ft_force(r, pot_matrix):
     u_ft_exp = pot_matrix[2] * exp(-pot_matrix[3] * r) / r**3
     u_ft = u_ft_exp * cos(pot_matrix[4] * r + pot_matrix[5])
 
-    f_ft =  u_ft * (3.0/r + pot_matrix[3]) 
-    f_ft += pot_matrix[4] * u_ft_exp * sin(pot_matrix[4] * r + pot_matrix[5]) 
+    f_ft = u_ft * (3.0 / r + pot_matrix[3])
+    f_ft += pot_matrix[4] * u_ft_exp * sin(pot_matrix[4] * r + pot_matrix[5])
 
     u_r = u_y + u_ft
     f_r = f_y + f_ft
@@ -107,17 +109,17 @@ def potential_derivatives(r, pot_matrix):
     """
 
     u_y = pot_matrix[0] * exp(-pot_matrix[1] * r) / r
-    f_y = - u_y * (1.0 / r + pot_matrix[1])
+    f_y = -u_y * (1.0 / r + pot_matrix[1])
 
     u_ft_exp = pot_matrix[2] * exp(-pot_matrix[3] * r) / r**3
     u_ft = u_ft_exp * cos(pot_matrix[4] * r + pot_matrix[5])
 
-    f_ft =  -u_ft * (3.0/r + pot_matrix[3]) 
-    f_ft += -pot_matrix[4] * u_ft_exp * sin(pot_matrix[4] * r + pot_matrix[5]) 
+    f_ft = -u_ft * (3.0 / r + pot_matrix[3])
+    f_ft += -pot_matrix[4] * u_ft_exp * sin(pot_matrix[4] * r + pot_matrix[5])
 
     u_r = u_y + u_ft
     dv_dr = f_y + f_ft
-    
+
     d2v_dr2 = 0.0
 
     return u_r, dv_dr, d2v_dr2
@@ -175,12 +177,13 @@ def update_params(potential, species):
 
     potential.potential_derivatives = potential_derivatives
 
-    assert potential.method == "pp" , "The Yukawa-Friedel tail potential is implemented only for PP method."
+    assert potential.method == "pp", "The Yukawa-Friedel tail potential is implemented only for PP method."
 
     # The rescaling constant is sqrt ( na^4 ) = sqrt( 3 a/(4pi) )
     potential.force = yukawa_ft_force
 
     potential.force_error = calc_force_error_quad(potential.a_ws, potential.rc, potential.matrix[0, 0])
+
 
 def force_error_integrand(r, pot_matrix):
     r"""Auxiliary function to be used in `scipy.integrate.quad` to calculate the integrand.
@@ -249,12 +252,12 @@ def calc_force_error_quad(a, rc, pot_matrix):
 
     params[2] /= params[0]
     params[0] = 1
-    
+
     # Un-dimensionalize the screening length.
     params[1] *= a
     params[3] *= a**3
     params[4] *= a
-    
+
     r_c = rc / a
     result, _ = quad(force_error_integrand, a=r_c, b=inf, args=(params,))
 

@@ -3,14 +3,15 @@ Module for Brute Force algorithm for particle interactions.
 """
 
 from numba import jit
-from numpy import zeros, zeros_like, sqrt, pi
+from numpy import pi, sqrt, zeros, zeros_like
+
 from .base import InteractionSolverBase
 
 
 class BruteForce(InteractionSolverBase):
     """
     Brute Force algorithm for computing all pairwise particle interactions.
-    
+
     This algorithm computes interactions between all particle pairs without
     any spatial optimization or cutoff considerations. It provides the most
     straightforward O(N²) implementation and is primarily useful for:
@@ -18,7 +19,7 @@ class BruteForce(InteractionSolverBase):
     - Reference calculations to validate other algorithms
     - Systems with long-range interactions where cutoffs aren't appropriate
     - Debugging and testing purposes
-    
+
     Unlike minimum image, this algorithm doesn't apply any periodic boundary
     conditions automatically - it computes the direct particle-particle
     interactions based on their actual positions.
@@ -27,12 +28,12 @@ class BruteForce(InteractionSolverBase):
     def __init__(self):
         """Initialize the Brute Force solver."""
         super().__init__()
-        self.type = 'brute_force'
+        self.type = "brute_force"
 
     def setup(self, params, **kwargs):
         """
         Initialize the brute force solver with simulation parameters.
-        
+
         Parameters
         ----------
         params : object
@@ -44,17 +45,17 @@ class BruteForce(InteractionSolverBase):
             - cutoff_radius : float, distance cutoff if apply_cutoff is True
         """
         self.box_lengths = params.box_lengths
-    
+
     @staticmethod
     @jit(nopython=True)
     def particles_interaction_loop(pos, vel, p_mass, p_id, potential_matrix, force, rdf_hist, box_lengths):
         """
         Compute forces and energies using minimum image convention.
-        
+
         This method implements the minimum image convention where each particle
         interacts with the nearest periodic image of every other particle.
         The algorithm has O(N²) computational complexity.
-        
+
         Parameters
         ----------
         pos: numpy.ndarray
@@ -64,7 +65,7 @@ class BruteForce(InteractionSolverBase):
         p_mass: numpy.ndarray
             Mass of each particle. Shape (N,).
         p_id: numpy.ndarray
-            Id of each particle. Shape (N,). 
+            Id of each particle. Shape (N,).
         potential_matrix: numpy.ndarray
             Potential parameters. Shape (num_species, num_species, num_params).
         force: func
@@ -73,7 +74,7 @@ class BruteForce(InteractionSolverBase):
             Radial Distribution function array. Shape (nbins, num_species, num_species).
         box_lengths: numpy.ndarray
             Array of box sides' length. Shape (3,).
-        
+
         Returns
         -------
         ptcl_pot_energy : numpy.ndarray
@@ -89,7 +90,7 @@ class BruteForce(InteractionSolverBase):
         # Pre-compute constants for efficiency
         Lh = 0.5 * box_lengths  # Half box lengths for minimum image
         N = pos.shape[0]
-        
+
         # Initialize output arrays
         ptcl_pot_energy = zeros(N)
         acc_s_r = zeros(pos.shape)
@@ -104,18 +105,15 @@ class BruteForce(InteractionSolverBase):
         # Double loop over all particle pairs
         for i in range(N):
             for j in range(i + 1, N):
-                
                 # Calculate relative velocity
                 vx = vel[i, 0] + vel[j, 0]
                 vy = vel[i, 1] + vel[j, 1]
                 vz = vel[i, 2] + vel[j, 2]
 
-
                 # Calculate relative position
                 dx = pos[i, 0] - pos[j, 0]
                 dy = pos[i, 1] - pos[j, 1]
                 dz = pos[i, 2] - pos[j, 2]
-
 
                 # Calculate distance
                 r_squared = dx * dx + dy * dy + dz * dz
@@ -229,10 +227,12 @@ class BruteForce(InteractionSolverBase):
         - Can optionally apply distance cutoff for efficiency
         """
         # Compute interactions
-        (ptcls.potential_energy, 
-         ptcls.acc, 
-         ptcls.virial_species_tensor, 
-         ptcls.heat_flux_species_tensor) = self.particles_interaction_loop(
+        (
+            ptcls.potential_energy,
+            ptcls.acc,
+            ptcls.virial_species_tensor,
+            ptcls.heat_flux_species_tensor,
+        ) = self.particles_interaction_loop(
             ptcls.pos,
             ptcls.vel,
             ptcls.masses,
@@ -240,18 +240,18 @@ class BruteForce(InteractionSolverBase):
             potential.matrix,
             potential.force,
             ptcls.rdf_hist,
-            self.box_lengths
+            self.box_lengths,
         )
 
     def pretty_print(self):
         """Print algorithm information and parameters."""
         msg = f"\nINTERACTION SOLVER: Brute Force\n"
-        
+
         if self.box_lengths is not None:
             msg += f"Box lengths: {self.box_lengths}\n"
-                 
+
         msg += "Computational complexity: O(N²)\n"
         msg += "Spatial optimization: None\n"
         msg += "Suitable for: Small systems, reference calculations, debugging\n"
-        
+
         return msg

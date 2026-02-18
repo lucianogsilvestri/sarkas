@@ -23,15 +23,14 @@ The elements of the :attr:`sarkas.potentials.core.Potential.matrix` are:
     pot_matrix[2] = Ewald screening parameter
 
 """
+
 from math import erfc
 from numba import jit
 from numba.core.types import float64, UniTuple
 from numpy import exp, inf, pi, sqrt, zeros
 from scipy.integrate import quad
 from scipy.special import gamma
-
 from warnings import warn
-
 
 
 @jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
@@ -230,9 +229,9 @@ def update_params(potential, species):
     potential.matrix[:, :, 1] = 1.0 / potential.screening_length
 
     if not hasattr(potential, "kappa") or potential.kappa is None:
-        potential.kappa = potential.matrix[0,0, 1] * potential.a_ws
+        potential.kappa = potential.matrix[0, 0, 1] * potential.a_ws
 
-    for i, sp1 in enumerate(species[:-1]): # species[-1] is the electronic background
+    for i, sp1 in enumerate(species[:-1]):  # species[-1] is the electronic background
         q1 = sp1.charge
         for j, sp2 in enumerate(species[:-1]):
             q2 = sp2.charge
@@ -243,13 +242,13 @@ def update_params(potential, species):
     potential.potential_derivatives = potential_derivatives
 
     if potential.method == "pp":
-
         potential.force = yukawa_force
         potential.calc_force_error_quad = calc_force_error_quad
 
     elif potential.method == "pppm":
         potential.force = yukawa_force_pppm
         potential.matrix[:, :, 2] = potential.pppm_alpha_ewald
+
 
 def calc_force_error_quad(potential):
     r"""
@@ -293,22 +292,21 @@ def calc_force_error_quad(potential):
 
     params = potential.matrix.copy()
     # Rescale the potential parameters so that quad does not fail.
-    params[:, :, 0] /= potential.matrix[:, :, 0] 
+    params[:, :, 0] /= potential.matrix[:, :, 0]
     params[:, :, 1] *= potential.a_ws  # kappa
-    params[:, :, 2] *= potential.a_ws  # Ewald parameter    
-    params[:, :, -1] /= potential.a_ws # Short-range cutoff
+    params[:, :, 2] *= potential.a_ws  # Ewald parameter
+    params[:, :, -1] /= potential.a_ws  # Short-range cutoff
 
     r_c = potential.rc / potential.a_ws
 
     # Solid angle integral
-    solid_angle = 2 * pi**(potential.dimensions / 2) / gamma(potential.dimensions / 2)
+    solid_angle = 2 * pi ** (potential.dimensions / 2) / gamma(potential.dimensions / 2)
 
-    integrand = lambda r: solid_angle * r**(potential.dimensions - 1) * ( potential.force(r, params[0,0])[1])**2
-    result, _ = quad( integrand, a=r_c, b=inf)
+    integrand = lambda r: solid_angle * r ** (potential.dimensions - 1) * (potential.force(r, params[0, 0])[1]) ** 2
+    result, _ = quad(integrand, a=r_c, b=inf)
 
     # Rescaling constant = Q^2 sqrt(N/V) = Q^2 sqrt(3 /(4 pi)), with V = L^3 = (4pi /  N)^3
     QFactor = potential.QFactor / (potential.matrix[0, 0, 0] * potential.total_num_ptcls)
-    f_err = sqrt( result * 3 / (4 * pi)) * QFactor
+    f_err = sqrt(result * 3 / (4 * pi)) * QFactor
 
     return f_err
-

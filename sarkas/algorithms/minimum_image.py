@@ -3,22 +3,23 @@ Module for Minimum Image Convention algorithm for particle interactions in perio
 """
 
 from numba import jit
-from numpy import zeros, zeros_like, sqrt, pi
+from numpy import pi, sqrt, zeros, zeros_like
+
 from .base import InteractionSolverBase
 
 
 class MinimumImage(InteractionSolverBase):
     """
     Minimum Image Convention algorithm for computing particle interactions.
-    
+
     This algorithm implements the minimum image convention for periodic boundary
     conditions, where each particle interacts only with the nearest periodic image
     of every other particle. The cutoff radius is automatically set to half the
     smallest box dimension to ensure proper minimum image behavior.
-    
+
     This is essentially a brute force O(N²) algorithm but with proper handling
     of periodic boundary conditions using the minimum image convention.
-    
+
     Attributes
     ----------
     cutoff : numpy.ndarray
@@ -28,16 +29,16 @@ class MinimumImage(InteractionSolverBase):
     def __init__(self):
         """Initialize the Minimum Image solver."""
         super().__init__()
-        self.type = 'minimum_image'
+        self.type = "minimum_image"
         self.cutoff = None
 
     def setup(self, params, **kwargs):
         """
         Initialize the minimum image solver with simulation parameters.
-        
+
         The cutoff radius is automatically set to half the box length in each
         dimension to ensure proper minimum image convention behavior.
-        
+
         Parameters
         ----------
         params : object
@@ -55,11 +56,11 @@ class MinimumImage(InteractionSolverBase):
     def particles_interaction_loop(pos, vel, p_mass, p_id, potential_matrix, force, rdf_hist, box_lengths):
         """
         Compute forces and energies using minimum image convention.
-        
+
         This method implements the minimum image convention where each particle
         interacts with the nearest periodic image of every other particle.
         The algorithm has O(N²) computational complexity.
-        
+
         Parameters
         ----------
         pos: numpy.ndarray
@@ -69,7 +70,7 @@ class MinimumImage(InteractionSolverBase):
         p_mass: numpy.ndarray
             Mass of each particle. Shape (N,).
         p_id: numpy.ndarray
-            Id of each particle. Shape (N,). 
+            Id of each particle. Shape (N,).
         potential_matrix: numpy.ndarray
             Potential parameters. Shape (num_species, num_species, num_params).
         force: func
@@ -78,7 +79,7 @@ class MinimumImage(InteractionSolverBase):
             Radial Distribution function array. Shape (nbins, num_species, num_species).
         box_lengths: numpy.ndarray
             Array of box sides' length. Shape (3,).
-        
+
         Returns
         -------
         ptcl_pot_energy : numpy.ndarray
@@ -94,7 +95,7 @@ class MinimumImage(InteractionSolverBase):
         # Pre-compute constants for efficiency
         Lh = 0.5 * box_lengths  # Half box lengths for minimum image
         N = pos.shape[0]
-        
+
         # Initialize output arrays
         ptcl_pot_energy = zeros(N)
         acc_s_r = zeros(pos.shape)
@@ -109,12 +110,10 @@ class MinimumImage(InteractionSolverBase):
         # Double loop over all particle pairs
         for i in range(N):
             for j in range(i + 1, N):
-                
                 # Calculate relative velocity
                 vx = vel[i, 0] + vel[j, 0]
                 vy = vel[i, 1] + vel[j, 1]
                 vz = vel[i, 2] + vel[j, 2]
-
 
                 # Calculate relative position
                 dx = pos[i, 0] - pos[j, 0]
@@ -139,7 +138,6 @@ class MinimumImage(InteractionSolverBase):
                 p_matrix = potential_matrix[id_i, id_j]
                 rs = p_matrix[-1]  # Short-range cutoff to avoid division by zero
                 r = r_in * (r_in >= rs) + rs * (r_in < rs)  # Branchless programming
-
 
                 # Update RDF histogram
                 rdf_bin = int(r / dr_rdf)
@@ -241,10 +239,12 @@ class MinimumImage(InteractionSolverBase):
         - Cutoff is set to half the smallest box dimension
         """
         # Compute interactions
-        (ptcls.potential_energy, 
-         ptcls.acc, 
-         ptcls.virial_species_tensor, 
-         ptcls.heat_flux_species_tensor) = self.particles_interaction_loop(
+        (
+            ptcls.potential_energy,
+            ptcls.acc,
+            ptcls.virial_species_tensor,
+            ptcls.heat_flux_species_tensor,
+        ) = self.particles_interaction_loop(
             ptcls.pos,
             ptcls.vel,
             ptcls.masses,
@@ -252,33 +252,33 @@ class MinimumImage(InteractionSolverBase):
             potential.matrix,
             potential.force,
             ptcls.rdf_hist,
-            self.box_lengths
+            self.box_lengths,
         )
 
     def pretty_print(self):
         """Print algorithm information and parameters."""
         msg = f"\nINTERACTION SOLVER: Minimum Image Convention\n"
-        
+
         if self.box_lengths is not None:
             msg += f"Box lengths: {self.box_lengths}\n"
             msg += f"Cutoff distances (L/2): {self.cutoff}\n"
             msg += f"Minimum cutoff: {self.cutoff.min():.6e}\n"
-            
+
         msg += "Computational complexity: O(N²)\n"
         msg += "Periodic boundary conditions: Minimum image convention\n"
         msg += "Suitable for: Small to medium systems with periodic boundaries\n"
-        
+
         return msg
 
     def estimate_computational_cost(self, num_particles):
         """
         Estimate computational cost for minimum image algorithm.
-        
+
         Parameters
         ----------
         num_particles : int
             Number of particles in the system
-            
+
         Returns
         -------
         dict
@@ -288,22 +288,22 @@ class MinimumImage(InteractionSolverBase):
             - 'relative_cost' : cost relative to N=1000 system
         """
         pair_evaluations = num_particles * (num_particles - 1) // 2
-        complexity_factor = num_particles ** 2
-        
+        complexity_factor = num_particles**2
+
         # Relative cost compared to 1000-particle system
         reference_n = 1000
         relative_cost = (num_particles / reference_n) ** 2
-        
+
         return {
-            'pair_evaluations': pair_evaluations,
-            'complexity_factor': complexity_factor,
-            'relative_cost': relative_cost
+            "pair_evaluations": pair_evaluations,
+            "complexity_factor": complexity_factor,
+            "relative_cost": relative_cost,
         }
 
     def validate_box_dimensions(self):
         """
         Validate that box dimensions are suitable for minimum image convention.
-        
+
         Raises
         ------
         ValueError
@@ -313,15 +313,15 @@ class MinimumImage(InteractionSolverBase):
         """
         if self.box_lengths is None:
             raise ValueError("Box lengths not set - call setup() first")
-            
+
         if (self.box_lengths <= 0).any():
             raise ValueError("All box dimensions must be positive for minimum image")
-            
+
         # Check for highly anisotropic boxes
         min_length = self.box_lengths.min()
         max_length = self.box_lengths.max()
         anisotropy_ratio = max_length / min_length
-        
+
         if anisotropy_ratio > 10:
             print(f"Warning: Highly anisotropic box (ratio: {anisotropy_ratio:.1f})")
             print("Consider using a different algorithm for better efficiency")
@@ -329,7 +329,7 @@ class MinimumImage(InteractionSolverBase):
     def get_effective_cutoff(self):
         """
         Get the effective cutoff radius for interactions.
-        
+
         Returns
         -------
         float

@@ -180,7 +180,7 @@ def force_error_approx_pppm(potential):
     """
 
     if potential.type == "yukawa":
-        kappa = potential.a_ws / potential.screening_length        
+        kappa = potential.a_ws / potential.screening_length
     elif potential.type in ["coulomb", "qsp"]:
         kappa = 0.0
 
@@ -197,16 +197,14 @@ def force_error_approx_pppm(potential):
     # f_err = f_err_a * (1 / sqrt(a_ws)) ,
     # Force Error = QFactor / (N * e^2/(4 pi eps0) ) * sqrt(3/ (4 pi)) * f_err_a * ( e^2 / a_ws^2))
     QFactor = potential.QFactor / (potential.matrix[0, 0, 0] * potential.total_num_ptcls)
-    rescaling_constant = sqrt(3.0 / (4.0 * pi)) * QFactor 
+    rescaling_constant = sqrt(3.0 / (4.0 * pi)) * QFactor
 
-    pppm_pp_err = force_error_analytic_pp(
-        potential.type, rc, kappa, alpha, rescaling_constant
-    )
+    pppm_pp_err = force_error_analytic_pp(potential.type, rc, kappa, alpha, rescaling_constant)
 
     # This returns (A_f)**(1/2) from eq.(36) in :cite:`Dharuman2017`
     # The rescaling constant makes it in units of q^2/a_ws^2
     pppm_pm_err = force_error_approx_pm(kappa, potential.pppm_cao[0], ha, alpha, rescaling_constant)
-    
+
     force_error_tot = sqrt(pppm_pm_err**2 + pppm_pp_err**2)
 
     return force_error_tot, pppm_pm_err, pppm_pp_err
@@ -234,7 +232,7 @@ def force_error_approx_pm(kappa: float, p: int, h: float, alpha: float, rescalin
     rescaling_const: float
         Constant by which to rescale the force error. \n
         In case of electric forces = :math:`Q^2/(4 \\pi \\epsilon_0) 1/a^2`.
-    
+
     Returns
     -------
     pm_force_error: float
@@ -318,9 +316,9 @@ def force_error_analytic_pp(
     """
 
     kappa_alpha = 0.5 * screening_parameter / alpha_ewald
-    rc_alpha = cutoff_length *  alpha_ewald
+    rc_alpha = cutoff_length * alpha_ewald
 
-    pppm_pp_err = 2.0 * exp(- kappa_alpha**2) * exp(-rc_alpha**2) / sqrt(cutoff_length)
+    pppm_pp_err = 2.0 * exp(-(kappa_alpha**2)) * exp(-(rc_alpha**2)) / sqrt(cutoff_length)
     pppm_pp_err *= rescaling_const
 
     return pppm_pp_err

@@ -37,6 +37,7 @@ The elements of the :attr:`sarkas.potentials.core.Potential.matrix` are:
     pot_matrix[6] = a_rs. Short-range cutoff.
 
 """
+
 from numba import jit
 from numba.core.types import float64, UniTuple
 from numpy import array, cos, exp, inf, pi, sin, sqrt, zeros

@@ -1,24 +1,25 @@
 """
 Module handling the I/O for an MD run.
 """
-from datetime import datetime
+
+import h5py
+import json
 import pickle
 import re
 import sys
 import yaml
 from copy import copy, deepcopy
+from datetime import datetime
 from IPython import get_ipython
-from numpy import array, c_, float64, full, int64, integer, ndarray, prod
+from numpy import array, c_, float64, full, int64, integer
 from numpy import load as np_load
-from numpy import s_, savetxt, savez, zeros
+from numpy import ndarray, prod, s_, savetxt, savez, zeros
 from numpy.random import randint
 from os import listdir, mkdir, symlink
 from os.path import basename, exists, join
+from pathlib import Path
 from pyfiglet import Figlet, print_figlet
 from warnings import warn
-import json
-from pathlib import Path
-import h5py
 
 if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
     # If you are using Jupyter Notebook
@@ -49,97 +50,89 @@ DARK_COLORS = ["24;69;49", "0;129;131", "83;80;84", "110;0;95"]
 
 class PortableStateSaver:
     """Portable saver for Species and Parameters classes"""
-    
+
     def save_species_list(self, species_list: list, filepath: str):
         """Save species list in portable JSON format"""
-        
+
         species_data = {
-            'format_version': '1.0',
-            'creation_timestamp': datetime.now().isoformat(),
-            'species_count': len(species_list),
-            'species': []
+            "format_version": "1.0",
+            "creation_timestamp": datetime.now().isoformat(),
+            "species_count": len(species_list),
+            "species": [],
         }
-        
+
         for i, species in enumerate(species_list):
             species_dict = self._serialize_species(species, i)
-            species_data['species'].append(species_dict)
-        
+            species_data["species"].append(species_dict)
+
         # Save as JSON with pretty formatting
-        with open(filepath, 'w') as f:
+        with open(filepath, "w") as f:
             json.dump(species_data, f, indent=2, default=self._json_serializer)
-        
+
         return filepath
-    
+
     def save_parameters(self, parameters_obj, filepath: str):
         """Save Parameters object in portable JSON format"""
-        
+
         params_data = {
-            'format_version': '1.0',
-            'creation_timestamp': datetime.now().isoformat(),
-            'class_name': 'Parameters',
-            'scalars': {},
-            'arrays': {},
-            'units_dict': {},
-            'metadata': {
-                'num_species': getattr(parameters_obj, 'num_species', 0),
-                'dimensions': getattr(parameters_obj, 'dimensions', 3),
-                'units': getattr(parameters_obj, 'units', 'mks')
-            }
+            "format_version": "1.0",
+            "creation_timestamp": datetime.now().isoformat(),
+            "class_name": "Parameters",
+            "scalars": {},
+            "arrays": {},
+            "units_dict": {},
+            "metadata": {
+                "num_species": getattr(parameters_obj, "num_species", 0),
+                "dimensions": getattr(parameters_obj, "dimensions", 3),
+                "units": getattr(parameters_obj, "units", "mks"),
+            },
         }
-        
+
         # Separate different types of attributes
         for key, value in parameters_obj.__dict__.items():
             try:
                 if isinstance(value, ndarray):
                     # Convert arrays to lists for JSON compatibility
-                    params_data['arrays'][key] = {
-                        'data': value.tolist(),
-                        'shape': list(value.shape),
-                        'dtype': str(value.dtype)
+                    params_data["arrays"][key] = {
+                        "data": value.tolist(),
+                        "shape": list(value.shape),
+                        "dtype": str(value.dtype),
                     }
                 elif isinstance(value, dict):
-                    if key == 'units_dict':
-                        params_data['units_dict'] = value
+                    if key == "units_dict":
+                        params_data["units_dict"] = value
                     else:
-                        params_data['scalars'][key] = value
+                        params_data["scalars"][key] = value
                 elif isinstance(value, (int, float, str, bool, type(None))):
-                    params_data['scalars'][key] = value
+                    params_data["scalars"][key] = value
                 elif isinstance(value, (list, tuple)):
-                    params_data['scalars'][key] = list(value)
+                    params_data["scalars"][key] = list(value)
                 # Skip complex objects
             except (TypeError, ValueError):
                 # Log what couldn't be serialized
                 print(f"Skipping non-serializable attribute: {key}")
-        
+
         # Save as JSON
-        with open(filepath, 'w') as f:
+        with open(filepath, "w") as f:
             json.dump(params_data, f, indent=2, default=self._json_serializer)
-        
+
         return filepath
-    
+
     def _serialize_species(self, species, index: int) -> dict:
         """Convert single Species object to dictionary"""
-        species_dict = {
-            'index': index,
-            'class_name': 'Species',
-            'name': getattr(species, 'name', f'species_{index}')
-        }
-        
+        species_dict = {"index": index, "class_name": "Species", "name": getattr(species, "name", f"species_{index}")}
+
         # Add all species attributes
         for key, value in species.__dict__.items():
             if isinstance(value, ndarray):
-                species_dict[key] = {
-                    'data': value.tolist(),
-                    'shape': list(value.shape),
-                    'dtype': str(value.dtype)
-                }
+                species_dict[key] = {"data": value.tolist(), "shape": list(value.shape), "dtype": str(value.dtype)}
             elif isinstance(value, (int, float, str, bool, type(None))):
                 species_dict[key] = value
             elif isinstance(value, (list, tuple)):
                 species_dict[key] = list(value)
-        
+
         return species_dict
-    
+
     def _json_serializer(self, obj):
         """Custom JSON serializer for numpy types"""
         if isinstance(obj, integer):
@@ -152,156 +145,157 @@ class PortableStateSaver:
 
     def load_species_list(self, filepath: str) -> list:
         """Load species list from JSON file
-        
+
         Parameters
         ----------
         filepath : str
             Path to the JSON file containing saved species.
-        
+
         Returns
         -------
         list
             List of restored Species objects.
-        
+
         """
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             data = json.load(f)
-        
+
         species_list = []
-        for species_data in data['species']:
+        for species_data in data["species"]:
             # Create new Species object
             from ..plasma import Species  # Adjust import path
+
             species = Species()
-            
+
             # Restore attributes
             for key, value in species_data.items():
-                if key in ['index', 'class_name']:
+                if key in ["index", "class_name"]:
                     continue
-                elif isinstance(value, dict) and 'data' in value:
+                elif isinstance(value, dict) and "data" in value:
                     # Restore numpy array
-                    arr = array(value['data'], dtype=value['dtype'])
+                    arr = array(value["data"], dtype=value["dtype"])
                     setattr(species, key, arr)
                 else:
                     setattr(species, key, value)
-            
+
             species_list.append(species)
-        
+
         return species_list
-    
+
     def load_parameters(self, filepath: str, target_params_obj):
         """Load parameters from JSON file into existing Parameters object
-        
+
         Parameters
         ----------
         filepath : str
             Path to the JSON file containing saved parameters.
-        
+
         target_params_obj : Parameters
             Existing Parameters object to populate.
         """
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             data = json.load(f)
-        
+
         # Restore scalar attributes
-        for key, value in data['scalars'].items():
+        for key, value in data["scalars"].items():
             setattr(target_params_obj, key, value)
-        
+
         # Restore array attributes
-        for key, value in data['arrays'].items():
-            arr = array(value['data'], dtype=value['dtype'])
+        for key, value in data["arrays"].items():
+            arr = array(value["data"], dtype=value["dtype"])
             setattr(target_params_obj, key, arr)
-        
+
         # Restore units_dict
-        if 'units_dict' in data:
-            target_params_obj.units_dict = data['units_dict']
+        if "units_dict" in data:
+            target_params_obj.units_dict = data["units_dict"]
 
     def save_observable(self, observable_obj, filepath: str):
         """Save Observable object using hybrid approach: JSON for metadata + HDF5 for DataFrames"""
-        
+
         observable_data = {
-            'format_version': '1.0',
-            'creation_timestamp': datetime.now().isoformat(),
-            'class_name': observable_obj.__class__.__name__,
-            'type': 'observable',
-            'observable_name': getattr(observable_obj, '__name__', 'unknown'),
-            'observable_long_name': getattr(observable_obj, '__long_name__', 'unknown'),
-            
+            "format_version": "1.0",
+            "creation_timestamp": datetime.now().isoformat(),
+            "class_name": observable_obj.__class__.__name__,
+            "type": "observable",
+            "observable_name": getattr(observable_obj, "__name__", "unknown"),
+            "observable_long_name": getattr(observable_obj, "__long_name__", "unknown"),
             # Configuration and metadata
-            'configuration': {},
-            'arrays': {},
-            'scalars': {},
-            
+            "configuration": {},
+            "arrays": {},
+            "scalars": {},
             # DataFrame information (stored separately in HDF5)
-            'dataframes': {
-                'has_dataframe': hasattr(observable_obj, 'dataframe') and observable_obj.dataframe is not None,
-                'has_dataframe_slices': hasattr(observable_obj, 'dataframe_slices') and observable_obj.dataframe_slices is not None,
-                'has_dataframe_acf': hasattr(observable_obj, 'dataframe_acf') and observable_obj.dataframe_acf is not None,
-                'has_dataframe_acf_slices': hasattr(observable_obj, 'dataframe_acf_slices') and observable_obj.dataframe_acf_slices is not None,
+            "dataframes": {
+                "has_dataframe": hasattr(observable_obj, "dataframe") and observable_obj.dataframe is not None,
+                "has_dataframe_slices": hasattr(observable_obj, "dataframe_slices")
+                and observable_obj.dataframe_slices is not None,
+                "has_dataframe_acf": hasattr(observable_obj, "dataframe_acf")
+                and observable_obj.dataframe_acf is not None,
+                "has_dataframe_acf_slices": hasattr(observable_obj, "dataframe_acf_slices")
+                and observable_obj.dataframe_acf_slices is not None,
             },
-            
             # Reconstruction info
-            'reconstruction_info': {
-                'requires_setup': True,
-                'dataframes_stored_separately': True,
-                'use_existing_hdf_methods': True,
-                'description': 'Observable state with DataFrames stored in HDF5 format'
-            }
+            "reconstruction_info": {
+                "requires_setup": True,
+                "dataframes_stored_separately": True,
+                "use_existing_hdf_methods": True,
+                "description": "Observable state with DataFrames stored in HDF5 format",
+            },
         }
-        
+
         # Separate different types of attributes (excluding DataFrames)
-        dataframe_keys = ['dataframe', 'dataframe_slices', 'dataframe_acf', 'dataframe_acf_slices']
-        
+        dataframe_keys = ["dataframe", "dataframe_slices", "dataframe_acf", "dataframe_acf_slices"]
+
         for key, value in observable_obj.__dict__.items():
             if key in dataframe_keys:
                 continue  # Skip DataFrames - they're handled by existing HDF5 methods
-            
+
             try:
                 if isinstance(value, ndarray):
-                    observable_data['arrays'][key] = {
-                        'data': value.tolist(),
-                        'shape': list(value.shape),
-                        'dtype': str(value.dtype)
+                    observable_data["arrays"][key] = {
+                        "data": value.tolist(),
+                        "shape": list(value.shape),
+                        "dtype": str(value.dtype),
                     }
                 elif isinstance(value, (int, float, str, bool, type(None))):
-                    observable_data['scalars'][key] = value
+                    observable_data["scalars"][key] = value
                 elif isinstance(value, (list, tuple)):
                     # Only save if all elements are serializable
                     if all(isinstance(x, (int, float, str, bool, type(None))) for x in value):
-                        observable_data['scalars'][key] = list(value)
+                        observable_data["scalars"][key] = list(value)
                 elif isinstance(value, dict):
                     # Try to save simple dictionaries
                     try:
                         json.dumps(value, default=str)
-                        observable_data['scalars'][key] = value
+                        observable_data["scalars"][key] = value
                     except (TypeError, ValueError):
                         pass  # Skip complex dictionaries
             except (TypeError, ValueError):
                 # Skip non-serializable attributes
                 pass
-        
+
         # Save as JSON
-        with open(filepath, 'w') as f:
+        with open(filepath, "w") as f:
             json.dump(observable_data, f, indent=2, default=self._json_serializer)
-        
+
         return filepath
 
     def load_observable_config(self, filepath: str) -> dict:
         """Load observable configuration"""
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             return json.load(f)
 
     def restore_observable_from_config(self, config: dict, target_observable_obj):
         """Restore observable attributes from config (DataFrames loaded separately)"""
-        
+
         # Restore scalar attributes
-        for key, value in config['scalars'].items():
+        for key, value in config["scalars"].items():
             setattr(target_observable_obj, key, value)
-        
+
         # Restore array attributes
-        for key, arr_data in config['arrays'].items():
-            array = array(arr_data['data'], dtype=arr_data['dtype'])
+        for key, arr_data in config["arrays"].items():
+            array = array(arr_data["data"], dtype=arr_data["dtype"])
             setattr(target_observable_obj, key, array)
-        
+
         # Note: DataFrames are loaded separately via existing HDF5 methods
         return target_observable_obj
 
@@ -451,16 +445,21 @@ class InputOutput:
         self.h5md_filepath = None
         self.h5md_file = None
 
-        self.observables_group = None # The observables group contains all the arrays that are attributes of Particles (ptcls).
+        self.observables_group = (
+            None  # The observables group contains all the arrays that are attributes of Particles (ptcls).
+        )
         self.observables_arrays_list = ["rdf_hist"]
 
-        self.particles_group = None # The particles group contains all the arrays that are attributes of Particles (ptcls).
-        self.particles_arrays_list = None # example from params ["pos", "vel", "acc"] # The data to save in the particles group.
-        
-        # List of thermodynamics quantities to save for each species.
-        # Example from params ["total_energy", "kinetic_energy", "potential_energy", "temperature"] # "pressure", "enthalpy" 
-        self.thermodynamics_list = ["total_energy", "kinetic_energy", "potential_energy", "temperature"] 
+        self.particles_group = (
+            None  # The particles group contains all the arrays that are attributes of Particles (ptcls).
+        )
+        self.particles_arrays_list = (
+            None  # example from params ["pos", "vel", "acc"] # The data to save in the particles group.
+        )
 
+        # List of thermodynamics quantities to save for each species.
+        # Example from params ["total_energy", "kinetic_energy", "potential_energy", "temperature"] # "pressure", "enthalpy"
+        self.thermodynamics_list = ["total_energy", "kinetic_energy", "potential_energy", "temperature"]
 
     def __repr__(self):
         sortedDict = dict(sorted(self.__dict__.items(), key=lambda x: x[0].lower()))
@@ -522,15 +521,15 @@ class InputOutput:
         self.production_steps = params.production_steps
 
         self.particles_arrays_list = copy(params.particles_arrays_list)
-        
+
         for array_name in params.observables_arrays_list:
             if array_name not in self.observables_arrays_list:
                 self.observables_arrays_list.append(array_name)
-        
+
         for obs in params.thermodynamics_list:
             if obs not in self.thermodynamics_list:
                 self.thermodynamics_list.append(obs)
-        
+
     def create_file_paths(self):
         """Create all directories', subdirectories', and files' paths.
 
@@ -574,9 +573,8 @@ class InputOutput:
         # self.dump_observables(phase, ptcls, it)
         # self.dump_thermodynamics(phase, ptcls, it)
         raise DeprecationWarning("This method is deprecated. Use save_timestep_data instead.")
-    
-    def save_timestep_data(self, step, dump_step, time, ptcls):
 
+    def save_timestep_data(self, step, dump_step, time, ptcls):
         self.save_particles_data(step, dump_step, time, ptcls)
         self.save_thermodynamics_data(step, dump_step, time, ptcls)
         self.save_observables_data(step, dump_step, time, ptcls)
@@ -602,7 +600,7 @@ class InputOutput:
         # kwargs["time"] = tme
         # savez(f"{self.particles_filepaths[phase]}{it}", **kwargs)
         raise DeprecationWarning("This method is deprecated. Use save_observables_data instead.")
-    
+
     def dump_thermodynamics(self, phase, ptcls, it):
         """
         Save particles' data to binary file for future restart.
@@ -690,7 +688,7 @@ class InputOutput:
             vscale = 1.0 / (params.a_ws * params.total_plasma_frequency)
             ascale = 1.0 / (params.a_ws * params.total_plasma_frequency**2)
 
-        with  h5py.File(self.h5md_filenames_tree[self.process][phase]) as f:
+        with h5py.File(self.h5md_filenames_tree[self.process][phase]) as f:
             data = f["particles"]["pos"]
             dumps = data.shape[0]
 
@@ -711,9 +709,9 @@ class InputOutput:
 
         if ptcls_list is None:
             ptcls_list = list(range(params.total_num_ptcls))
-        
+
         np_ptcls_list = s_[ptcls_list]
-        
+
         with open(self.xyz_filename, "w+") as f_xyz:
             with h5py.File(self.h5md_filenames_tree[self.process][phase]) as f:
                 for i in trange(dump_start, dump_end, dump_skip, disable=not self.verbose):
@@ -721,15 +719,15 @@ class InputOutput:
                     timestep_data = zeros((len(ptcls_list), 10), dtype=object)
 
                     timestep_data[:, 0] = names[np_ptcls_list]
-                    timestep_data[:, 1] = data['pos'][i,np_ptcls_list,0] * pscale
-                    timestep_data[:, 2] = data['pos'][i,np_ptcls_list,1] * pscale
-                    timestep_data[:, 3] = data['pos'][i,np_ptcls_list,2] * pscale
-                    timestep_data[:, 4] = data['vel'][i,np_ptcls_list,0] * vscale
-                    timestep_data[:, 5] = data['vel'][i,np_ptcls_list,1] * vscale
-                    timestep_data[:, 6] = data['vel'][i,np_ptcls_list,2] * vscale
-                    timestep_data[:, 7] = data['acc'][i,np_ptcls_list,0] * ascale
-                    timestep_data[:, 8] = data['acc'][i,np_ptcls_list,1] * ascale
-                    timestep_data[:, 9] = data['acc'][i,np_ptcls_list,2] * ascale
+                    timestep_data[:, 1] = data["pos"][i, np_ptcls_list, 0] * pscale
+                    timestep_data[:, 2] = data["pos"][i, np_ptcls_list, 1] * pscale
+                    timestep_data[:, 3] = data["pos"][i, np_ptcls_list, 2] * pscale
+                    timestep_data[:, 4] = data["vel"][i, np_ptcls_list, 0] * vscale
+                    timestep_data[:, 5] = data["vel"][i, np_ptcls_list, 1] * vscale
+                    timestep_data[:, 6] = data["vel"][i, np_ptcls_list, 2] * vscale
+                    timestep_data[:, 7] = data["acc"][i, np_ptcls_list, 0] * ascale
+                    timestep_data[:, 8] = data["acc"][i, np_ptcls_list, 1] * ascale
+                    timestep_data[:, 9] = data["acc"][i, np_ptcls_list, 2] * ascale
 
                     f_xyz.write(f"{len(ptcls_list)}\n")
                     f_xyz.write("name x y z vx vy vz ax ay az\n")
@@ -1116,28 +1114,46 @@ class InputOutput:
             # Magnetization phase filenames
             self.mag_energy_filename = self.filenames_tree["thermodynamics"]["magnetization"]["path"]
             self.mag_ptcls_filename = self.filenames_tree["particles"]["magnetization"]["path"]
-       
+
         self.h5md_filenames_tree = {
             "preprocessing": {
-                "equilibration" : join(self.directory_tree["preprocessing"]["equilibration"]['dumps']["path"], f"{self.job_id}_data.h5md"),
-                "magnetization" : join(self.directory_tree["preprocessing"]["magnetization"]['dumps']["path"], f"{self.job_id}_data.h5md"),
-                "production" : join(self.directory_tree["preprocessing"]["production"]['dumps']["path"], f"{self.job_id}_data.h5md")
-                },
+                "equilibration": join(
+                    self.directory_tree["preprocessing"]["equilibration"]["dumps"]["path"], f"{self.job_id}_data.h5md"
+                ),
+                "magnetization": join(
+                    self.directory_tree["preprocessing"]["magnetization"]["dumps"]["path"], f"{self.job_id}_data.h5md"
+                ),
+                "production": join(
+                    self.directory_tree["preprocessing"]["production"]["dumps"]["path"], f"{self.job_id}_data.h5md"
+                ),
+            },
             "simulation": {
-                "equilibration" : join(self.directory_tree["simulation"]["equilibration"]['dumps']["path"], f"{self.job_id}_data.h5md"),
-                "magnetization" : join(self.directory_tree["simulation"]["magnetization"]['dumps']["path"], f"{self.job_id}_data.h5md"),
-                "production" : join(self.directory_tree["simulation"]["production"]['dumps']["path"], f"{self.job_id}_data.h5md")
+                "equilibration": join(
+                    self.directory_tree["simulation"]["equilibration"]["dumps"]["path"], f"{self.job_id}_data.h5md"
+                ),
+                "magnetization": join(
+                    self.directory_tree["simulation"]["magnetization"]["dumps"]["path"], f"{self.job_id}_data.h5md"
+                ),
+                "production": join(
+                    self.directory_tree["simulation"]["production"]["dumps"]["path"], f"{self.job_id}_data.h5md"
+                ),
             },
             "postprocessing": {
-                "equilibration" : join(self.directory_tree["simulation"]["equilibration"]['dumps']["path"], f"{self.job_id}_data.h5md"),
-                "magnetization" : join(self.directory_tree["simulation"]["magnetization"]['dumps']["path"], f"{self.job_id}_data.h5md"),
-                "production" : join(self.directory_tree["simulation"]["production"]['dumps']["path"], f"{self.job_id}_data.h5md")
-            }
-            }
-        
+                "equilibration": join(
+                    self.directory_tree["simulation"]["equilibration"]["dumps"]["path"], f"{self.job_id}_data.h5md"
+                ),
+                "magnetization": join(
+                    self.directory_tree["simulation"]["magnetization"]["dumps"]["path"], f"{self.job_id}_data.h5md"
+                ),
+                "production": join(
+                    self.directory_tree["simulation"]["production"]["dumps"]["path"], f"{self.job_id}_data.h5md"
+                ),
+            },
+        }
+
         self.process_h5md_filepath_dict = self.h5md_filenames_tree[self.process]
         self.process_directory_tree = self.directory_tree[self.process]
-    
+
     def postprocess_info(self, simulation, observable=None):
         pass
         """
@@ -1453,7 +1469,7 @@ class InputOutput:
 
     def read_simulation_state(self, process, dir_path: str = None):
         """Load portable simulation state
-        
+
         Parameters
         ----------
         process : :class:`sarkas.processes.Process`
@@ -1516,7 +1532,7 @@ class InputOutput:
             data = pickle.load(pickle_file)
             _copy = deepcopy(data)
         return _copy
-    
+
     def read_single_class(self, class_to_read: str, dir_path: str = None):
         """
         Read the desired class data from portable format.
@@ -1542,7 +1558,7 @@ class InputOutput:
             directory = self.directory_tree[self.process]["path"]
 
         saver = PortableStateSaver()
-        
+
         if class_to_read == "parameters":
             # Load Parameters class normally
             filename = join(directory, "parameters.json")
@@ -1553,13 +1569,14 @@ class InputOutput:
                     data = pickle.load(pickle_file)
                     _copy = deepcopy(data)
                 return _copy
-            
+
             # Create new Parameters object and load data into it
             from ..core import Parameters  # Adjust import path
+
             _copy = Parameters()
             saver.load_parameters(filename, _copy)
             return _copy
-        
+
         elif class_to_read == "species":
             # Load species list
             filename = join(directory, "species.json")
@@ -1570,14 +1587,13 @@ class InputOutput:
                     data = pickle.load(pickle_file)
                     _copy = deepcopy(data)
                 return _copy
-            
+
             _copy = saver.load_species_list(filename)
             return _copy
-                
+
         else:
-            raise ValueError(f"Unknown class_to_read: '{class_to_read}'. "
-                            f"Supported values: 'parameters', 'species'")
-                            
+            raise ValueError(f"Unknown class_to_read: '{class_to_read}'. " f"Supported values: 'parameters', 'species'")
+
     def save_pickle(self, simulation):
         """
         Save all simulations parameters in pickle files.
@@ -1592,7 +1608,7 @@ class InputOutput:
             "Deprecated feature. It will be removed in a future release.\nUse :meth:`save_simulation_state`.",
             category=DeprecationWarning,
         )
-        
+
         file_list = ["parameters", "integrator", "potential", "species"]
 
         # Redirect to the correct process folder
@@ -1616,41 +1632,37 @@ class InputOutput:
 
     def save_simulation_state(self, simulation):
         """Save simulation state in portable format
-        
+
         Parameters
         ----------
         simulation : :class:`sarkas.processes.Process`
             Process class containing MD run info to save.
-        
+
         """
         saver = PortableStateSaver()
         base_dir = self.directory_tree[self.process]["path"]
-    
+
         # Save species list
-        if hasattr(simulation, 'species') and simulation.species:
+        if hasattr(simulation, "species") and simulation.species:
             species_file = join(base_dir, "species.json")
             saver.save_species_list(simulation.species, species_file)
             # print(f"Species data saved to: {species_file}")
-        
+
         # Save parameters
-        if hasattr(simulation, 'parameters'):
+        if hasattr(simulation, "parameters"):
             params_file = join(base_dir, "parameters.json")
             saver.save_parameters(simulation.parameters, params_file)
             # print(f"Parameters saved to: {params_file}")
-        
+
         # Create a simple manifest file
         manifest = {
-            'creation_time': datetime.now().isoformat(),
-            'saved_components': ['species', 'parameters'],
-            'files': {
-                'species.json': 'Species list in JSON format',
-                'parameters.json': 'Parameters in JSON format'
-            }
+            "creation_time": datetime.now().isoformat(),
+            "saved_components": ["species", "parameters"],
+            "files": {"species.json": "Species list in JSON format", "parameters.json": "Parameters in JSON format"},
         }
-        
-        with open(join(base_dir, "manifest.json"), 'w') as f:
-            json.dump(manifest, f, indent=2)
 
+        with open(join(base_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f, indent=2)
 
     @staticmethod
     def screen_figlet():
@@ -1689,11 +1701,11 @@ class InputOutput:
 
         """
         self.h5md_filepath = self.h5md_filenames_tree[self.process][phase]
-        self.h5md_file = h5py.File(self.h5md_filepath, 'a')  # Open file in append mode to allow reading and writing
+        self.h5md_file = h5py.File(self.h5md_filepath, "a")  # Open file in append mode to allow reading and writing
 
-        if 'h5md' not in self.h5md_file:
-            h5md = self.h5md_file.create_group('h5md')
-            h5md.attrs['version'] = array([1, 0])
+        if "h5md" not in self.h5md_file:
+            h5md = self.h5md_file.create_group("h5md")
+            h5md.attrs["version"] = array([1, 0])
 
         self.init_particles_group(params, ptcls, phase, particles_data=self.particles_arrays_list)
         self.init_box_group(params)
@@ -1703,8 +1715,8 @@ class InputOutput:
         # self.parameters = self.h5md_file.require_group('parameters')
 
         self.h5md_file.close()
-    
-    def open_h5md_file(self, phase, mode = 'a'):
+
+    def open_h5md_file(self, phase, mode="a"):
         """
         Open the h5md file in mode.
 
@@ -1717,12 +1729,12 @@ class InputOutput:
             Mode in which to open the h5md file. Default 'a'.
 
         """
-        
+
         self.h5md_filepath = self.h5md_filenames_tree[self.process][phase]
         self.h5md_file = h5py.File(self.h5md_filepath, mode)
-        self.particles_group = self.h5md_file['particles']
-        self.observables_group = self.h5md_file['observables']
-        
+        self.particles_group = self.h5md_file["particles"]
+        self.observables_group = self.h5md_file["observables"]
+
     def close_h5md_file(self):
         """
         Close the h5md file.
@@ -1747,7 +1759,7 @@ class InputOutput:
         mode : str or None
             The mode in which the h5md file is opened, or None if it is not open.
         """
-        
+
         self.h5md_filepath = self.h5md_filenames_tree[self.process][phase]
         exist = exists(self.h5md_filepath)
 
@@ -1756,25 +1768,25 @@ class InputOutput:
             opened = bool(self.h5md_file.id.valid)
         else:
             opened = False
-        
+
         if opened:
             mode = self.h5md_file.mode
         else:
             mode = None
         return exist, opened, mode
-    
-    def init_particles_group(self, params, ptcls, phase= "production", particles_data=None):
+
+    def init_particles_group(self, params, ptcls, phase="production", particles_data=None):
         """
         Initialize or update datasets for time-dependent particle data: positions, velocities, and accelerations.
         Resize datasets if necessary to match the extended simulation steps.
-        
+
         Parameters:
             ptcls (object): An object containing particle properties like species, masses, and names.
             params (object): An object containing simulation parameters including production_steps and prod_dump_step.
         """
 
         # Ensure that the particle group exists and retrieve it
-        self.particles_group = self.h5md_file.require_group('particles')
+        self.particles_group = self.h5md_file.require_group("particles")
 
         # Calculate the required size of the datasets based on the new simulation parameters
         if phase == "equilibration":
@@ -1784,13 +1796,12 @@ class InputOutput:
         else:
             required_size = 1 + params.production_steps // params.prod_dump_step
 
-        
         # Initialize or resize time-dependent datasets
         datasets = {
-            'time': ('float64', (required_size,)),
-            'step': ('int64', (required_size,)),
+            "time": ("float64", (required_size,)),
+            "step": ("int64", (required_size,)),
         }
-        
+
         if particles_data is None:
             particles_data = self.particles_arrays_list
         else:
@@ -1798,57 +1809,55 @@ class InputOutput:
             particles_data = self.particles_arrays_list
 
         for data in particles_data:
-            datasets[data] = ('float64', (required_size, params.total_num_ptcls, 3))
+            datasets[data] = ("float64", (required_size, params.total_num_ptcls, 3))
 
         for key, (dtype, shape) in datasets.items():
             if key in self.particles_group:
                 dataset = self.particles_group[key]
                 if dataset.shape != shape:
-                    dataset.resize( shape)
+                    dataset.resize(shape)
             else:
                 # Create chunked and resizable datasets
                 max_shape = (None,) + shape[1:]  # Allow the first dimension to be unlimited
                 chunks = (1,) + shape[1:]  # Define chunk size, can be adjusted
-                self.particles_group.create_dataset(
-                    key, shape, maxshape=max_shape, chunks=chunks, dtype=dtype
-                )
+                self.particles_group.create_dataset(key, shape, maxshape=max_shape, chunks=chunks, dtype=dtype)
                 # self.particles_group.create_dataset(key, (required_size,) + shape, dtype=dtype)
-        
-        self.particles_group['time'].attrs['units'] = params.units_dict['time']
+
+        self.particles_group["time"].attrs["units"] = params.units_dict["time"]
         # Units
-        if 'pos' in self.particles_group:
-            self.particles_group['pos'].attrs['units'] = params.units_dict['length']
-        if 'vel' in self.particles_group:
-            self.particles_group['vel'].attrs['units'] = params.units_dict['velocity']
-        if 'acc' in self.particles_group:
-            self.particles_group['acc'].attrs['units'] = params.units_dict['acceleration']
+        if "pos" in self.particles_group:
+            self.particles_group["pos"].attrs["units"] = params.units_dict["length"]
+        if "vel" in self.particles_group:
+            self.particles_group["vel"].attrs["units"] = params.units_dict["velocity"]
+        if "acc" in self.particles_group:
+            self.particles_group["acc"].attrs["units"] = params.units_dict["acceleration"]
 
         # Initialize static properties only if they don't exist to avoid overwriting existing data
         static_properties = {
-            'species': (ptcls.id, 'i'),
-            'masses': (ptcls.masses, 'float64'),
-            'charges': (ptcls.charges, 'float64'),
-            'names': (ptcls.names, h5py.special_dtype(vlen=str))
+            "species": (ptcls.id, "i"),
+            "masses": (ptcls.masses, "float64"),
+            "charges": (ptcls.charges, "float64"),
+            "names": (ptcls.names, h5py.special_dtype(vlen=str)),
         }
-        
+
         for prop, (data, dtype) in static_properties.items():
             if prop not in self.particles_group:
                 self.particles_group.create_dataset(prop, data=data, dtype=dtype)
 
-        self.particles_group['masses'].attrs['units'] = params.units_dict['mass']
-        self.particles_group['charges'].attrs['units'] = params.units_dict['charge']
-    
+        self.particles_group["masses"].attrs["units"] = params.units_dict["mass"]
+        self.particles_group["charges"].attrs["units"] = params.units_dict["charge"]
+
     def init_box_group(self, params):
         """
         Initialize the 'box' subgroup to specify the simulation box dimensions and boundary conditions.
         """
-        
-        self.box = self.particles_group.require_group('box')
+
+        self.box = self.particles_group.require_group("box")
         self.box.attrs["dimensions"] = params.dimensions
-        self.box.attrs['boundary'] = params.boundary_conditions  # Boundary conditions
+        self.box.attrs["boundary"] = params.boundary_conditions  # Boundary conditions
 
         D = 3  # Dimensionality of the simulation space, typically 3 for most MD simulations
-    
+
         # Constructing the DxD edges matrix from params
         edges_matrix = zeros((D, D))
         edges_matrix[:, 0] = params.ep1  # Column vector for x-dimension
@@ -1856,18 +1865,18 @@ class InputOutput:
         edges_matrix[:, 2] = params.ep3  # Column vector for z-dimension
 
         # Example dimensions for a cubic box with periodic boundary conditions in all three dimensions
-        if 'initial_edges' not in self.box:
-            self.box.create_dataset('initial_edges', data=edges_matrix)  # Box dimensions
+        if "initial_edges" not in self.box:
+            self.box.create_dataset("initial_edges", data=edges_matrix)  # Box dimensions
 
             edges_matrix[:, 0] = params.e1  # Column vector for x-dimension
             edges_matrix[:, 1] = params.e2  # Column vector for y-dimension
             edges_matrix[:, 2] = params.e3  # Column vector for z-dimension
 
-        if 'edges' not in self.box:
-            self.box.create_dataset('edges', data=edges_matrix)  # Box dimensions
+        if "edges" not in self.box:
+            self.box.create_dataset("edges", data=edges_matrix)  # Box dimensions
             self.box.attrs["units"] = params.units_dict["length"]
 
-    def init_observables_group(self, params, ptcls, phase = 'production', observables = None):
+    def init_observables_group(self, params, ptcls, phase="production", observables=None):
         """
         Initialize the observables group and datasets for tracking time-dependent particle properties.
         This function sets up the 'observables' group in the H5MD file, which contains datasets for various observables
@@ -1882,12 +1891,12 @@ class InputOutput:
         ptcls : :class:`sarkas.plasma.Particles`
             Particles object containing attributes like species_heat_flux, rdf_hist, etc.
         phase : str, optional
-            The phase of the simulation for which observables are being initialized. 
+            The phase of the simulation for which observables are being initialized.
             Choices are 'equilibration', 'magnetization', or 'production'. Default is 'production'.
         observables : list, optional
             A list of observable names to be initialized. If None, defaults to self.observables_arrays_list.
             This list can include attributes like 'rdf_hist', 'species_heat_flux', etc.
-        
+
         Notes
         -----
         - The h5md file must be opened before
@@ -1895,15 +1904,14 @@ class InputOutput:
         - The datasets within the observables group are created with chunking and resizable capabilities to
           accommodate the number of data points based on the simulation parameters.
         """
-        # The observables group contains all the arrays that are attributes of Particles (ptcls). 
+        # The observables group contains all the arrays that are attributes of Particles (ptcls).
         # For example: if you want to calculate the heat flux, you will need to store the species_heat_flux array at each time step.
         # This function will initialize the "species_heat_flux" group and dataset to be used in the postprocessing phase.
         # The list of arrays to be saved is specified in self.observables_arrays_list. This comes from the option observables_arrays_list in the Parameters class
         # The default of the list is 'rdf_hist' which is the histogram for the radial distribution function. A custom list can be provided in the observables parameter
 
-
         # Ensure that the observables group exists and retrieve it
-        self.observables_group = self.h5md_file.require_group('observables')
+        self.observables_group = self.h5md_file.require_group("observables")
 
         # Calculate the required size of the datasets based on the new simulation parameters
         if phase == "equilibration":
@@ -1912,25 +1920,27 @@ class InputOutput:
             num_data_points = params.magnetization_steps // params.mag_dump_step + 1
         else:
             num_data_points = params.production_steps // params.prod_dump_step + 1
-        
+
         if observables is None:
             observables = self.observables_arrays_list
         else:
             # Check whether observables is a list
             if not isinstance(observables, list):
-                raise TypeError("Observables should be a list of strings. Please provide a list of observables to track in self.observables_arrays_list")
+                raise TypeError(
+                    "Observables should be a list of strings. Please provide a list of observables to track in self.observables_arrays_list"
+                )
             for obs in observables:
                 if obs not in self.observables_arrays_list:
                     self.observables_arrays_list.append(obs)
-        
+
         observables = self.observables_arrays_list
-        observables_temp = [ obs for obs in observables] # Make a copy of the list to avoid modifying the original list
-        # Handle the case where observables contain virial             
+        observables_temp = [obs for obs in observables]  # Make a copy of the list to avoid modifying the original list
+        # Handle the case where observables contain virial
         if "virial" in observables_temp or "species_virial" in observables_temp:
             for obs in observables_temp:
                 if "virial" in obs:
                     # If the observable is a virial, we need to add the six components of the virial tensor
-                    for coord in ['xx', 'xy', 'xz', 'yy', 'yz', 'zz']:
+                    for coord in ["xx", "xy", "xz", "yy", "yz", "zz"]:
                         obs_name = f"{obs}_{coord}"
                         if obs_name not in self.observables_arrays_list:
                             self.observables_arrays_list.append(obs_name)
@@ -1939,38 +1949,44 @@ class InputOutput:
                     if obs not in self.observables_arrays_list:
                         self.observables_arrays_list.append(obs)
 
-        assert len(observables) > 0, "No observables to track. Please provide a list of observables to track in self.observables_arrays_list"
+        assert (
+            len(observables) > 0
+        ), "No observables to track. Please provide a list of observables to track in self.observables_arrays_list"
 
         for obs_name in observables:
             # Create subgroup for observables of each species if the observable is species-specific
             # e.g., species_heat_flux, species_virial, etc.
-            if 'species_' in obs_name:
+            if "species_" in obs_name:
                 for isp, sp_name in enumerate(params.species_names):
                     species_group = self.observables_group.require_group(sp_name)
-                    obs_group = species_group.require_group(obs_name.replace('species_', ''))
-                    
+                    obs_group = species_group.require_group(obs_name.replace("species_", ""))
+
                     if hasattr(ptcls, obs_name):
                         obs = ptcls.__getattribute__(obs_name)[isp]
                         required_size = (num_data_points,) + obs.shape
                     else:
                         raise AttributeError(f"Observable '{obs_name}' not found in Particles object.")
-                    
-                    if 'value' in obs_group:
+
+                    if "value" in obs_group:
                         # Check if the existing dataset needs to be resized
-                        
-                        if obs_group['value'].shape[0] != num_data_points:
-                            obs_group['value'].resize(required_size)
-                            obs_group['time'].resize((num_data_points,))
-                            obs_group['step'].resize((num_data_points,))
+
+                        if obs_group["value"].shape[0] != num_data_points:
+                            obs_group["value"].resize(required_size)
+                            obs_group["time"].resize((num_data_points,))
+                            obs_group["step"].resize((num_data_points,))
                     else:
                         # Create new datasets if not existing
                         # Create chunked and resizable datasets
                         max_shape = (None,) + required_size[1:]  # Allow the first dimension to be unlimited
                         chunks = (1,) + required_size[1:]  # Define chunk size, can be adjusted
-                        
-                        obs_group.create_dataset('value', required_size, maxshape=max_shape, chunks=chunks,dtype='float64')
-                        obs_group.create_dataset('time', (num_data_points,), maxshape=(None,), chunks=(1,),dtype='float64')
-                        obs_group.create_dataset('step', (num_data_points,), maxshape=(None,), chunks=(1,),dtype='int64')
+
+                        obs_group.create_dataset(
+                            "value", required_size, maxshape=max_shape, chunks=chunks, dtype="float64"
+                        )
+                        obs_group.create_dataset(
+                            "time", (num_data_points,), maxshape=(None,), chunks=(1,), dtype="float64"
+                        )
+                        obs_group.create_dataset("step", (num_data_points,), maxshape=(None,), chunks=(1,), dtype="int64")
             else:
                 # For global observables
                 obs_group = self.observables_group.require_group(obs_name)
@@ -1981,37 +1997,43 @@ class InputOutput:
 
                 else:
                     raise AttributeError(f"Observable '{obs_name}' not found in Particles object.")
-            
-                if 'value' in obs_group:
+
+                if "value" in obs_group:
                     # Check if the existing dataset needs to be resized
-                    
-                    if obs_group['value'].shape[0] != num_data_points:
-                        obs_group['value'].resize(required_size)
-                        obs_group['time'].resize((num_data_points,))
-                        obs_group['step'].resize((num_data_points,))
+
+                    if obs_group["value"].shape[0] != num_data_points:
+                        obs_group["value"].resize(required_size)
+                        obs_group["time"].resize((num_data_points,))
+                        obs_group["step"].resize((num_data_points,))
                 else:
                     # Create new datasets if not existing
                     # Create chunked and resizable datasets
                     max_shape = (None,) + required_size[1:]  # Allow the first dimension to be unlimited
                     chunks = (1,) + required_size[1:]  # Define chunk size, can be adjusted
-                    
-                    obs_group.create_dataset('value', required_size, maxshape=max_shape, chunks=chunks,dtype='float64')
-                    obs_group.create_dataset('time', (num_data_points,), maxshape=(None,), chunks=(1,),dtype='float64')
-                    obs_group.create_dataset('step', (num_data_points,), maxshape=(None,), chunks=(1,),dtype='int64')
-    
-    def init_thermodynamics_group(self, params, ptcls, phase = 'production', thermodynamics_to_save = None):
+
+                    obs_group.create_dataset("value", required_size, maxshape=max_shape, chunks=chunks, dtype="float64")
+                    obs_group.create_dataset("time", (num_data_points,), maxshape=(None,), chunks=(1,), dtype="float64")
+                    obs_group.create_dataset("step", (num_data_points,), maxshape=(None,), chunks=(1,), dtype="int64")
+
+    def init_thermodynamics_group(self, params, ptcls, phase="production", thermodynamics_to_save=None):
         # TODO: complete this function
         if thermodynamics_to_save is None:
             thermodynamics_to_save = self.thermodynamics_list
         else:
             # Check whether the strings in thermodynamics_to_save contain spaces and replace them with underscores
-            thermodynamics_to_save = [obs.replace(' ', '_') for obs in thermodynamics_to_save]
+            thermodynamics_to_save = [obs.replace(" ", "_") for obs in thermodynamics_to_save]
 
-            [self.thermodynamics_list.append(obs.lower()) for obs in thermodynamics_to_save if obs not in self.thermodynamics_list]
+            [
+                self.thermodynamics_list.append(obs.lower())
+                for obs in thermodynamics_to_save
+                if obs not in self.thermodynamics_list
+            ]
             thermodynamics_to_save = self.thermodynamics_list
-        
+
         # Example: thermodynamics_to_save = ['total_energy', potential_energy', 'kinetic_energy', 'temperature', 'pressure', 'enthalpy']
-        assert len(thermodynamics_to_save) > 0, "No thermodynamics to track. Please provide a list of thermodynamics to track in self.thermodynamics_list"
+        assert (
+            len(thermodynamics_to_save) > 0
+        ), "No thermodynamics to track. Please provide a list of thermodynamics to track in self.thermodynamics_list"
 
         # Calculate the required size of the datasets based on the new simulation parameters
         if phase == "equilibration":
@@ -2020,41 +2042,45 @@ class InputOutput:
             num_data_points = params.magnetization_steps // params.mag_dump_step + 1
         else:
             num_data_points = params.production_steps // params.prod_dump_step + 1
-        
-        # Thermodynamics is a subgroup of the observables group. The thermodynamics of each species is stored instead of the total. 
+
+        # Thermodynamics is a subgroup of the observables group. The thermodynamics of each species is stored instead of the total.
         # The total energy of the system will be postprocessed by Thermodynamics class from sarkas.tools.observables
         for isp, sp_name in enumerate(params.species_names):
             species_group = self.observables_group.require_group(sp_name)
-            
+
             # Check if the attributes in the species group exist already
-            if 'dimension' not in species_group.attrs:
-                species_group.attrs['dimension'] = params.dimensions
-            if 'particle_number' not in species_group.attrs:
-                species_group.attrs['particle_number'] = ptcls.species_num[isp]
-            
+            if "dimension" not in species_group.attrs:
+                species_group.attrs["dimension"] = params.dimensions
+            if "particle_number" not in species_group.attrs:
+                species_group.attrs["particle_number"] = ptcls.species_num[isp]
+
             for obs_name in thermodynamics_to_save:
                 obs_group = species_group.require_group(obs_name)
-                
-                # Check if the existing dataset needs to be resized. 
+
+                # Check if the existing dataset needs to be resized.
                 # This code is necessary not only for restart,
                 # but also for the case where the user changes the dump frequency or the number of steps
-                if 'value' in obs_group:
-                    if obs_group['value'].shape[0] != num_data_points:
-                        obs_group['value'].resize((num_data_points,))
-                        obs_group['time'].resize((num_data_points,))
-                        obs_group['step'].resize((num_data_points,))
+                if "value" in obs_group:
+                    if obs_group["value"].shape[0] != num_data_points:
+                        obs_group["value"].resize((num_data_points,))
+                        obs_group["time"].resize((num_data_points,))
+                        obs_group["step"].resize((num_data_points,))
                 else:
-                    max_shape = (None,)   # Allow the first dimension to be unlimited
+                    max_shape = (None,)  # Allow the first dimension to be unlimited
                     chunks = (1,)  # Define chunk size, can be adjusted
-                
+
                     # Create new datasets if not existing
-                    obs_group.create_dataset('value', (num_data_points,),maxshape=max_shape, chunks=chunks, dtype='float64')
-                    obs_group.create_dataset('time', (num_data_points,), maxshape=max_shape, chunks=chunks, dtype='float64')
-                    obs_group.create_dataset('step', (num_data_points,),maxshape=max_shape, chunks=chunks, dtype='int64')
-                    if 'energy' in obs_name.split('_'):
-                        obs_group.attrs['units'] = params.units_dict['energy']
+                    obs_group.create_dataset(
+                        "value", (num_data_points,), maxshape=max_shape, chunks=chunks, dtype="float64"
+                    )
+                    obs_group.create_dataset(
+                        "time", (num_data_points,), maxshape=max_shape, chunks=chunks, dtype="float64"
+                    )
+                    obs_group.create_dataset("step", (num_data_points,), maxshape=max_shape, chunks=chunks, dtype="int64")
+                    if "energy" in obs_name.split("_"):
+                        obs_group.attrs["units"] = params.units_dict["energy"]
                     else:
-                        obs_group.attrs['units'] = params.units_dict[obs_name]
+                        obs_group.attrs["units"] = params.units_dict[obs_name]
 
     def save_particles_data(self, step, dump_step, time, ptcls):
         """
@@ -2106,22 +2132,22 @@ class InputOutput:
         ptcls.calculate_species_observables()
         for obs_name in self.observables_arrays_list:
             # Handle the species specific observables
-            if 'species_' in obs_name:
+            if "species_" in obs_name:
                 for isp, sp_name in enumerate(ptcls.species_names):
                     species_group = self.observables_group[sp_name]
-                    
-                    obs_group = species_group[obs_name.replace('species_', '')]
+
+                    obs_group = species_group[obs_name.replace("species_", "")]
                     # Directly insert data at the current step index without resizing
-                    obs_group['value'][index] = ptcls.__getattribute__(obs_name)[isp]
-                    obs_group['time'][index] = time
-                    obs_group['step'][index] = step
+                    obs_group["value"][index] = ptcls.__getattribute__(obs_name)[isp]
+                    obs_group["time"][index] = time
+                    obs_group["step"][index] = step
             else:
                 obs_group = self.observables_group[obs_name]
                 # Directly insert data at the current step index without resizing
-                obs_group['value'][index] = ptcls.__getattribute__(obs_name)
-                obs_group['time'][index] = time
-                obs_group['step'][index] = step
-    
+                obs_group["value"][index] = ptcls.__getattribute__(obs_name)
+                obs_group["time"][index] = time
+                obs_group["step"][index] = step
+
     def save_thermodynamics_data(self, step, dump_step, time, ptcls):
         """
         Save thermodynamics and species data at a particular simulation step.
@@ -2142,16 +2168,16 @@ class InputOutput:
         """
         # Index represent the index in the datasets. It is the current step divided by the dump step
         index = step // dump_step
-        
-        ptcls.calculate_species_thermodynamics()            
-    
+
+        ptcls.calculate_species_thermodynamics()
+
         for isp, sp_name in enumerate(ptcls.species_names):
             species_group = self.observables_group[sp_name]
 
             for obs_name in self.thermodynamics_list:
-                species_group[obs_name]['value'][index] =  ptcls.__getattribute__(f"species_{obs_name}")[isp]
-                species_group[obs_name]['time'][index] = time
-                species_group[obs_name]['step'][index] = step
+                species_group[obs_name]["value"][index] = ptcls.__getattribute__(f"species_{obs_name}")[isp]
+                species_group[obs_name]["time"][index] = time
+                species_group[obs_name]["step"][index] = step
 
     def simulation_summary(self, simulation):
         """
@@ -2189,9 +2215,7 @@ class InputOutput:
             )
             print(f"Production dumps directory: \n{self.directory_tree[self.process]['production']['dumps']['path']}")
 
-            print(
-                f"\nEquilibration H5MD file: \n{self.h5md_filenames_tree[self.process]['equilibration']}"
-            )
+            print(f"\nEquilibration H5MD file: \n{self.h5md_filenames_tree[self.process]['equilibration']}")
             print(f"Production H5MD file: \n{self.h5md_filenames_tree[self.process]['production']}")
 
             if simulation.parameters.load_method in ["production_restart", "prod_restart"]:
@@ -2349,7 +2373,7 @@ class InputOutput:
             # redirect printing to file
             print(message, file=f_log)
 
-    def estimate_existing_file_size(self, phase = "production"):
+    def estimate_existing_file_size(self, phase="production"):
         """
         Estimate the size of the H5MD file by reading its subgroups and datasets.
 
@@ -2359,10 +2383,10 @@ class InputOutput:
             The estimated size of the H5MD file in bytes.
         """
         dtype_sizes = {
-            'float64': 8,
-            'int64': 8,
-            'float32': 4,
-            'int32': 4,
+            "float64": 8,
+            "int64": 8,
+            "float32": 4,
+            "int32": 4,
             # Add other data types if needed
         }
 
@@ -2384,13 +2408,14 @@ class InputOutput:
                     print(f"Warning: Data type '{dtype}' not recognized. Skipping dataset '{name}'.")
 
         # Open the HDF5 file and traverse it
-        with h5py.File(self.process_h5md_filepath_dict[phase], 'r') as file:
+        with h5py.File(self.process_h5md_filepath_dict[phase], "r") as file:
             file.visititems(calculate_size)
         # Add an overhead for HDF5 structure, metadata, and chunking
         overhead_factor = 1.1  # Example overhead factor, can be adjusted
         total_size = int(total_size * overhead_factor)
 
         return total_size
+
 
 def alpha_to_int(text):
     """Convert strings of numbers into integers.

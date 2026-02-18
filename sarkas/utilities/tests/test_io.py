@@ -1,4 +1,5 @@
 import pytest
+
 from sarkas.utilities.io import alpha_to_int
 
 

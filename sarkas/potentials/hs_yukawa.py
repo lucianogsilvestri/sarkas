@@ -23,6 +23,7 @@ The elements of the :attr:`sarkas.potentials.core.Potential.matrix` are:
     pot_matrix[2] = Ewald screening parameter
     pot_matrix[3] = short range cutoff
 """
+
 # TODO: Review this entire module. It was left unchecked because the potential is too steep at small r.
 
 from numba import njit

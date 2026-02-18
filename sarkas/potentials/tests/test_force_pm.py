@@ -13,11 +13,11 @@ from numpy import (
     zeros,
     zeros_like,
 )
+from pytest import fixture, mark
 from scipy.constants import epsilon_0
 
 from ..force_pm import assgnmnt_func, create_k_arrays, force_optimized_green_function
 
-from pytest import mark, fixture
 
 def test_create_k_arrays():
     N = 1000
@@ -53,7 +53,6 @@ def test_create_k_arrays():
 
 
 def test_crete_k_arrays_2D():
-
     N = 1000
     box_lengths = sqrt(pi * N) * array([1.0, 1.0, 0.0])
     box_lengths[2] = 1.0
@@ -86,6 +85,7 @@ def test_crete_k_arrays_2D():
 
     assert isclose(kz, kz_t).all()
 
+
 @fixture(scope="session")
 def sample_Green_func():
     N = 1000
@@ -101,6 +101,7 @@ def sample_Green_func():
     )
     return mesh_sizes, G_k, kx_v, ky_v, kz_v, PM_err
 
+
 def test_fogf_dimensions(sample_Green_func):
     mesh_sizes, G_k, kx_v, ky_v, kz_v, _ = sample_Green_func
 
@@ -113,8 +114,9 @@ def test_fogf_dimensions(sample_Green_func):
 
     assert kz_v.shape == (mesh_sizes[2], 1, 1)
 
+
 def test_fogf_values(sample_Green_func):
-    _,  G_k, kx_v, ky_v, kz_v, PM_err = sample_Green_func
+    _, G_k, kx_v, ky_v, kz_v, PM_err = sample_Green_func
 
     kx_t = array([[-0.38977771, 0.0]])
     ky_t = array([[-0.38977771], [0.0]])
@@ -138,12 +140,22 @@ def test_fogf_values(sample_Green_func):
 
     assert isclose(G_k, G_k_t).all()
 
-@mark.parametrize("cao,delta_x,expected_wx,expected_wx_sum",[
-    (3,0.3,array([0.02, 0.66, 0.32]),1),
-    (3,0.89,array([0.07605, -0.0421, 0.96605]),1), # I should not get any negative numbers from W(x), if I do it means that I am not choosing the closest point (or midpoint)
-    (4,0.1,array([0.01066667, 0.41466667, 0.53866667, 0.036]),1),
-    ],ids=["cao-3,delta_x-0.3","cao-3,delta_x-0.89","cao-4,delta_x-0.1"])
-def test_assignment_function(cao,delta_x,expected_wx,expected_wx_sum):
+
+@mark.parametrize(
+    "cao,delta_x,expected_wx,expected_wx_sum",
+    [
+        (3, 0.3, array([0.02, 0.66, 0.32]), 1),
+        (
+            3,
+            0.89,
+            array([0.07605, -0.0421, 0.96605]),
+            1,
+        ),  # I should not get any negative numbers from W(x), if I do it means that I am not choosing the closest point (or midpoint)
+        (4, 0.1, array([0.01066667, 0.41466667, 0.53866667, 0.036]), 1),
+    ],
+    ids=["cao-3,delta_x-0.3", "cao-3,delta_x-0.89", "cao-4,delta_x-0.1"],
+)
+def test_assignment_function(cao, delta_x, expected_wx, expected_wx_sum):
     # Check that it returns the correct values
     wx = assgnmnt_func(cao, delta_x)
 

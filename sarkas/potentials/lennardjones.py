@@ -52,6 +52,7 @@ The elements of the :attr:`sarkas.potentials.core.Potential.matrix` are:
     pot_matrix[4] = short-range cutoff
 
 """
+
 from numba import jit
 from numba.core.types import float64, UniTuple
 from numpy import array, pi, sqrt, zeros
@@ -104,7 +105,6 @@ def lj_force(r, pot_matrix):
     f_r = epsilon * (pot_matrix[2] * s_over_r_high - pot_matrix[3] * s_over_r_low) / r
 
     return u_r, f_r
-
 
 
 def potential_derivatives(r, pot_matrix):
@@ -163,13 +163,19 @@ def pretty_print_info(potential):
 
     """
 
-    print(f"epsilon_tot = {potential.epsilon_tot/potential.eV2J:.6e} [eV] = {potential.epsilon_tot:6e} {potential.units_dict['energy']}" )
-    print(f"sigma_avg = {potential.sigma_avg/potential.a_ws:.6e} a_ws =  {potential.sigma_avg:6e} {potential.units_dict['length']}")
+    print(
+        f"epsilon_tot = {potential.epsilon_tot/potential.eV2J:.6e} [eV] = {potential.epsilon_tot:6e} {potential.units_dict['energy']}"
+    )
+    print(
+        f"sigma_avg = {potential.sigma_avg/potential.a_ws:.6e} a_ws =  {potential.sigma_avg:6e} {potential.units_dict['length']}"
+    )
     rho = potential.sigma_avg**3 * potential.total_num_density
     tau = potential.kB * potential.T_desired / potential.epsilon_tot
     print(f"reduced density = {rho:.6e}")
     print(f"reduced temperature = {tau:.6e}")
-    print(f"r_cut = {potential.rc/potential.sigma_avg:.6e} sigma = {potential.rc/potential.a_ws:.6e} a_ws = {potential.rc:6e} {potential.units_dict['length']}")
+    print(
+        f"r_cut = {potential.rc/potential.sigma_avg:.6e} sigma = {potential.rc/potential.a_ws:.6e} a_ws = {potential.rc:6e} {potential.units_dict['length']}"
+    )
 
 
 def update_params(potential, species):

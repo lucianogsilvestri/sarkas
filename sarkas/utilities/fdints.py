@@ -7,6 +7,7 @@ The functions contained here are a Python translation of the code xfdh.txt  :cit
 All the credits go to Fukushima, T. email: Toshio.Fukushima at nao.ac.jp. \n
 It was easier than using other packages and/or write our own.
 """
+
 from numba import jit
 from numba.core.types import float64
 from numpy import exp, log, sqrt
@@ -338,7 +339,6 @@ def invfd1h(u: float) -> float:
             )
         )
     elif u < u4:
-
         y = u - u3
         difd1h = (
             +7.884494095314249799e19
@@ -3813,7 +3813,6 @@ def fd9h(x: float) -> float:
 @fd_doc_iparams(order=5)
 @jit(float64(float64), nopython=True)
 def fd10h(y: float) -> float:
-
     x = -abs(y)
     if x < -2.0:
         ex = exp(x)
@@ -4552,7 +4551,6 @@ def fd13h(x: float) -> float:
 @fd_doc_iparams(order=7)
 @jit(float64(float64), nopython=True)
 def fd14h(y: float) -> float:
-
     x = -abs(y)
     if x < -2.0:
         ex = exp(x)

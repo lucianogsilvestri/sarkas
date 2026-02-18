@@ -4,17 +4,18 @@ Module for linked cell list algorithm for efficient particle interaction computa
 
 from numba import jit
 from numba.core.types import float64, int64
-from numpy import arange, arccos, atan2, sqrt, zeros, zeros_like, array2string, pi
+from numpy import arange, arccos, array2string, atan2, pi, sqrt, zeros, zeros_like
+
 from .base import InteractionSolverBase
 
 
 class LinkedCellList(InteractionSolverBase):
     """
     Linked cell list algorithm for computing short-range particle interactions.
-    
+
     This algorithm divides the simulation box into cells with size roughly equal
     to the cutoff radius, allowing for efficient O(N) computation.
-    
+
     Attributes
     ----------
     cutoff_radius : float
@@ -28,7 +29,7 @@ class LinkedCellList(InteractionSolverBase):
     def __init__(self):
         """Initialize the linked cell list solver."""
         super().__init__()
-        self.type = 'linked_cell_list'
+        self.type = "linked_cell_list"
         self.cutoff_radius = None
         self.cells_per_dim = zeros(3, dtype=int)
         self.cell_length_per_dim = zeros(3, dtype=float)
@@ -41,7 +42,7 @@ class LinkedCellList(InteractionSolverBase):
     def setup(self, params, **kwargs):
         """
         Initialize the cell list with simulation parameters.
-        
+
         Parameters
         ----------
         params : object
@@ -66,8 +67,17 @@ class LinkedCellList(InteractionSolverBase):
     @staticmethod
     @jit(nopython=True)
     def calculate_pdf_hist(
-        pos, p_ids, pair_index_map, cutoffs, pdf_bins, hist_array, head, ls_array, 
-        cells_per_dim, box_lengths, coord_system='cartesian'
+        pos,
+        p_ids,
+        pair_index_map,
+        cutoffs,
+        pdf_bins,
+        hist_array,
+        head,
+        ls_array,
+        cells_per_dim,
+        box_lengths,
+        coord_system="cartesian",
     ):
         """
         Calculate PDF histogram using linked cell-list algorithm.
@@ -105,7 +115,7 @@ class LinkedCellList(InteractionSolverBase):
 
         # Declare parameters
         rshift = zeros(3)
-        
+
         delta_u = cutoffs[0] / float(pdf_bins[0])
         delta_v = cutoffs[1] / float(pdf_bins[1])
         delta_w = cutoffs[2] / float(pdf_bins[2])
@@ -132,8 +142,12 @@ class LinkedCellList(InteractionSolverBase):
                             rshift[1] = 0.0 - box_lengths[1] * (cy_N < 0) + box_lengths[1] * (cy_N >= cells_per_dim[1])
 
                             for cx_N in range(cx - 1, (cx + 2) * d1_min):
-                                cx_shift = 0 + cells_per_dim[0] * (cx_N < 0) - cells_per_dim[0] * (cx_N >= cells_per_dim[0])
-                                rshift[0] = 0.0 - box_lengths[0] * (cx_N < 0) + box_lengths[0] * (cx_N >= cells_per_dim[0])
+                                cx_shift = (
+                                    0 + cells_per_dim[0] * (cx_N < 0) - cells_per_dim[0] * (cx_N >= cells_per_dim[0])
+                                )
+                                rshift[0] = (
+                                    0.0 - box_lengths[0] * (cx_N < 0) + box_lengths[0] * (cx_N >= cells_per_dim[0])
+                                )
 
                                 c_N = (
                                     (cx_N + cx_shift)
@@ -151,11 +165,11 @@ class LinkedCellList(InteractionSolverBase):
                                             dy = pos[i, 1] - (pos[j, 1] + rshift[1])
                                             dz = pos[i, 2] - (pos[j, 2] + rshift[2])
 
-                                            if coord_system == 'cylindrical':
+                                            if coord_system == "cylindrical":
                                                 du = sqrt(dx**2 + dy**2)
                                                 dv = atan2(dy, dx)
                                                 dw = abs(dz)
-                                            elif coord_system == 'spherical':
+                                            elif coord_system == "spherical":
                                                 du = sqrt(dx**2 + dy**2 + dz**2)
                                                 if du > 0:
                                                     dv = arccos(dz / du)
@@ -344,8 +358,12 @@ class LinkedCellList(InteractionSolverBase):
                                 #     cx_shift = 0
                                 #     rshift[0] = 0.0
 
-                                cx_shift = 0 + cells_per_dim[0] * (cx_N < 0) - cells_per_dim[0] * (cx_N >= cells_per_dim[0])
-                                rshift[0] = 0.0 - box_lengths[0] * (cx_N < 0) + box_lengths[0] * (cx_N >= cells_per_dim[0])
+                                cx_shift = (
+                                    0 + cells_per_dim[0] * (cx_N < 0) - cells_per_dim[0] * (cx_N >= cells_per_dim[0])
+                                )
+                                rshift[0] = (
+                                    0.0 - box_lengths[0] * (cx_N < 0) + box_lengths[0] * (cx_N >= cells_per_dim[0])
+                                )
 
                                 # Compute the location of the N-th cell based on shifts
                                 c_N = (
@@ -359,7 +377,6 @@ class LinkedCellList(InteractionSolverBase):
                                 # First compute interaction of head particle with neighboring cell head particles
                                 # Then compute interactions of head particle within a specific cell
                                 while i >= 0:
-
                                     # Check neighboring head particle interactions
                                     j = head[c_N]
 
@@ -391,7 +408,7 @@ class LinkedCellList(InteractionSolverBase):
                                             # see https://github.com/numba/numba/issues/5881
 
                                             # if measure and rdf_bin < rdf_nbins:
-                                            rdf_hist[id_i, id_j,rdf_bin] += measure * (rdf_bin < rdf_nbins)
+                                            rdf_hist[id_i, id_j, rdf_bin] += measure * (rdf_bin < rdf_nbins)
 
                                             # If below the cutoff radius, compute the force
                                             if r < rc:
@@ -505,9 +522,15 @@ class LinkedCellList(InteractionSolverBase):
 
         # Branchless programming to avoid the division by zero later on
         cell_length_per_dim = zeros(3, dtype=float64)
-        cell_length_per_dim[0] = box_lengths[0] / (1 * (cells_per_dim[0] == 0) + cells_per_dim[0])  # avoid division by zero
-        cell_length_per_dim[1] = box_lengths[1] / (1 * (cells_per_dim[1] == 0) + cells_per_dim[1])  # avoid division by zero
-        cell_length_per_dim[2] = box_lengths[2] / (1 * (cells_per_dim[2] == 0) + cells_per_dim[2])  # avoid division by zero
+        cell_length_per_dim[0] = box_lengths[0] / (
+            1 * (cells_per_dim[0] == 0) + cells_per_dim[0]
+        )  # avoid division by zero
+        cell_length_per_dim[1] = box_lengths[1] / (
+            1 * (cells_per_dim[1] == 0) + cells_per_dim[1]
+        )  # avoid division by zero
+        cell_length_per_dim[2] = box_lengths[2] / (
+            1 * (cells_per_dim[2] == 0) + cells_per_dim[2]
+        )  # avoid division by zero
 
         return cells_per_dim, cell_length_per_dim
 
@@ -541,7 +564,7 @@ class LinkedCellList(InteractionSolverBase):
     def pretty_print(self):
         """Print algorithm information and computational parameters."""
         msg = f"\nINTERACTION SOLVER: Linked Cell List\n"
-        
+
         ptcls_in_loop = int(self.total_num_density * (self.dimensions * self.cutoff_radius) ** self.dimensions)
         dim_const = (self.dimensions + 1) / 3.0 * pi
         pp_neighbors = int(self.total_num_density * dim_const * self.cutoff_radius**self.dimensions)
@@ -552,9 +575,9 @@ class LinkedCellList(InteractionSolverBase):
             f"No. of particles in PP loop = {ptcls_in_loop}\n"
             f"No. of PP neighbors per particle = {pp_neighbors}\n"
         )
-        
+
         return msg
-    
+
     def update(self, ptcls, potential):
         """
         Calculate particle interactions using linked cell list algorithm.
@@ -567,15 +590,15 @@ class LinkedCellList(InteractionSolverBase):
             Potential class containing force functions and parameters
         """
         # Create cell lists
-        head, ls_array = self.create_head_list_arrays(
-            ptcls.pos, self.cell_length_per_dim, self.cells_per_dim
-        )
+        head, ls_array = self.create_head_list_arrays(ptcls.pos, self.cell_length_per_dim, self.cells_per_dim)
 
         # Compute interactions
-        (ptcls.potential_energy, 
-         ptcls.acc, 
-         ptcls.virial_species_tensor, 
-         ptcls.heat_flux_species_tensor) = self.particles_interaction_loop(
+        (
+            ptcls.potential_energy,
+            ptcls.acc,
+            ptcls.virial_species_tensor,
+            ptcls.heat_flux_species_tensor,
+        ) = self.particles_interaction_loop(
             ptcls.pos,
             ptcls.vel,
             ptcls.masses,
@@ -588,5 +611,5 @@ class LinkedCellList(InteractionSolverBase):
             head,
             ls_array,
             self.cells_per_dim,
-            self.box_lengths
+            self.box_lengths,
         )

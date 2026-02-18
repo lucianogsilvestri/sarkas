@@ -1,8 +1,8 @@
 """Miscellaneous routines."""
 
-from pandas import concat, Series
 from astropy import constants as ast_c
 from astropy import units as ast_u
+from pandas import concat, Series
 
 
 def add_col_to_df(df, data, column_name):
@@ -34,31 +34,30 @@ def add_col_to_df(df, data, column_name):
     return concat([df, col_data.rename(column_name)], axis=1)
 
 
-
-def calculate_beta(temperature, units = "mks", k_B = None):
+def calculate_beta(temperature, units="mks", k_B=None):
     """
     Calculate the inverse temperature :math:`\\beta = 1 / (k_B T)`.
-    
+
     Parameters
     ----------
     temperature : float
         Temperature in Kelvin.
-    
+
     units : str, optional
         Units of the temperature. Default is "mks". Possible values are "mks/SI" and "cgs" and "eV.
-    
+
     k_B : float, optional
         Boltzmann constant. Default is None.
-        
+
     Returns
     -------
     float
         Inverse temperature.
-    
+
     Notes
     -----
     The inverse temperature is calculated as :math:`\\beta = 1 / (k_B T)`, where :math:`k_B` is the Boltzmann constant and :math:`T` is the temperature.
-    The units of the temperature are specified by the `units` parameter. 
+    The units of the temperature are specified by the `units` parameter.
     The default value of :math:`k_B` is taken from the `astropy.constants` module.
 
     Example
@@ -78,9 +77,9 @@ def calculate_beta(temperature, units = "mks", k_B = None):
     24143235053466.4
     >>> calculate_beta(300, k_B = 8.617333262145179e-05) # eV
     38.681727071833606
-    
+
     """
-    
+
     if k_B is None:
         if units == "cgs":
             k_B = ast_c.k_B.cgs.value

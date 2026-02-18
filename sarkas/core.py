@@ -217,7 +217,6 @@ class Parameters:
     """
 
     def __init__(self, dic: dict = None):
-
         self.particles_input_file = None
         self.load_perturb = 0.0
         self.initial_lattice_config = "simple_cubic"
@@ -332,9 +331,14 @@ class Parameters:
         self.average_mass = None
         self.hydrodynamic_frequency = None
 
-        self.particles_arrays_list = ['pos', 'vel', 'acc']
-        self.thermodynamics_list = ['total_energy', 'kinetic_energy', 'potential_energy', 'temperature'] # 'pressure', 'enthalpy'
-        self.observables_arrays_list = ['rdf_hist']
+        self.particles_arrays_list = ["pos", "vel", "acc"]
+        self.thermodynamics_list = [
+            "total_energy",
+            "kinetic_energy",
+            "potential_energy",
+            "temperature",
+        ]  # 'pressure', 'enthalpy'
+        self.observables_arrays_list = ["rdf_hist"]
         self.observables_list = ["Radial Distribution Function"]
 
         if dic:
@@ -452,7 +456,7 @@ class Parameters:
 
         # Eq. 1 in Murillo Phys Rev E 81 036403 (2010)
         e_species.coupling = e_species.charge**2 / (e_species.a_ws * self.fourpie0 * self.kB * e_species.temperature)
-        e_species.coupling *= 1.0/( 1 + (1.5 * e_species.degeneracy_parameter)**(-9/5))**(5/9)
+        e_species.coupling *= 1.0 / (1 + (1.5 * e_species.degeneracy_parameter) ** (-9 / 5)) ** (5 / 9)
 
         # Warm Dense Matter Parameter, Eq.3 in Murillo Phys Rev E 81 036403 (2010)
         e_species.wdm_parameter = 2.0 / (e_species.degeneracy_parameter + 1.0 / e_species.degeneracy_parameter)
@@ -510,7 +514,6 @@ class Parameters:
         """
         self.species_cyclotron_frequencies = zeros(self.num_species)
         for i, sp in enumerate(species):
-
             b_mag = norm(self.magnetic_field)
             if self.units == "cgs":
                 b_mag /= self.c0
@@ -554,12 +557,12 @@ class Parameters:
         self.directory_tree = deepcopy(io.directory_tree)
         self.filenames_tree = deepcopy(io.filenames_tree)
         self.h5md_filenames_tree = deepcopy(io.h5md_filenames_tree)
-        
+
         # Process specific dictionaries
         self.process_h5md_filepath_dict = deepcopy(io.process_h5md_filepath_dict)
         self.process_directory_tree = deepcopy(io.process_directory_tree)
 
-        # if hasattr(io, "thermodynamics_list"): 
+        # if hasattr(io, "thermodynamics_list"):
         #     self.thermodynamics_list = io.thermodynamics_list
         # if hasattr(io, "observables_list"):
         #     self.observables_list = io.observables_list
@@ -583,7 +586,7 @@ class Parameters:
         self.units_dict["frequency"] = "[rad/s]"
         self.units_dict["time"] = "[s]"
         self.units_dict["electron volt"] = "[eV]"
-        
+
         if self.units == "cgs":
             self.units_dict["number density"] = "[N/cc]" if self.dimensions == 3 else "[N/cm^2]"
             self.units_dict["mass"] = "[g]"
@@ -598,7 +601,7 @@ class Parameters:
             self.units_dict["acceleration"] = "[cm/s^2]"
             self.units_dict["force"] = "[dyne]"
             self.units_dict["pressure"] = "[g/(cm s^2)]"  # barye
-            self.units_dict["viscosity"] = "[cm^2/s]" # Kinematic viscosity which is different from the dynamic viscosity
+            self.units_dict["viscosity"] = "[cm^2/s]"  # Kinematic viscosity which is different from the dynamic viscosity
             self.units_dict["enthalpy"] = "[erg]"
         else:
             self.units_dict["density"] = "[N/m^3]" if self.dimensions == 3 else "[N/m^2]"
@@ -614,7 +617,7 @@ class Parameters:
             self.units_dict["acceleration"] = "[m/s^2]"
             self.units_dict["force"] = "[N]"
             self.units_dict["pressure"] = "[kg/(m s^2)]"  # barye
-            self.units_dict["viscosity"] = "[m^2/s]" # Kinematic viscosity which is different from the dynamic viscosity
+            self.units_dict["viscosity"] = "[m^2/s]"  # Kinematic viscosity which is different from the dynamic viscosity
             self.units_dict["enthalpy"] = "[J]"
 
     def create_species_arrays(self, species: list):
@@ -704,49 +707,46 @@ class Parameters:
 
         # Parse adaptive thermalization if present
         if "adaptive_thermalization" in input_dict.keys():
-            self.adaptive_thermalization = self._parse_adaptive_thermalization(
-                input_dict["adaptive_thermalization"]
-            )
+            self.adaptive_thermalization = self._parse_adaptive_thermalization(input_dict["adaptive_thermalization"])
         else:
             self.adaptive_thermalization = None
-    
+
     def _parse_adaptive_thermalization(self, config_dict):
         """
         Parse adaptive thermalization configuration.
-        
+
         Parameters
         ----------
         config_dict : dict
             Dictionary with adaptive thermalization parameters
-            
+
         Returns
         -------
         dict
             Validated configuration dictionary
         """
         default_config = {
-            'max_cycles': 11,
-            'nve_steps': self.equilibration_steps,  # Required
-            'observable': 'temperature',
-            'target_value': None,  # Required
-            'adf_significance': 0.05,
-            'kpss_significance': 0.01,
-            'max_mae': 0.01
+            "max_cycles": 11,
+            "nve_steps": self.equilibration_steps,  # Required
+            "observable": "temperature",
+            "target_value": None,  # Required
+            "adf_significance": 0.05,
+            "kpss_significance": 0.01,
+            "max_mae": 0.01,
         }
-        
+
         config = default_config.copy()
         config.update(config_dict)
-        
+
         # Validation
-        if config['nve_steps'] is None:
+        if config["nve_steps"] is None:
             raise ValueError("nve_steps must be specified in adaptive_thermalization config")
-        
-        if config['max_cycles'] < 1:
+
+        if config["max_cycles"] < 1:
             raise ValueError("max_cycles must be >= 1")
-        
-        
+
         return config
-    
+
     def pretty_print(self):
         """
         Print simulation parameters in a user-friendly way.
@@ -809,7 +809,7 @@ class Parameters:
 
         else:
             phs_msg = ""
-            for (key, phase_ls) in phase_dict.items():
+            for key, phase_ls in phase_dict.items():
                 phase = phase_ls[0]
                 steps = self.__dict__[phase_ls[1]]
                 dump_step = self.__dict__[phase_ls[2]]
@@ -845,16 +845,15 @@ class Parameters:
 
         """
 
-        # DEV NOTE: This method could be defined in the Particles class, however, it is more convenient to have it here because it uses the correct unit system. 
-        # If I were to move it to the Particles class, I would need to pass the units as an argument. 
-        # TODO: It could be moved in the future. 
+        # DEV NOTE: This method could be defined in the Particles class, however, it is more convenient to have it here because it uses the correct unit system.
+        # If I were to move it to the Particles class, I would need to pass the units as an argument.
+        # TODO: It could be moved in the future.
 
         # Loop over species and assign missing attributes
         # Collect species properties in single arrays
 
         tot_num_ptcls = 0
         for i, sp in enumerate(species):
-
             tot_num_ptcls += sp.num
             # Calculate the mass of the species from the atomic weight if given
             if sp.atomic_weight:
@@ -896,7 +895,7 @@ class Parameters:
                 sp.mass_density = sp.mass * sp.number_density
 
             # Q^2 factor see eq.(2.10) in Ballenegger et al. J Chem Phys 128 034109 (2008).
-            sp.QFactor = sp.num * sp.charge**2 / self.fourpie0 # In case of LJ this is zero
+            sp.QFactor = sp.num * sp.charge**2 / self.fourpie0  # In case of LJ this is zero
 
             sp.copy_params(self)
             sp.calc_ws_radius()

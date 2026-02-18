@@ -1,6 +1,7 @@
 """
 Module for handling the timing in a MD run.
 """
+
 import datetime
 import sys
 import time
@@ -127,7 +128,6 @@ def time_stamp(log_file: str, message: str, timing: tuple, print_to_screen: bool
     # redirect printing to file
     sys.stdout = f_log
     while repeat > 0:
-
         if t_hrs == 0 and t_min == 0 and t_sec <= 2:
             print(f"\n{message} Time: {int(t_sec)} sec {int(t_msec)} msec {int(t_usec)} usec {int(t_nsec)} nsec")
         else:

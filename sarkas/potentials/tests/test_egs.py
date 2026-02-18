@@ -1,18 +1,22 @@
 from numpy import array, isclose, pi
+from pytest import mark
 from scipy.constants import epsilon_0
 
 from ..egs import egs_force
 
-from pytest import mark
 
-@mark.parametrize("test_params,expected_potential,expected_force",[
-    ({"r":2.0,
-      "alpha":1.3616,
-      "lambda_p":1.778757e-09,
-      "lambda_m":4.546000e-09,
-      "charge":1.440961e-09},-0.9067719924627385,270184640.33105946)
-    ],ids=["r-2;alpha-1.3616"])
-def test_egs_force(test_params,expected_potential,expected_force):
+@mark.parametrize(
+    "test_params,expected_potential,expected_force",
+    [
+        (
+            {"r": 2.0, "alpha": 1.3616, "lambda_p": 1.778757e-09, "lambda_m": 4.546000e-09, "charge": 1.440961e-09},
+            -0.9067719924627385,
+            270184640.33105946,
+        )
+    ],
+    ids=["r-2;alpha-1.3616"],
+)
+def test_egs_force(test_params, expected_potential, expected_force):
     """Test the calculation of the bare egs force."""
     r = test_params["r"]
     alpha = test_params["alpha"]
