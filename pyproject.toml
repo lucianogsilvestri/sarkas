@@ -112,19 +112,3 @@ omit = ["*/tests/*", "*/test_*.py"]
 package = "sarkas"
 filename = "CHANGELOG.rst"
 directory = "changelog/"
-
-[tool.tox]
-legacy_tox_ini = """
-[tox]
-min_version = 4.6.0
-env_list = py39, py310, py311, py312
-isolated_build = true
-
-[testenv]
-setenv =
-    PYTHONPATH = {toxinidir}
-deps = 
-    -r{toxinidir}/requirements_dev.txt
-commands = 
-    pytest --basetemp={envtmpdir}
-"""
