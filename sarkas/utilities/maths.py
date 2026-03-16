@@ -5,6 +5,7 @@ from numba import njit
 from numpy import arange, array, exp, float64, inf, ndarray, pi, sqrt, trapz, zeros_like
 from scipy.integrate import quad, quad_vec
 from scipy.special import gamma
+from typing import Optional
 
 TWOPI = 2.0 * pi
 
@@ -157,15 +158,36 @@ def betamp(m: int, p: int, alpha: float, kappa: float):
     return intgrl
 
 
-def force_error_approx_pppm(potential):
+def force_error_approx_pppm(
+    screening_length: float = 10.0,
+    cutoff_radius: float = 5.0,
+    alpha_ewald: float = 0.5,
+    mesh_discretization: float = 0.3,
+    cao: int = 6,
+    length_scale: float = 1.0,
+    rescaling_constant: float = 1.0,
+):
     r"""
     Calculates the force error, :math:`\Delta F_{\rm {pm}}`, for the PPPM algorithm using approximations given in :cite:`Dharuman2017`.
     The formula for :math:`\Delta F_{\rm {pm}}` can be found in :ref:`force_error`.
 
     Parameters
     ----------
-    potential: :class:`sarkas.potentials.core.Potential`
-       Potential class with all the required information.
+    screening_length : float
+        Inverse of screening length in case of screened potentials like yukawa.
+        Pass 'np.inf' for Coulomb or QSP,
+    cutoff_radius : float
+        Short range cutoff.
+    alpha_ewald : float
+        Ewald screening parameter.
+    mesh_discretization : float
+        Distance between two mesh points. Same for all directions.
+    cao : float
+        Charge assignment order. Default = 6
+    length_scale : float,
+        Length scale by which to rescale lengths. Default is 1.0.
+    rescaling_const : float
+        Constant by which to rescale the force error. See Notes below.
 
     Returns
     -------
@@ -177,16 +199,37 @@ def force_error_approx_pppm(potential):
 
     pppm_pp_err: float
         PM force error.
+
+    Notes
+    -----
+    The rescaling constant is used to express the force error in the desired units.
+    For example if the desired units are :math:`q^2/a_{ws}^2`, then the rescaling constant should be :math:`\sqrt(3/4 \pi)`.
+
+    Examples
+    --------
+    >>> N = 5000
+    >>> L = (4.0*np.pi*N/3.0)**(1.0/3.0)
+    >>> M = 64
+    >>> h = L/M
+    >>> screening_length = 1.0 # kappa = 1.0
+    >>> cutoff_radius = 4.0
+    >>> alpha_ewald = 1.0
+    >>> cao = 7
+    >>> rescaling_constant = np.sqrt(3/4.0/ np.pi)
+    >>> force_error_approx_pppm(screening_length, cutoff_radius, alpha_ewald, h, cao, rescaling_constant)
+    (1.68861333573092e-05, 1.6886079059636334e-05, 4.282233694960854e-08)
+
     """
 
-    if potential.type == "yukawa":
-        kappa = potential.a_ws / potential.screening_length
-    elif potential.type in ["coulomb", "qsp"]:
-        kappa = 0.0
+    alpha_ewald *= length_scale
+    mesh_discretization /= length_scale
+    cutoff_radius /= length_scale
+    screening_length /= length_scale
 
-    alpha = potential.pppm_alpha_ewald * potential.a_ws
-    ha = potential.pppm_h_array[0] / potential.a_ws
-    rc = potential.rc / potential.a_ws
+    if screening_length is inf:
+        kappa = 0
+    else:
+        kappa = 1.0 / screening_length
 
     # Force Error =  QFactor/sqrt(N V) f_err
     # QFactor = Sum_s q_s^2 N_s / (4 * pi * epsilon_0),  s indicates species
@@ -196,21 +239,21 @@ def force_error_approx_pppm(potential):
     # f_err rescaled by a_ws is
     # f_err = f_err_a * (1 / sqrt(a_ws)) ,
     # Force Error = QFactor / (N * e^2/(4 pi eps0) ) * sqrt(3/ (4 pi)) * f_err_a * ( e^2 / a_ws^2))
-    QFactor = potential.QFactor / (potential.matrix[0, 0, 0] * potential.total_num_ptcls)
-    rescaling_constant = sqrt(3.0 / (4.0 * pi)) * QFactor
+    # QFactor = potential.QFactor / (potential.matrix[0, 0, 0] * potential.total_num_ptcls)
+    # rescaling_constant = sqrt(3.0 / (4.0 * pi)) * QFactor
 
-    pppm_pp_err = force_error_analytic_pp(potential.type, rc, kappa, alpha, rescaling_constant)
+    pppm_pp_err = force_error_analytic_pp(cutoff_radius, kappa, alpha_ewald, rescaling_constant)
 
     # This returns (A_f)**(1/2) from eq.(36) in :cite:`Dharuman2017`
     # The rescaling constant makes it in units of q^2/a_ws^2
-    pppm_pm_err = force_error_approx_pm(kappa, potential.pppm_cao[0], ha, alpha, rescaling_constant)
+    pppm_pm_err = force_error_approx_pm(kappa, cao, mesh_discretization, alpha_ewald, rescaling_constant)
 
     force_error_tot = sqrt(pppm_pm_err**2 + pppm_pp_err**2)
 
     return force_error_tot, pppm_pm_err, pppm_pp_err
 
 
-def force_error_approx_pm(kappa: float, p: int, h: float, alpha: float, rescaling_const: float):
+def force_error_approx_pm(kappa: float, p: int, h: float, alpha: float, rescaling_const: float = 1.0):
     r"""
     Calculates the PM part of the force error, :math:`\Delta F_{\rm {pm}}`,  for a given value of the PPPM parameters.
     The formula for :math:`\Delta F_{\rm {pm}}` can be found in :ref:`force_error`.
@@ -285,7 +328,7 @@ def force_error_approx_pm(kappa: float, p: int, h: float, alpha: float, rescalin
 
 
 def force_error_analytic_pp(
-    potential_type: str, cutoff_length: float, screening_parameter: float, alpha_ewald: float, rescaling_const: float
+    cutoff_length: float, screening_parameter: float, alpha_ewald: float, rescaling_const: float = 1.0
 ):
     """
     Calculate the short-range part of the force error from the approximation formula given in :cite:`Dharuman2017`.

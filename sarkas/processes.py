@@ -26,6 +26,7 @@ from numpy import (
     log10,
     logspace,
     meshgrid,
+    pi,
     quantile,
     sqrt,
     zeros,
@@ -45,6 +46,7 @@ from .particles import Particles
 from .plasma import Species
 from .plotting.styles import get_msu_colors
 from .potentials.core import Potential
+from .pppm_bayesian_optimization import BayesianPPPMOptimizer
 from .time_evolution.integrators import Integrator
 from .tools.observables import run_thermalization_tests
 from .utilities.io import InputOutput, print_to_logger
@@ -652,7 +654,7 @@ class PostProcess(Process):
         self.io.process = "postprocess"
 
 
-class PreProcess(Process):
+class PreProcess(Process, BayesianPPPMOptimizer):
     """
     Wrapper class handling the estimation of time and best parameters of a simulation.
 
@@ -694,13 +696,16 @@ class PreProcess(Process):
         Parameters
         ----------
         rcuts: numpy.ndarray
-            Cut off distances.
+            Cut off distances in real units, i.e. cm or m.
+            If None, it will be calculated from rlims or from the potential cutoff radius.
         alphas: numpy.ndarray
-            Ewald parameters.
+            Ewald parameters in real units, i.e. cm^-1 or m^-1.
+            If None, it will be calculated from alims or from the potential Ewald parameter.
+
         rlims: tuple
-            Min and max cut off distances.
+            Min and max cut off distances in real units, i.e. cm or m.
         alims: tuple
-            Min and max Ewald parameters.
+            Min and max Ewald parameters in real units, i.e. cm^-1 or m^-1.
         mesh_size: int
             Mesh size for the PPPM part.
         cao: int
@@ -714,9 +719,9 @@ class PreProcess(Process):
         pm_force_error: numpy.ndarray
             Force error array for the PM part.
         rcuts: numpy.ndarray
-            Cut off distances.
+            Cut off distances in dimensionless units, i.e. in Wigner-Seitz radius.
         alphas: numpy.ndarray
-            Ewald parameters.
+            Ewald parameters in dimensionless units, i.e. in Wigner-Seitz radius^-1.
         """
         if rcuts is None:
             if rlims:
@@ -747,26 +752,32 @@ class PreProcess(Process):
         pp_force_error = zeros((len(alphas), len(rcuts)))
         total_force_error = zeros((len(alphas), len(rcuts)))
 
-        # TODO: Fix this hack
-        potential_copy = self.potential.__copy__()
-        # Reset the potential parameters
-        potential_copy.estimate_parameters = False
-
         if mesh_size is not None:
             # if mesh_size is float convert to int
-            mesh_size = int(mesh_size)
-            potential_copy.pppm_mesh = array([mesh_size, mesh_size, mesh_size], dtype=int64)
+            pppm_mesh = full(3, int(mesh_size), dtype=int64)
+        else:
+            pppm_mesh = self.potential.pppm_mesh.copy()
+
         if cao is not None:
             cao = int(cao)
-            potential_copy.pppm_cao = array([cao, cao, cao], dtype=int64)
+        else:
+            cao = self.potential.pppm_cao[0]
 
-        potential_copy.setup(self.parameters, self.species)
-        # potential_copy = self.potential.__deepcopy__()
+        lambda_k = self.potential.screening_length / self.potential.a_ws
+        ha = self.potential.box_lengths / pppm_mesh / self.potential.a_ws
+        rescaling_constant = self.potential.QFactor / (self.parameters.total_num_ptcls) * sqrt(3.0 / (4.0 * pi))
+        rescaling_constant /= self.potential.matrix[0, 0, 0]  # Rescale by the first species charges
+
         for ia, alpha in enumerate(alphas):
             for ir, rc in enumerate(rcuts):
-                potential_copy.rc = rc
-                potential_copy.pppm_alpha_ewald = alpha
-                tot_err, pm_err, pp_err = force_error_approx_pppm(potential_copy)
+                tot_err, pm_err, pp_err = force_error_approx_pppm(
+                    screening_length=lambda_k,
+                    cutoff_radius=rc / self.potential.a_ws,
+                    alpha_ewald=alpha * self.potential.a_ws,
+                    mesh_discretization=ha[0],
+                    cao=cao,
+                    rescaling_constant=rescaling_constant,
+                )
                 total_force_error[ia, ir] = tot_err
                 pm_force_error[ia] = pm_err
                 pp_force_error[ia, ir] = pp_err
@@ -775,8 +786,8 @@ class PreProcess(Process):
             total_force_error,
             pp_force_error,
             pm_force_error,
-            rcuts / potential_copy.a_ws,
-            alphas * potential_copy.a_ws,
+            rcuts / self.potential.a_ws,
+            alphas * self.potential.a_ws,
         )
 
     def green_function_timer(self):
@@ -1693,7 +1704,7 @@ class PreProcess(Process):
         self.directory_sizes()
 
     def timing_study_calculation(
-        self, target_error=1e-5, pp_cells=None, pm_meshes=None, pm_caos=None, method="brute_force"
+        self, target_error=1e-5, pp_cells=None, pm_meshes=None, pm_caos=None, method="brute_force", **kwargs
     ):
         """
         Estimate optimal PPPM parameters balancing accuracy and performance.
@@ -1710,6 +1721,8 @@ class PreProcess(Process):
             Array of charge assignment orders. If None uses the attribute :attr:`PreProcess.pm_caos`.
         method : str, optional
             Method for parameter optimization: "brute_force" or "automated". Default is "brute_force".
+        **kwargs
+            Additional keyword arguments for parameter optimization.
 
         Returns
         -------
@@ -1744,10 +1757,18 @@ class PreProcess(Process):
             sqrt(self.potential.total_num_ptcls) * self.potential.a_ws**2 / sqrt(self.potential.pbox_volume)
         )
 
-        # Choose optimization method
         if method.lower() == "automated":
             return self._automated_parameter_selection(target_error, rescaling_constant, max_cells)
-        else:  # Default to brute force
+        elif method.lower() == "bayesian":
+            return self._bayesian_parameter_selection(
+                target_error=target_error,
+                pp_cells=pp_cells,
+                pm_meshes=pm_meshes,
+                pm_caos=pm_caos,
+                warm_start_from=kwargs.pop("warm_start_from", None),
+                **kwargs,
+            )
+        else:
             return self._brute_force_parameter_selection(pp_cells, pm_meshes, pm_caos, target_error, max_cells)
 
     def _brute_force_parameter_selection(

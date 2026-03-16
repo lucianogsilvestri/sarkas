@@ -27,8 +27,6 @@ from numba import jit
 from numba.core.types import float64, UniTuple
 from numpy import exp, inf, pi, sqrt, zeros
 
-from ..utilities.maths import force_error_analytic_pp
-
 
 @jit(UniTuple(float64, 2)(float64, float64[:]), nopython=True)
 def coulomb_force_pppm(r, pot_matrix):
@@ -207,12 +205,3 @@ def update_params(potential, species):
         potential.matrix[:, :, 2] = potential.a_rs
         # Calculate the (total) plasma frequency
         potential.force = coulomb_force_pppm
-
-        rescaling_constant = sqrt(potential.total_num_ptcls) * potential.a_ws**2 / sqrt(potential.pbox_volume)
-        potential.pppm_pp_err = force_error_analytic_pp(
-            potential.type, potential.rc, potential.screening_length, potential.pppm_alpha_ewald, rescaling_constant
-        )
-        # # PP force error calculation. Note that the equation was derived for a single component plasma.
-        # alpha_times_rcut = -((potential.pppm_alpha_ewald * potential.rc) ** 2)
-        # potential.pppm_pp_err = 2.0 * exp(alpha_times_rcut) / sqrt(potential.rc)
-        # potential.pppm_pp_err *= sqrt(potential.total_num_ptcls) * potential.a_ws ** 2 / sqrt(potential.pbox_volume)

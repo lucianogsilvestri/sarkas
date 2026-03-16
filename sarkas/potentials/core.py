@@ -331,7 +331,17 @@ class Potential:
 
         elif self.method == "pppm":
             # The pp part is not approximated, only the pm part
-            force_error_approx, pppm_pm_err, pppm_pp_err = force_error_approx_pppm(potential=self)
+            rescaling_constant = self.QFactor / (self.total_num_ptcls) * sqrt(3.0 / (4.0 * pi))
+            rescaling_constant /= self.matrix[0, 0, 0]  # Rescale by the first species charges
+
+            force_error_approx, pppm_pm_err, pppm_pp_err = force_error_approx_pppm(
+                screening_length=self.screening_length / self.a_ws,
+                cutoff_radius=self.rc / self.a_ws,
+                alpha_ewald=self.pppm_alpha_ewald * self.a_ws,
+                mesh_discretization=self.pppm_h_array[0] / self.a_ws,
+                cao=self.pppm_cao[0],
+                rescaling_constant=rescaling_constant,
+            )
             self.pppm_pp_err = pppm_pp_err
             self.pppm_pm_err_approx = pppm_pm_err
             self.force_error = sqrt(self.pppm_pp_err**2 + self.pppm_pm_err**2)

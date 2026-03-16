@@ -4,7 +4,7 @@ Module for linked cell list algorithm for efficient particle interaction computa
 
 from numba import jit
 from numba.core.types import float64, int64
-from numpy import arange, arccos, array2string, atan2, pi, sqrt, zeros, zeros_like
+from numpy import arange, arccos, arctan2, array2string, pi, sqrt, zeros, zeros_like
 
 from .base import InteractionSolverBase
 
@@ -167,7 +167,7 @@ class LinkedCellList(InteractionSolverBase):
 
                                             if coord_system == "cylindrical":
                                                 du = sqrt(dx**2 + dy**2)
-                                                dv = atan2(dy, dx)
+                                                dv = arctan2(dy, dx)
                                                 dw = abs(dz)
                                             elif coord_system == "spherical":
                                                 du = sqrt(dx**2 + dy**2 + dz**2)
@@ -175,7 +175,7 @@ class LinkedCellList(InteractionSolverBase):
                                                     dv = arccos(dz / du)
                                                 else:
                                                     dv = 0.0
-                                                dw = atan2(dy, dx)
+                                                dw = arctan2(dy, dx)
                                             else:
                                                 # Cartesian
                                                 du = abs(dx)
