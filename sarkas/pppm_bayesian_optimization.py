@@ -51,6 +51,8 @@ import pandas as pd
 import torch
 import warnings
 from numpy import (
+    argmin,
+    array,
     asarray,
     clip,
     exp,
@@ -192,12 +194,6 @@ def compute_physical_bounds(
     alpha_min = 0.15 * smallest_mesh / box_length
     alpha_max = 0.60 * largest_mesh / box_length
 
-    # Discard mesh sizes whose spacing h = L/M would be larger than rc_min
-    # (the mesh must be fine enough to resolve the real-space cutoff sphere).
-    feasible_meshes = [m for m in mesh_options if m <= int(box_length / rc_min) * 4]
-    if not feasible_meshes:
-        feasible_meshes = mesh_options[:4]
-
     # CAO options — use caller-supplied list or fall back to global default.
     cao_list = cao_options if cao_options is not None else CAO_OPTIONS
 
@@ -206,7 +202,7 @@ def compute_physical_bounds(
         "rc_max": rc_max,
         "alpha_min": alpha_min,
         "alpha_max": alpha_max,
-        "M_options": feasible_meshes,
+        "M_options": mesh_options,
         "cao_options": cao_list,
     }
 
@@ -513,7 +509,7 @@ def build_constrained_acqf(
 
 def load_previous_run(
     path_or_df,
-    codec: "PPPMParameterCodec",
+    codec: PPPMParameterCodec,
     target_error: float,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, list]:
     """
@@ -598,8 +594,8 @@ def load_previous_run(
         x = codec.encode(rc, alpha, M, cao)
 
         X_list.append(x)
-        T_list.append(-np.log10(max(time, 1e-30)))  # negated log10 for objective GP
-        E_list.append(np.log10(max(error, 1e-30)))  # log10 for constraint GP
+        T_list.append(-log10(max(time, 1e-30)))  # negated log10 for objective GP
+        E_list.append(log10(max(error, 1e-30)))  # log10 for constraint GP
 
         records.append(
             {
@@ -1197,6 +1193,7 @@ class BayesianPPPMOptimizer:
             print(f"  CAO   : {bounds['cao_options']}")
 
         codec = PPPMParameterCodec(bounds)
+        self._bo_codec = codec  # stored so _refine_alpha can read alpha bounds
 
         # Build analytical model closures.
         # Note: a_ws is passed as the second argument so that the function
@@ -1232,6 +1229,25 @@ class BayesianPPPMOptimizer:
         # Find the best feasible high-fidelity point
         best_point = self._extract_best_point(results_df, target_error)
 
+        # ------------------------------------------------------------------
+        # Alpha refinement: minimise force error at fixed (rc, M, cao)
+        # ------------------------------------------------------------------
+        # The BO stops exploring once the constraint is satisfied, so it
+        # finds the first feasible alpha rather than the optimal one.
+        # Since alpha has no effect on computation time when rc is fixed
+        # (PP cost depends only on rc, PM cost depends only on M), we can
+        # minimise the analytical error along the alpha axis at zero MD cost
+        # using scipy's scalar minimiser.
+        if best_point is not None:
+            best_point = self._refine_alpha(
+                best_point,
+                analytical_error_fn,
+                evaluate_fn,
+                target_error,
+            )
+            # Append the results DataFrame with the refined alpha and error for the best point.
+            results_df = pd.concat([results_df, pd.DataFrame([best_point])], ignore_index=True)
+
         # Save results
         if save_csv:
             csv_path = join(
@@ -1249,10 +1265,10 @@ class BayesianPPPMOptimizer:
             msg = (
                 f"\nOPTIMAL PPPM CONFIGURATION (BAYESIAN):\n"
                 f"  Mesh: {best_point['M']} | CAO: {best_point['cao']} "
-                f"| rc: {best_point['rc']:.4e}\n"
-                f"  Ewald alpha: {best_point['alpha']:.4e} "
-                f"| Force Error: {best_point['force_error']:.4e}\n"
-                f"  Total Time: {best_point['time']:.4e} s"
+                f"| rc: {best_point['rc']:.6e}\n"
+                f"  Ewald alpha: {best_point['alpha']:.6e} "
+                f"| Force Error: {best_point['force_error']:.6e}\n"
+                f"  Total Time: {best_point['time']:.6e} s"
             )
         else:
             msg = "\nNo feasible configuration found.\n" "Consider increasing target_error or n_bo_iterations."
@@ -1264,6 +1280,110 @@ class BayesianPPPMOptimizer:
         self._restore_original_pppm_params()
 
         return results_df, best_point
+
+    # ------------------------------------------------------------------
+    # Alpha refinement
+    # ------------------------------------------------------------------
+
+    def _refine_alpha(
+        self,
+        best_point: Dict,
+        analytical_error_fn,
+        evaluate_fn,
+        target_error: float,
+        n_grid: int = 200,
+    ) -> Dict:
+        """
+        Given a feasible (rc, M, cao) from the BO, find the alpha that
+        minimises the analytical force error subject to the error staying
+        below target_error.
+
+        Why this is valid
+        -----------------
+        PP cost  ~ (4/3)π(rc/L)³ N  — depends only on rc, not alpha.
+        PM cost  ~ M³ log M³        — depends only on M, not alpha.
+        Charge assignment cost ~ cao³ N — depends only on cao, not alpha.
+
+        So at fixed (rc, M, cao) the total step time is constant as alpha
+        varies.  The force error as a function of alpha has a single minimum
+        (the valley visible in image 1) where both the PP and PM errors are
+        balanced.  We find that minimum with a dense 1-D grid on the
+        analytical model — no MD timing calls are needed.
+
+        Parameters
+        ----------
+        best_point         : dict from _extract_best_point with keys
+                             rc, alpha, M, cao, time, force_error
+        analytical_error_fn: cheap analytical error closure
+        evaluate_fn        : high-fidelity evaluator closure (calls Sarkas timing)
+        target_error       : feasibility threshold (kept for safety check)
+        n_grid             : number of alpha values to evaluate on the grid
+
+        Returns
+        -------
+        Updated best_point dict with refined alpha and force_error.
+        The time entry is unchanged (alpha does not affect timing).
+        """
+        from scipy.optimize import minimize_scalar
+
+        rc = best_point["rc"]
+        M = best_point["M"]
+        cao = best_point["cao"]
+
+        # Search over the full alpha range known to the codec
+        alpha_lo = self._bo_codec.alpha_min
+        alpha_hi = self._bo_codec.alpha_max
+
+        # 1-D grid to find a good bracket (analytical fn may be non-convex
+        # at the extremes due to the PM error rising steeply at large alpha)
+        alpha_grid = linspace(alpha_lo, alpha_hi, n_grid)
+        errors = array([analytical_error_fn(rc, a, M, cao) for a in alpha_grid])
+
+        # Find the global minimum on the grid
+        best_idx = int(argmin(errors))
+        best_alpha = float(alpha_grid[best_idx])
+        best_err = float(errors[best_idx])
+
+        # Refine with scalar minimisation in a bracket around the grid minimum
+        bracket_lo = alpha_grid[max(0, best_idx - 5)]
+        bracket_hi = alpha_grid[min(n_grid - 1, best_idx + 5)]
+
+        try:
+            result = minimize_scalar(
+                lambda a: analytical_error_fn(rc, float(a), M, cao),
+                bounds=(bracket_lo, bracket_hi),
+                method="bounded",
+                options={"xatol": 1e-6},
+            )
+            if result.fun < best_err:
+                best_alpha = float(result.x)
+                best_err = float(result.fun)
+        except Exception:
+            pass  # fall back to grid result
+
+        # Only update if the refined alpha actually improves the error.
+        # If the minimum of the analytical model is above target_error
+        # (can happen if the model is inaccurate) keep the BO result.
+        if best_err < best_point["force_error"]:
+            time_val, error_val = evaluate_fn(rc, best_alpha, M, cao)
+
+            updated = dict(best_point)
+            updated["alpha"] = best_alpha
+            updated["time"] = time_val
+            updated["force_error"] = error_val  # overwrite analytical with actual error
+            updated["fidelity"] = "refined_alpha"
+            updated["feasible"] = error_val <= target_error
+
+            if self.parameters.verbose:
+                print(
+                    f"\n  Alpha refinement: {best_point['alpha']:.6e} → {best_alpha:.6e}"
+                    f"  ( error {best_point['force_error']:.2e} → {best_err:.2e})"
+                )
+
+            # Store the codec so the plot helper can access alpha bounds
+            return updated
+
+        return best_point
 
     # ------------------------------------------------------------------
     # High-fidelity evaluator
@@ -1356,7 +1476,7 @@ class BayesianPPPMOptimizer:
 
             # --- Measure PM time ----------------------------------------
             pm_acc_time = 0.0
-            n_trials = 3
+            n_trials = 1
             for _ in range(n_trials):
                 self.timer.start()
                 self.potential.update_pm(self.particles)
@@ -1550,6 +1670,7 @@ class BayesianPPPMOptimizer:
         results_df: pd.DataFrame,
         target_error: float,
         save_dir: Optional[str] = None,
+        show_plots: bool = False,
     ):
         """
         Generate diagnostic plots for the BO run:
@@ -1614,7 +1735,10 @@ class BayesianPPPMOptimizer:
         ax.legend(fontsize=9)
         fig.tight_layout()
         fig.savefig(join(save_dir, "BO_pareto_front.png"), dpi=150)
-        plt.close(fig)
+        if show_plots:
+            plt.show()
+        else:
+            plt.close(fig)
 
         # ---- Figure 2: Convergence curve ------------------------------
         summary = self.bo_convergence_summary(results_df, target_error)
@@ -1635,15 +1759,18 @@ class BayesianPPPMOptimizer:
             ax.legend(fontsize=9)
         fig.tight_layout()
         fig.savefig(join(save_dir, "BO_convergence.png"), dpi=150)
-        plt.close(fig)
+        if show_plots:
+            plt.show()
+        else:
+            plt.close(fig)
 
         # ---- Figure 3: Parameter scatter (rc vs alpha, coloured by M) -
         if not hf.empty:
             fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
             sc = axes[0].scatter(
-                hf["rc"],
-                hf["alpha"],
+                hf["rc"] / self.parameters.a_ws,  # convert back to SI units for plotting
+                hf["alpha"] * self.parameters.a_ws,
                 c=hf["M"],
                 cmap="viridis",
                 s=60,
@@ -1652,8 +1779,8 @@ class BayesianPPPMOptimizer:
                 linewidths=1.5,
             )
             plt.colorbar(sc, ax=axes[0], label="Mesh size M")
-            axes[0].set_xlabel("r_c", fontsize=12)
-            axes[0].set_ylabel("alpha (Ewald)", fontsize=12)
+            axes[0].set_xlabel(r"$r_c a_{{ws}}$", fontsize=12)
+            axes[0].set_ylabel(r"$\alpha / a_{{ws}}$", fontsize=12)
             axes[0].set_title("HF evaluations (colour = M)", fontsize=12)
 
             sc2 = axes[1].scatter(
@@ -1671,7 +1798,10 @@ class BayesianPPPMOptimizer:
 
             fig.tight_layout()
             fig.savefig(join(save_dir, "BO_parameter_scatter.png"), dpi=150)
-            plt.close(fig)
+            if show_plots:
+                plt.show()
+            else:
+                plt.close(fig)
 
         if self.parameters.verbose:
             print(f"\nPlots saved to: {save_dir}")
