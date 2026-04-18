@@ -447,14 +447,15 @@ def hf_initial_design(
 
     def _record_and_store(rc, alpha, M, cao, fftw_threads, label):
         """Run one HF evaluation and accumulate tensors + records."""
-        time_val, error_val = evaluate_fn(rc, alpha, M, cao, fftw_threads)
+        time_val, error_val, pp_acc_time, pm_acc_time = evaluate_fn(rc, alpha, M, cao, fftw_threads)
         feasible = bool(error_val <= target_error)
 
         if verbose:
             status = "✓" if feasible else "✗"
             print(
-                f"  [{label}] rc={rc:.3e}  α={alpha:.3e}  M={M:3d}  "
+                f"  [{label}] rc={rc:.6e}  alpha={alpha:.6e}  M={M:3d}  "
                 f"CAO={cao}  thr={fftw_threads:2d}  "
+                f"PP acc: {pp_acc_time:.4e}s  PM acc: {pm_acc_time:.4e}s  "
                 f"err={error_val:.2e}  t={time_val:.3e}s  {status}"
             )
 
@@ -465,6 +466,7 @@ def hf_initial_design(
         records.append({
             "rc": rc, "alpha": alpha, "M": M, "cao": cao,
             "fftw_threads": fftw_threads,
+            "pp_acc_time": pp_acc_time, "pm_acc_time": pm_acc_time,
             "time": time_val, "force_error": error_val,
             "fidelity": "initial", "feasible": feasible,
         })
@@ -713,6 +715,8 @@ def load_previous_run(
         M = int(row["M"])
         cao = int(row["cao"])
         fftw_threads = int(row.get("fftw_threads", default_threads))
+        pp_acc_time = float(row.get("pp_acc_time", 0.0))
+        pm_acc_time = float(row.get("pm_acc_time", 0.0))
         time = float(row["time"])
         error = float(row["force_error"])
 
@@ -728,6 +732,8 @@ def load_previous_run(
                 "M": M,
                 "cao": cao,
                 "fftw_threads": fftw_threads,
+                "pp_acc_time": pp_acc_time,
+                "pm_acc_time": pm_acc_time,
                 "time": time,
                 "force_error": error,
                 "fidelity": "previous",
@@ -930,7 +936,7 @@ def run_bo_loop(
         alpha = float(clip(alpha, codec.alpha_min, codec.alpha_max))
 
         try:
-            time_val, error_val = evaluate_fn(rc, alpha, M, cao, fftw_threads)
+            time_val, error_val, pp_acc_time, pm_acc_time = evaluate_fn(rc, alpha, M, cao, fftw_threads)
         except Exception as e:
             if verbose:
                 print(f"  [iter {iteration + 1}] MD evaluation failed: {e}. Skipping.")
@@ -942,8 +948,9 @@ def run_bo_loop(
             status = "✓ FEASIBLE" if feasible else "✗ infeasible"
             print(
                 f"  [{iteration + 1:3d}/{n_bo_iterations}] "
-                f"rc={rc:.3e}  α={alpha:.4e}  M={M:3d}  CAO={cao}  "
+                f"rc={rc:.6e}  alpha={alpha:.6e}  M={M:3d}  CAO={cao}  "
                 f"threads={fftw_threads:2d}  "
+                f"pp_acc={pp_acc_time:.3e}s  pm_acc={pm_acc_time:.3e}s  "
                 f"err={error_val:.2e}  t={time_val:.4e}s  {status}"
             )
 
@@ -955,6 +962,8 @@ def run_bo_loop(
                 "M": M,
                 "cao": cao,
                 "fftw_threads": fftw_threads,
+                "pp_acc_time": pp_acc_time,
+                "pm_acc_time": pm_acc_time,
                 "time": time_val,
                 "force_error": error_val,
             }
@@ -969,6 +978,8 @@ def run_bo_loop(
                 "cao": cao,
                 "fftw_threads": fftw_threads,
                 "time": time_val,
+                "pp_acc_time": pp_acc_time,
+                "pm_acc_time": pm_acc_time,
                 "force_error": error_val,
                 "fidelity": "high",
                 "feasible": feasible,
@@ -1004,9 +1015,10 @@ def run_bo_loop(
             p = best_feasible_point
             print(
                 f"  Best feasible configuration:\n"
-                f"    rc={p['rc']:.4e}  alpha={p['alpha']:.4e}  M={p['M']}  "
-                f"CAO={p['cao']}  threads={p['fftw_threads']}\n"
-                f"    force_error={p['force_error']:.4e}  time={p['time']:.4e}s"
+                f"    rc={p['rc']:.6e}  alpha={p['alpha']:.6e}  M={p['M']}\n"
+                f"    CAO={p['cao']}  threads={p['fftw_threads']}\n"
+                f"    pp_acc_time={p['pp_acc_time']:.3e}s  pm_acc_time={p['pm_acc_time']:.3e}s\n"
+                f"    force_error={p['force_error']:.6e}  time={p['time']:.3e}s"
             )
         else:
             print("  No feasible configuration found within budget.")
@@ -1285,6 +1297,8 @@ class BayesianPPPMOptimizer:
                 [results_df, pd.DataFrame([best_point])], ignore_index=True
             )
 
+            self._set_best_point_as_current_params(best_point)
+
         if save_csv:
             csv_path = join(
                 self.io.directory_tree["preprocessing"]["path"],
@@ -1303,6 +1317,8 @@ class BayesianPPPMOptimizer:
                 f"| rc: {best_point['rc']:.6e}\n"
                 f"  Ewald alpha: {best_point['alpha']:.6e} "
                 f"| FFTW threads: {best_point['fftw_threads']}\n"
+                f"  PP acc time: {best_point['pp_acc_time']:.3e}s"
+                f"|  PM acc time: {best_point['pm_acc_time']:.3e}s "
                 f"  Force Error: {best_point['force_error']:.6e} "
                 f"| Total Time: {best_point['time']:.6e} s"
             )
@@ -1312,7 +1328,7 @@ class BayesianPPPMOptimizer:
         if self.parameters.verbose:
             print(msg)
 
-        self._restore_original_pppm_params()
+        # self._restore_original_pppm_params()
 
         return results_df, best_point
 
@@ -1392,7 +1408,7 @@ class BayesianPPPMOptimizer:
             pass  # fall back to grid result
 
         if best_err < best_point["force_error"]:
-            time_val, error_val = evaluate_fn(rc, best_alpha, M, cao, fftw_threads)
+            time_val, error_val, pp_acc_time, pm_acc_time = evaluate_fn(rc, best_alpha, M, cao, fftw_threads)
 
             if self.parameters.verbose:
                 print(
@@ -1406,6 +1422,8 @@ class BayesianPPPMOptimizer:
             updated["force_error"] = error_val
             updated["fidelity"] = "refined_alpha"
             updated["feasible"] = error_val <= target_error
+            updated["pp_acc_time"] = pp_acc_time
+            updated["pm_acc_time"] = pm_acc_time
             return updated
 
         return best_point
@@ -1485,7 +1503,7 @@ class BayesianPPPMOptimizer:
                 _last["threads"] = fftw_threads
 
             # ---- Measure PM time ----------------------------------------
-            n_trials = 3
+            n_trials = 1
             pm_acc_time = 0.0
             for _ in range(n_trials):
                 self.timer.start()
@@ -1507,7 +1525,7 @@ class BayesianPPPMOptimizer:
             self.potential.calculate_force_error()
             force_error = float(self.potential.force_error)
 
-            return total_time, force_error
+            return total_time, force_error, pp_acc_time, pm_acc_time
 
         return _evaluate
 
@@ -1535,6 +1553,15 @@ class BayesianPPPMOptimizer:
         self.potential.estimate_parameters = False
         self.potential.setup(self.parameters, self.species)
 
+    def _set_best_point_as_current_params(self, best_point: Dict):
+        """Set the PPPM parameters in self.potential to the given best_point."""
+        self.potential.rc = best_point["rc"]
+        self.potential.pppm_alpha_ewald = best_point["alpha"]
+        self.potential.pppm_mesh = full(3, best_point["M"], dtype=int)
+        self.potential.pppm_cao = full(3, best_point["cao"], dtype=int)
+        self.potential.pppm_fftw_threads = best_point.get("fftw_threads", 1)
+        self.potential.estimate_parameters = False
+        self.potential.setup(self.parameters, self.species)
     # ------------------------------------------------------------------
     # Result extraction and Pareto analysis
     # ------------------------------------------------------------------
@@ -1561,6 +1588,8 @@ class BayesianPPPMOptimizer:
                     "alpha": float(row["alpha"]),
                     "M": int(row["M"]),
                     "cao": int(row["cao"]),
+                    "pp_acc_time": float(row["pp_acc_time"]),
+                    "pm_acc_time": float(row["pm_acc_time"]),
                     "time": float(row["time"]),
                     "force_error": float(row["force_error"]),
                 }
