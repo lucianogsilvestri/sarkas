@@ -765,9 +765,9 @@ class PreProcess(Process, BayesianPPPMOptimizer):
 
         lambda_k = self.potential.screening_length / self.potential.a_ws
         ha = self.potential.box_lengths / pppm_mesh / self.potential.a_ws
-        rescaling_constant = self.potential.QFactor / (self.parameters.total_num_ptcls) * sqrt(3.0 / (4.0 * pi))
-        rescaling_constant /= self.potential.matrix[0, 0, 0]  # Rescale by the first species charges
-
+        # QFactor = self.potential.QFactor / (self.potential.matrix[0, 0, 0] * self.potential.total_num_ptcls)
+        rescaling_constant = sqrt(3.0 / (4.0 * pi))  # * QFactor
+        
         for ia, alpha in enumerate(alphas):
             for ir, rc in enumerate(rcuts):
                 tot_err, pm_err, pp_err = force_error_approx_pppm(
@@ -958,19 +958,19 @@ class PreProcess(Process, BayesianPPPMOptimizer):
             min_rc = rcuts[total_force_error[j, :].argmin()]
             rc_lbl = (
                 r"$\alpha a_{ws} = "
-                + "{:.2f}$".format(alphas[j])
+                + "{:.4f}$".format(alphas[j])
                 + r" min @ $r_c = "
-                + "{:.2f}".format(min_rc)
+                + "{:.4f}".format(min_rc)
                 + r" a_{\rm ws}$"
             )
             ax[0].plot(rcuts, total_force_error[j, :], ls=lns, label=rc_lbl)
 
             min_a = alphas[total_force_error[:, i].argmin()]
             a_lbl = (
-                r"$r_c = {:.2f}".format(rcuts[i])
+                r"$r_c = {:.4f}".format(rcuts[i])
                 + " a_{ws}$"
                 + r" min @ $\alpha_{\rm min} a_{ws} = "
-                + "{:.2f}$".format(min_a)
+                + "{:.4f}$".format(min_a)
             )
             ax[1].plot(alphas, total_force_error[:, i], ls=lns, label=a_lbl)
 
@@ -1704,7 +1704,7 @@ class PreProcess(Process, BayesianPPPMOptimizer):
         self.directory_sizes()
 
     def timing_study_calculation(
-        self, target_error=1e-5, pp_cells=None, pm_meshes=None, pm_caos=None, method="brute_force", **kwargs
+        self, target_error=1e-5, pp_cells=None, pm_meshes=None, pm_caos=None,method="brute_force", **kwargs
     ):
         """
         Estimate optimal PPPM parameters balancing accuracy and performance.
@@ -1765,6 +1765,7 @@ class PreProcess(Process, BayesianPPPMOptimizer):
                 pp_cells=pp_cells,
                 pm_meshes=pm_meshes,
                 pm_caos=pm_caos,
+                fftw_thread_options=kwargs.pop("fftw_thread_options", None),
                 warm_start_from=kwargs.pop("warm_start_from", None),
                 **kwargs,
             )

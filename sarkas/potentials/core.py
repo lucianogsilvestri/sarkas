@@ -127,6 +127,7 @@ class Potential:
     pppm_h_array: ndarray = array([1.0, 1.0, 1.0], dtype=float)
     pppm_pm_err: float = 0.0
     pppm_pp_err: float = 0.0
+    pppm_fftw_threads: int = 1
     QFactor: float = 0.0
     rc: float = None
     screening_length_type: str = "thomas-fermi"
@@ -586,7 +587,7 @@ class Potential:
         self.pppm_h_array = self.box_lengths / self.pppm_mesh
 
         # Calculate rc from the force error formula, assuming pppm_alpha * rc = 3.6
-        # Rearranging: force_error / np.sqrt(2) = 2 * total_charge_squared / np.sqrt(total_particles * volume) * exp(-(pppm_alpha * rc)^2) / sqrt(rc)
+        # Rearranging: force_error / sqrt(2) = 2 * total_charge_squared / np.sqrt(total_particles * volume) * exp(-(pppm_alpha * rc)^2) / sqrt(rc)
         # Given pppm_alpha * rc = 3.6, exp(-(pppm_alpha * rc)^2) = exp(-12.96)
 
         # Solving for rc:
@@ -669,6 +670,11 @@ class Potential:
         constants = array([kappa, self.pppm_alpha_ewald, self.fourpie0])
 
         # Calculate the Optimized Green's Function
+        # Call once to warm up the numba function and avoid compilation time in the main loop
+        _ = gf_opt(
+            self.box_lengths, self.box_lengths/array([16, 16, 16]), array([16, 16, 16]),self.pppm_aliases, array([3,3,3]), constants
+        )
+        # Calculate the Optimized Green's Function
         self.pppm_green_function, self.pppm_kx, self.pppm_ky, self.pppm_kz, self.pppm_pm_err = gf_opt(
             self.box_lengths, self.pppm_h_array, self.pppm_mesh, self.pppm_aliases, self.pppm_cao, constants
         )
@@ -700,7 +706,7 @@ class Potential:
             # For Lennard-Jones potential, the background charge correction is zero
             self.background_charge_correction = 0.0
 
-        self.fftw_objects = FFTWObjects(self.pppm_mesh)  # Optimized FFT objects
+        self.fftw_objects = FFTWObjects(self.pppm_mesh, self.pppm_fftw_threads)  # Optimized FFT objects
 
     def pretty_print(self):
         """Print potential information in a user-friendly way."""
@@ -977,7 +983,7 @@ class Potential:
 
         # Uniform background charge correction
         # The division by total number of particles is needed to have the same energy per particle
-        ptcls.potential_energy += self.background_charge_correction / self.total_num_ptcls
+        # ptcls.potential_energy += self.background_charge_correction / self.total_num_ptcls
 
         # J-M.Caillol, J Chem Phys 101 6080 (1994) https: // doi.org / 10.1063 / 1.468422
         # ptcls.calculate_dipole_energy()

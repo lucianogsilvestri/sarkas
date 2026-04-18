@@ -197,7 +197,7 @@ class Particles:
             "Electric Current": self.calculate_species_electric_current,
             "Pressure Tensor": self.calculate_species_pressure_tensor,
             "Heat Flux": self.calculate_species_heat_flux,
-            "Diffusion Flux": self.calculate_species_diffusion_flux,
+            "Diffusion Flux": self.calculate_diffusion_fluxes,
             "Virial": self.calculate_species_virial_tensor,
         }
         self.qmc_sequence = None
@@ -574,6 +574,9 @@ class Particles:
         self.temperature = zeros(self.total_num_ptcls)
         self.dipole_moment_energy = zeros(self.total_num_ptcls)
 
+        self.momentum = zeros((self.total_num_ptcls, 3))
+        self.species_momentum = zeros((self.num_species, 3))
+
         self.species_initial_velocity = zeros((self.num_species, 3))
         self.species_thermal_velocity = zeros((self.num_species, 3))
 
@@ -606,8 +609,6 @@ class Particles:
                 self.observables_arrays_list.append("rdf_hist")
 
         if "Momentum" in self.observables_list:
-            self.momentum = zeros((self.total_num_ptcls, 3))
-            self.species_momentum = zeros((self.num_species, 3))
             if "species_momentum" not in self.observables_arrays_list:
                 self.observables_arrays_list.append("species_momentum")
 
@@ -656,9 +657,9 @@ class Particles:
                 self.observables_arrays_list.append("species_velocity_moments")
 
         if "Diffusion Flux" in self.observables_list:
-            self.species_diffusion_flux = zeros((self.num_species - 1, 3))
-            if "species_diffusion_flux" not in self.observables_arrays_list:
-                self.observables_arrays_list.append("species_diffusion_flux")
+            self.diffusion_fluxes = zeros((self.num_species - 1, 3))
+            if "diffusion_fluxes" not in self.observables_arrays_list:
+                self.observables_arrays_list.append("diffusion_fluxes")
 
     def initialize_positions(self, species: list = None):
         """
@@ -1318,9 +1319,9 @@ class Particles:
         Note that :attr:`heat_flux_species_tensor` is calculated in the force loop if requested."""
         self.species_heat_flux = vector_species_loop(self.heat_flux, self.species_num)
 
-    def calculate_species_diffusion_flux(self):
+    def calculate_diffusion_fluxes(self):
         """Calculate the diffusion fluxes."""
-        self.species_diffusion_flux = calc_species_diffusion_flux(self.vel, self.species_masses, self.species_num)
+        self.diffusion_fluxes = calc_diffusion_fluxes(self.vel, self.species_masses, self.species_num)
 
     def calculate_species_enthalpy(self):
         energy = scalar_species_loop(self.kinetic_energy + self.potential_energy, self.species_num)
@@ -1368,7 +1369,7 @@ class Particles:
 
     def calculate_species_momentum(self):
         velocity = vector_species_loop(self.vel, self.species_num)
-        self.species_momentum = self.species_masses * velocity
+        self.species_momentum = self.species_masses[:, newaxis] * velocity
 
     def calculate_species_velocity_moments(self):
         """Calculate the moments of the velocity distribution using the velocity of each species and stores them into :attr:`species_velocity_moments`."""
@@ -1450,7 +1451,7 @@ class Particles:
 
     def calculate_total_momentum(self):
         self.calculate_species_momentum()
-        self.total_momentum = self.species_momentum.sum()
+        self.total_momentum = self.species_momentum.sum(axis = 0)
 
     def calculate_total_potential_energy(self):
         """Calculate the total potential energy by summing the :attr:`potential_energy` array. The total potential energy is store in :attr:`total_potential_energy`."""
@@ -1660,6 +1661,9 @@ class Particles:
         """
         Enforce conservation of total linear momentum. Updates particles velocities
         """
+        # self.calculate_total_momentum()
+        # total_mass = self.masses.sum()
+        # self.vel -= self.total_momentum / total_mass # remove v_com
         remove_drift_nb(self.vel, self.species_num)
 
     def setup(self, params, species):
@@ -1990,24 +1994,25 @@ def remove_drift_nb(vel, nums):
 
 
 @njit
-def calc_species_diffusion_flux(vel, species_masses, species_num):
+def calc_diffusion_fluxes(vel, species_masses, species_num):
     """
-    Calculates the diffusion flux for each species based on their velocities, masses, and concentrations.
+    Calculates the diffusion fluxes from the particles velocities, masses, and concentrations.
 
     Parameters
     ----------
     vel : numpy.ndarray
         Array of shape (N, 3) representing the velocities of N particles.
+
     species_masses : numpy.ndarray
         Array of shape (M,) representing the masses of M species.
 
-    species_num : int
-        Number of species.
+    species_num : numpy.ndarray
+        Array of shape (M,) containing the number of particles for each species.
 
     Returns
     -------
-    numpy.ndarray
-        Array of shape (M-1, 3) representing the diffusion flux for each species.
+    diffusion_fluxes: numpy.ndarray
+        Array of shape (M-1, 3) representing the diffusion fluxes in 3 dimensions.
 
     Notes
     -----
@@ -2016,21 +2021,21 @@ def calc_species_diffusion_flux(vel, species_masses, species_num):
         - vel: (N, 3)
         - species_masses: (M,)
         - species_concentrations: (M,)
-        - species_diffusion_flux: (M-1, 3)
+        - diffusion_fluxes: (M-1, 3)
     """
     species_net_velocity = vector_species_loop(vel, species_num)
     species_concentrations = species_num / species_num.sum()
     m_bar = species_masses @ species_concentrations
-    species_diffusion_flux = zeros((len(species_num) - 1, 3))
+    diffusion_fluxes = zeros((len(species_num) - 1, 3))
     for i, m_alpha in enumerate(species_masses[:-1]):
         for j, m_beta in enumerate(species_masses):
             delta_ab = 1 * (m_alpha == m_beta)
-            species_diffusion_flux[i, :] += (
+            diffusion_fluxes[i, :] += (
                 m_bar * delta_ab - species_concentrations[i] * m_beta
             ) * species_net_velocity[j, :]
-        species_diffusion_flux[i, :] *= m_alpha / m_bar
+        diffusion_fluxes[i, :] *= m_alpha / m_bar
 
-    return species_diffusion_flux
+    return diffusion_fluxes
 
 
 @jit(nopython=True)

@@ -1,8 +1,8 @@
 """Module of mathematical functions."""
 
+import numpy as np
 import scipy.signal as scp_signal
-from numba import njit
-from numpy import arange, array, exp, float64, inf, ndarray, pi, sqrt, trapz, zeros_like
+from numpy import arange, array, exp, float64, inf, ndarray, pi, sqrt
 from scipy.integrate import quad, quad_vec
 from scipy.special import gamma
 from typing import Optional
@@ -49,42 +49,11 @@ def correlationfunction(At, Bt):
     # Calculate the full correlation function.
     full_corr = scp_signal.correlate(At, Bt, mode="full")
     # Normalization of the full correlation function, Similar to norm_counter
-    norm_corr = array([no_steps - ii for ii in range(no_steps)])
+    norm_corr = np.arange(no_steps, 0, -1, dtype=float)
     # Find the mid point of the array
     mid = full_corr.size // 2
     # I want only the second half of the array, i.e. the positive lags only
     return full_corr[mid:] / norm_corr
-
-
-@njit
-def fast_integral_loop(time, integrand):
-    """Numba'd function to compute the following integral with a varying upper limit
-
-    .. math::
-        I(\\tau) = \\int_0^{\\tau} f(t) dt
-
-    It uses :func:`numpy.trapz`. This function is used in the calculation of the transport coefficients.
-
-    Parameters
-    ----------
-    time: numpy.ndarray
-        Domain of integration
-
-    integrand: numpy.ndarray
-        Integrand.
-
-    Returns
-    -------
-    integral : numpy.ndarray
-        Integral with increasing upper limit. Shape = (time.len()).
-
-
-    """
-    integral = zeros_like(integrand)
-    for it in range(1, len(time)):
-        integral[it] = trapz(integrand[:it], x=time[:it])
-
-    return integral
 
 
 def yukawa_green_function(k: float, alpha: float, kappa: float):

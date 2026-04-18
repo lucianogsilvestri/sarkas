@@ -1,5 +1,16 @@
 """
 Transport Module.
+
+All I/O uses xarray + zarr (no pandas).  Each transport-coefficient class
+stores its results in an xarray-compatible zarr store at::
+
+    <saving_dir>/<name>_<job_id>.zarr
+
+Store layout::
+
+    <quantity>      (slice, time)   — raw per-slice integrals
+    mean_<quantity> (time,)         — slice mean
+    std_<quantity>  (time,)         — slice std
 """
 
 import inspect
@@ -11,24 +22,26 @@ if get_ipython().__class__.__name__ == "ZMQInteractiveShell":
 else:
     from tqdm import tqdm
 
-import sys
+import numpy as np
+import xarray as xr
 from matplotlib.pyplot import subplots
 from numpy import array, column_stack, ndarray, pi, rint
 from os import mkdir as os_mkdir
-from os import remove as os_remove
 from os.path import exists as os_path_exists
 from os.path import join as os_path_join
-from pandas import DataFrame, MultiIndex, read_hdf
 from scipy.integrate import cumulative_trapezoid
 from warnings import warn
 
+import zarr
+import numcodecs
+
 from ..utilities.io import print_to_logger
-from ..utilities.maths import fast_integral_loop
-from ..utilities.misc import add_col_to_df
 from ..utilities.timing import datetime_stamp, SarkasTimer
 
 # Sarkas Modules
 from .observables import plot_labels, Thermodynamics
+
+_COMPRESSOR = numcodecs.Blosc(cname="lz4", clevel=5, shuffle=numcodecs.Blosc.BITSHUFFLE)
 
 
 class TransportCoefficients:
@@ -36,9 +49,8 @@ class TransportCoefficients:
 
     def __init__(self):
         self.time_array = None
-        self.dataframe = None
-        self.dataframe_slices = None
         self.saving_dir = None
+        self.zarr_store_path = None
         #
         # To be copied from parameters class
         self.postprocessing_dir = None
@@ -59,43 +71,18 @@ class TransportCoefficients:
         self.beta_slices = 0.0
         #
         self.log_file = None
-        self.df_fnames = {}
         self.timer = SarkasTimer()
 
     def setup(self, params, observable, thermodynamics):
         """
         Set up the necessary parameters and structures for computing transport coefficients.
-        This includes copying simulation parameters, creating directories, and initializing dataframes.
 
         Parameters
         ----------
         params : :class:`sarkas.core.Parameters`
-            An instance of the Parameters class containing simulation parameters.
-
         observable : :class:`sarkas.tools.observables.Observable`
-            An instance of the Observable class. This class is used for obtaining the autocorrelation
-            function datasets necessary for the transport coefficient calculations.
-
         thermodynamics : :class:`sarkas.tools.observables.Thermodynamics`
-            An instance of the Thermodynamics class, which is used for calculating the average temperature
-            of each block in the simulation. If not provided, the average temperature is calculated using
-            the :meth:`calculate_average_temperature` method.
-
-        Notes
-        -----
-        - The method initializes various attributes of the class based on the provided `params`,
-        `observable`, and `thermodynamics` (if provided).
-        - It also sets up logging and prints initial information about the setup process.
-        - If `thermodynamics` is not provided, it calculates the average temperature using available data.
-
-
-        See Also
-        --------
-        `get_observable_data` : Method to retrieve autocorrelation function datasets.
-        `calculate_average_temperature` : Method to calculate the average temperature if `thermodynamics` is not provided.
-        `make_directories, create_df_filenames` : Methods for setting up directory structures and filenames for saving data.
         """
-        #
         self.copy_params(params=params)
         self.postprocessing_dir = self.directory_tree["postprocessing"]["path"]
         self.get_observable_data(observable)
@@ -104,7 +91,9 @@ class TransportCoefficients:
         self.beta_slices = thermodynamics.beta_slices.copy()
 
         self.make_directories()
-        self.create_df_filenames()
+        self.zarr_store_path = os_path_join(
+            self.saving_dir, f"{self.__name__}_{self.job_id}.zarr"
+        )
         self.log_file = os_path_join(self.saving_dir, f"{self.__name__}_logfile.out")
 
         datetime_stamp(self.log_file)
@@ -128,76 +117,98 @@ class TransportCoefficients:
         disp += ")"
         return disp
 
-    def calculate_average_temperature(self, params):
-        """
-        Calculate the average temperature from the :class:`sarkas.tools.observables.Thermodynamics` data.
-        It updates the :attr:`beta_slices` attribute with the inverse temperature calculated from the thermodynamics data.
-
-        Parameters
-        ----------
-        params : :class:`sarkas.core.Parameters`
-            Simulation parameters used for setting up the thermodynamics calculations.
-
-        Notes
-        -----
-        The method creates an instance of :class:`Thermodynamics`, sets it up with the given parameters,
-        parses the data (without ACF data), and then calculates beta slices (inverse temperature).
-        The average temperature is computed, but only the beta slices are stored in the `beta_slices` attribute.
-        """
-
-        energy = Thermodynamics()
-        energy.setup(params, phase=self.phase)
-        energy.parse(acf_data=False)
-        energy.calculate_beta_slices()
-        # self.T_avg = energy.dataframe["Temperature"].mean()
-        self.beta_slices = energy.beta_slices.copy()
-
-    def initialize_dataframes(self, observable):
-        """
-        Grab observables autocorrelation data and initialize the dataframes where to store the data.
+    def get_observable_data(self, observable):
+        """Copy slice/block metadata from observable.
 
         Parameters
         ----------
         observable : :class:`sarkas.tools.observables.Observable`
-            Observable object containing the ACF whose time integral leads to the desired transport coefficient.
-
         """
-        time_col_name = observable.dataframe_acf.columns[0]
-        self.time_array = observable.dataframe_acf[time_col_name].values
+        self.phase = observable.phase
+        self.no_slices = observable.no_slices
+        self.block_length = observable.block_length
+        self.timesteps_per_slice = observable.timesteps_per_slice
+        self.timesteps_per_plasma_period = observable.timesteps_per_plasma_period
+        self.plasma_period = observable.plasma_period
+        self.dump_step = observable.dump_step
+        self.observable_zarr_path = observable.zarr_store_path
 
-        self.dataframe = DataFrame()
-        self.dataframe_slices = DataFrame()
-        # self.dataframe["Integration_Interval"] = self.time_array.copy()
-        # self.dataframe_slices["Integration_Interval"] = self.time_array.copy()
+        # Build time axis from xarray-compatible zarr store
+        try:
+            ds = xr.open_zarr(observable.zarr_store_path)
+            # Try to find a 'time' or 'lag' dimension coordinate
+            for var in ds.data_vars:
+                arr = ds[var]
+                for dim in ("time", "lag"):
+                    if dim in arr.coords:
+                        self.time_array = arr.coords[dim].values
+                        break
+                else:
+                    continue
+                break
+            else:
+                self.time_array = (
+                    np.arange(observable.block_length) * observable.dt * observable.dump_step
+                )
+        except Exception:
+            self.time_array = (
+                np.arange(observable.block_length) * observable.dt * observable.dump_step
+            )
 
-    def create_df_filenames(self):
+    def _write_transport_zarr(self, quantities: dict, mode: str = "a"):
+        """Write transport coefficient arrays to the xarray-compatible zarr store.
+
+        Parameters
+        ----------
+        quantities : dict
+            Mapping of ``{name: array}`` where each array has shape
+            ``(no_slices, block_length)``.
+        mode : str
+            Zarr write mode; ``'w'`` to create/overwrite, ``'a'`` to append.
         """
-        Creates and stores the paths for the filenames of the dataframes used in the analysis.
-        These filenames are based on the instance's name and job ID.
+        from numcodecs import Blosc
+        compressor = Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE)
+        ddof = min(1, self.no_slices - 1)
+        variables = {}
+        for name, slices_arr in quantities.items():
+            da = xr.DataArray(
+                slices_arr,
+                dims=["slice", "time"],
+                coords={
+                    "slice": np.arange(self.no_slices),
+                    "time": self.time_array,
+                },
+            )
+            variables[name] = da
+            variables[f"mean_{name}"] = da.mean("slice").compute() if hasattr(da, "compute") else xr.DataArray(
+                slices_arr.mean(axis=0), dims=["time"], coords={"time": self.time_array}
+            )
+            variables[f"std_{name}"] = xr.DataArray(
+                slices_arr.std(axis=0, ddof=ddof), dims=["time"], coords={"time": self.time_array}
+            )
+        ds = xr.Dataset(variables)
+        encoding = {}
+        for var in ds.data_vars:
+            arr = ds[var]
+            chunks = [1 if d == "slice" else arr.sizes[d] for d in arr.dims]
+            encoding[var] = {"compressor": compressor, "chunks": chunks}
+        ds.to_zarr(self.zarr_store_path, mode=mode, encoding=encoding)
 
-        Notes
-        -----
-        The method constructs filenames for :attr:`dataframe_slices` and :attr:`dataframe`, combining the instance's
-        name, job ID, and file format. These filenames are stored in the :attr:`df_fnames` dictionary attribute.
+    def save_zarr(self, quantities: dict):
+        """Alias for backward compatibility; calls :meth:`_write_transport_zarr`."""
+        mode = "w" if not os_path_exists(self.zarr_store_path) else "a"
+        self._write_transport_zarr(quantities, mode=mode)
+
+    def parse(self):
+        """Return the xarray Dataset containing the transport coefficients.
+
+        Returns
+        -------
+        xr.Dataset
         """
-        fnames = {}
-        fnames["dataframe_slices"] = os_path_join(self.saving_dir, f"{self.__name__}_slices_{self.job_id}.h5")
-        fnames["dataframe"] = os_path_join(self.saving_dir, f"{self.__name__}_{self.job_id}.h5")
-
-        self.df_fnames = fnames
+        return xr.open_zarr(self.zarr_store_path)
 
     def make_directories(self):
-        """
-        Creates necessary directories for saving transport coefficients.
-        The directories are structured to organize the data by postprocessing type, transport coefficient name,
-        and simulation phase.
-
-        Notes
-        -----
-        This method creates a hierarchy of directories, if they do not already exist, in the following structure:
-        'postprocessing_dir/TransportCoefficients/{self.__name__}/{self.phase.capitalize()}'. The final directory path
-        is stored in the :attr:`saving_dir` attribute.
-        """
         transport_dir = os_path_join(self.postprocessing_dir, "TransportCoefficients")
         if not os_path_exists(transport_dir):
             os_mkdir(transport_dir)
@@ -210,157 +221,34 @@ class TransportCoefficients:
         if not os_path_exists(self.saving_dir):
             os_mkdir(self.saving_dir)
 
-    def diffusion(self, observable, plot: bool = True, display_plot: bool = False):
-        """
-        Calculate the transport coefficient from the Green-Kubo formula.
+    # -----------------------------------------------------------------------
+    # Deprecated stub methods
+    # -----------------------------------------------------------------------
 
-        Raises
-        ------
-            : DeprecationWarning
-        """
+    def diffusion(self, *args, **kwargs):
+        warn("Deprecated. Use the Diffusion class.", DeprecationWarning)
 
-        warn(
-            "Deprecated feature. It will be removed in a future release.\nEach transport coefficient is now a class. Create an instance of the class Diffusion and then pass the same parameters to `Diffusion.compute()`.",
-            category=DeprecationWarning,
-        )
+    def electrical_conductivity(self, *args, **kwargs):
+        warn("Deprecated. Use the ElectricalConductivity class.", DeprecationWarning)
 
-    def electrical_conductivity(
-        self,
-        observable,
-        plot: bool = True,
-        display_plot: bool = False,
-    ):
-        """
-        Calculate the transport coefficient from the Green-Kubo formula.
+    def interdiffusion(self, *args, **kwargs):
+        warn("Deprecated. Use the InterDiffusion class.", DeprecationWarning)
 
-        Raises
-        ------
-            : DeprecationWarning
-        """
+    def viscosity(self, *args, **kwargs):
+        warn("Deprecated. Use the Viscosity class.", DeprecationWarning)
 
-        warn(
-            "Deprecated feature. It will be removed in a future release.\nEach transport coefficient is now a class. Create an instance of the class `ElectricalConductivity` and then pass the same parameters to `ElectricalConductivity.compute()`.",
-            category=DeprecationWarning,
-        )
-
-    def interdiffusion(self, observable, plot: bool = True, display_plot: bool = False):
-        """
-        Calculate the transport coefficient from the Green-Kubo formula
-
-        Raises
-        ------
-            : DeprecationWarning
-        """
-
-        warn(
-            "Deprecated feature. It will be removed in a future release.\nEach transport coefficient is now a class. Create an instance of the class InterDiffusion and then pass the same parameters to `InterDiffusion.compute()`.",
-            category=DeprecationWarning,
-        )
-
-    def viscosity(self, observable, plot: bool = True, display_plot: bool = False):
-        """
-        Calculate the transport coefficient from the Green-Kubo formula
-
-        Raises
-        ------
-            : DeprecationWarning
-        """
-
-        warn(
-            "Deprecated feature. It will be removed in a future release.\nEach transport coefficient is now a class. Create an instance of the class Viscosity and then pass the same parameters to `Viscosity.compute()`.",
-            category=DeprecationWarning,
-        )
-
-    def get_observable_data(self, observable):
-        """
-        Retrieves autocorrelation function datasets for a given observable.
-        This method calls the :meth:`sarkas.tools.observables.Observable.parse_acf` method of the provided observable
-        object to obtain relevant data such as the phase, number of slices,
-        autocorrelation function slice steps, and the dump step.
-
-        Parameters
-        ----------
-        observable : :class:`sarkas.tools.observables.Observable`
-            An instance of the Observable class from which the autocorrelation
-            function datasets will be obtained.
-        """
-        # Check that the phase and no_slices is the same from the one computed in the Observable
-        observable.parse_acf()
-
-        self.phase = observable.phase
-        self.no_slices = observable.no_slices
-        self.block_length = observable.block_length
-        self.timesteps_per_slice = observable.timesteps_per_slice
-        self.timesteps_per_plasma_period = observable.timesteps_per_plasma_period
-        self.plasma_period = observable.plasma_period
-
-        self.dump_step = observable.dump_step
-
-    def parse(self):
-        """Reads the HDF files containing the transport coefficients data."""
-
-        self.dataframe = read_hdf(self.df_fnames["dataframe"], mode="r", index_col=False)
-        self.dataframe_slices = read_hdf(self.df_fnames["dataframe_slices"], mode="r", index_col=False)
-
-        # Print some info
-        # self.pretty_print()
+    # -----------------------------------------------------------------------
+    # Plotting
+    # -----------------------------------------------------------------------
 
     def plot_tc(self, time, acf_data, tc_data, acf_name, tc_name, figname, show: bool = False):
-        """
-        Create dual plots for Autocorrelation Function (ACF) and transport coefficient.
-        The method plots both the mean and standard deviation of the ACF and transport coefficient
-        data against lag time and the array index.
-
-        Parameters
-        ----------
-        time : numpy.ndarray
-            Array of time values.
-
-        acf_data : numpy.ndarray
-            Mean and Standard Deviation of the ACF.
-            Shape = (:attr:`sarkas.tools.observables.Observable.acf_slice_steps`, 2).
-
-        tc_data : numpy.ndarray
-            Mean and Standard Deviation of the transport coefficient.
-            Shape = (:attr:`sarkas.tools.observables.Observable.acf_slice_steps`, 2).
-
-        acf_name : str
-            Y-label for the ACF plot.
-
-        tc_name : str
-            Y-label for the transport coefficient plot.
-
-        figname : str
-            Filename for saving the plot.
-
-        show : bool
-            If True, the plot will be displayed. Useful for IPython or terminal environments.
-
-        Returns
-        -------
-        fig : matplotlib.figure.Figure
-            The figure object of the plot.
-
-        (ax1, ax2, ax3, ax4) : tuple
-            A tuple containing the axes objects. ax1 and ax2 are the primary axes for the ACF
-            and transport coefficient plots, respectively. ax3 and ax4 are the twin axes (twiny())
-            for ax1 and ax2, used for alternative representations or scales.
-
-        Notes
-        -----
-        The method computes and applies appropriate scaling and labeling for both x and y axes.
-        It also sets the axis limits and scales (logarithmic in this case). The method optionally saves
-        the figure to the specified directory and displays it based on the 'show' parameter.
-        """
-        # Make the plot
+        """Dual plot of ACF and running transport coefficient."""
         fig, (ax1, ax2) = subplots(1, 2, figsize=(16, 7))
         ax3 = ax1.twiny()
         ax4 = ax2.twiny()
 
-        # Calculate axis multipliers and labels
         xmul, ymul, _, _, xlbl, ylbl = plot_labels(time, tc_data[:, 0], "Time", self.__long_name__, self.units)
 
-        # ACF
         ax1.plot(xmul * time, acf_data[:, 0] / acf_data[0, 0])
         ax1.fill_between(
             xmul * time,
@@ -369,10 +257,12 @@ class TransportCoefficients:
             alpha=0.2,
         )
 
-        # Coefficient
         ax2.plot(xmul * time, ymul * tc_data[:, 0])
         ax2.fill_between(
-            xmul * time, ymul * (tc_data[:, 0] - tc_data[:, 1]), ymul * (tc_data[:, 0] + tc_data[:, 1]), alpha=0.2
+            xmul * time,
+            ymul * (tc_data[:, 0] - tc_data[:, 1]),
+            ymul * (tc_data[:, 0] + tc_data[:, 1]),
+            alpha=0.2,
         )
 
         xlims = (xmul * time[1], xmul * time[-1] * 1.5)
@@ -380,9 +270,6 @@ class TransportCoefficients:
         xlims = (xmul * time[1], xmul * time[-1] * 1.05)
         ax2.set(xlim=xlims, ylim=(-0.05, ax2.get_ylim()[1]), ylabel=tc_name + ylbl, xlabel=r"$\tau$" + xlbl, xscale="log")
 
-        # ax1.legend(loc='best')
-        # ax2.legend(loc='best')
-        # Finish the index axes
         ax3.set(xlim=(1, len(time) * 1.5), xscale="log")
         ax4.set(xlim=(1, len(time) * 1.5), xscale="log")
         for axi in [ax3, ax4]:
@@ -398,41 +285,16 @@ class TransportCoefficients:
         return fig, (ax1, ax2, ax3, ax4)
 
     def pretty_print_msg(self, info: str = None, append_info: str = None):
-        """
-        Generate and return a formatted message containing information about data storage locations,
-        number of slices, dumps per slice, and time intervals related to plasma frequency in a simulation.
-        The message includes the long name of the current instance, paths to dataframes, the total time interval of the autocorrelation function, and its step size in both standard units and plasma periods.
-
-        Parameters
-        ----------
-        info : str, optional
-            A string containing information to be included in the print out. If provided, the method will use this
-            as the base information otherwise, it will generate default information with detailed simulation data.
-
-        append_info : str, optional
-            A string containing additional information to be appended at the end of the default generated information print out. Useful for adding
-            extra details or notes to the base information.
-
-        Returns
-        -------
-        msg : str
-            A formatted string containing detailed information about the data storage, time intervals, and other relevant
-            details of the simulation.
-        """
-
         tc_name = f" {self.__long_name__} "
-
-        # Create the message to print
         dtau = self.dt * self.dump_step
         tau = dtau * self.block_length
-        # t_wp = 2.0 * pi / self.total_plasma_frequency  # Plasma period
         tau_wp = rint(tau / self.plasma_period).astype(int)
         if info:
             msg = info
         else:
             msg = (
                 f"\n\n{tc_name:=^70}\n"
-                f"Data saved in: \n {self.df_fnames['dataframe']} \n {self.df_fnames['dataframe_slices']} \n"
+                f"Data saved in: \n {self.zarr_store_path}\n"
                 f"No. of slices = {self.no_slices}\n"
                 f"No. dumps per block = {self.block_length}\n"
                 f"Total time interval of autocorrelation function: tau = {tau:.4e} {self.units_dict['time']} ~ {tau_wp} plasma periods\n"
@@ -440,169 +302,44 @@ class TransportCoefficients:
             )
             if append_info:
                 msg += append_info
-
         return msg
 
     def pretty_print(self, info: str = None, append_info: str = None):
-        """
-        Print a formatted message, containing simulation data and additional information,
-        to both a log file and the screen, based on the verbosity settings.
-        This method constructs the message using `pretty_print_msg` and then outputs it
-        using the `print_to_logger` function.
-
-        Parameters
-        ----------
-        info : str, optional
-            Initial information to be included in the printed message. This can be a
-            custom message provided by the user. If `None`, `pretty_print_msg` will
-            generate a default message based on the simulation data.
-
-        append_info : str, optional
-            Additional information to be appended to the end of the message. This allows
-            for extra details or notes to be included in the final printed output.
-
-        Notes
-        -----
-        - The message is printed to the log file specified in `self.log_file`.
-        - The verbosity of the printing to the screen is controlled by `self.verbose`.
-
-        If `self.verbose` is `True`, the message will also be printed to the screen;
-        otherwise, it will only be logged to the file.
-
-        """
-
         msg = self.pretty_print_msg(info, append_info)
-        # Print the message to log file and screen
         print_to_logger(message=msg, log_file=self.log_file, print_to_screen=self.verbose)
 
-    def save_hdf(self):
-        """
-        Save the dataframes `dataframe_slices` and `dataframe` as HDF files to disk.
-        This method is designed to store the data in the 'TransportCoefficient' directory within the 'PostProcessing` directory.
-
-        This method first checks if the HDF files already exist in the specified paths
-        (contained in `self.df_fnames`). If they exist, the existing files are removed
-        before saving the new data. The columns of both dataframes are converted into
-        MultiIndex format based on the column names, and then the dataframes are sorted
-        by these indices before being saved.
-
-        Note
-        ----
-        The method currently employs a workaround where existing HDF files are deleted
-        before writing new ones. Future improvements may include updating the existing
-        HDF files directly without the need to delete them first.
-
-        Warnings
-        --------
-        - This method will overwrite any existing HDF files with the same names in the
-        specified save location.
-        - It assumes the column names in the dataframes are structured in a specific
-        format suitable for splitting into tuples for `MultiIndex`.
-
-        """
-
-        # TODO: Fix this hack. We should be able to add data to HDF instead of removing it and rewriting it.
-        # Save the data.
-        if os_path_exists(self.df_fnames["dataframe_slices"]):
-            os_remove(self.df_fnames["dataframe_slices"])
-
-        self.ensure_multiindex(self.dataframe_slices)
-        # self.dataframe_slices.columns = MultiIndex.from_tuples(
-        #     [tuple(c.split("_")) for c in self.dataframe_slices.columns]
-        # )
-
-        self.dataframe_slices = self.dataframe_slices.sort_index()
-        self.dataframe_slices.to_hdf(self.df_fnames["dataframe_slices"], mode="w", key=self.__name__, index=False)
-
-        # Save the data.
-        if os_path_exists(self.df_fnames["dataframe"]):
-            os_remove(self.df_fnames["dataframe"])
-
-        self.ensure_multiindex(self.dataframe)
-        # self.dataframe.columns = MultiIndex.from_tuples([tuple(c.split("_")) for c in self.dataframe.columns])
-        self.dataframe = self.dataframe.sort_index()
-        self.dataframe.to_hdf(self.df_fnames["dataframe"], mode="w", key=self.__name__, index=False)
-
-    def ensure_multiindex(self, dataframe):
-        """
-        Ensure that the columns of the given dataframe are a MultiIndex.
-
-        This method checks if the columns of the given dataframe are already a MultiIndex.
-        If not, it converts the columns to a MultiIndex by splitting each column name on the underscore character.
-
-        Parameters
-        ----------
-        dataframe : pd.DataFrame
-            The dataframe to process.
-        """
-        if not isinstance(dataframe.columns, MultiIndex):
-            dataframe.columns = MultiIndex.from_tuples([tuple(c.split("_")) for c in dataframe.columns])
-
     def time_stamp(self, message: str, timing: tuple):
-        """
-        Print a given message along with formatted elapsed time to a log file and,
-        optionally, to the screen based on the verbosity setting of the instance.
-        The elapsed time is detailed in hours, minutes, seconds, milliseconds,
-        microseconds, and nanoseconds.
-
-        If the elapsed time is less than or equal to 2 seconds, the output includes
-        the finer resolution of milliseconds, microseconds, and nanoseconds. For
-        longer durations, only hours, minutes, and seconds are included.
-
-        Parameters
-        ----------
-        message : str
-            The message to be printed before the elapsed time. This is intended to
-            provide context or description for the timing being reported.
-
-        timing : tuple
-            A tuple containing the elapsed time details in the order of hours (hrs),
-            minutes (min), seconds (sec), milliseconds (msec), microseconds (usec),
-            and nanoseconds (nsec).
-
-        Notes
-        -----
-        - The method writes to the log file specified in `self.log_file`.
-        - The verbosity of the output is controlled by `self.verbose`. If `self.verbose`
-            is `True`, the message will be printed both to the log file and the screen.
-            Otherwise, it will only be logged to the file.
-        - The method temporarily redirects the standard output to the log file,
-            then restores it after logging is completed.
-        """
-
+        import sys
         screen = sys.stdout
         f_log = open(self.log_file, "a+")
         repeat = 2 if self.verbose else 1
         t_hrs, t_min, t_sec, t_msec, t_usec, t_nsec = timing
-
-        # redirect printing to file
         sys.stdout = f_log
         while repeat > 0:
             if t_hrs == 0 and t_min == 0 and t_sec <= 2:
                 print(f"\n{message} Time: {int(t_sec)} sec {int(t_msec)} msec {int(t_usec)} usec {int(t_nsec)} nsec")
             else:
                 print(f"\n{message} Time: {int(t_hrs)} hrs {int(t_min)} min {int(t_sec)} sec")
-
             repeat -= 1
             sys.stdout = screen
-
         f_log.close()
 
 
+# ---------------------------------------------------------------------------
+# Diffusion
+# ---------------------------------------------------------------------------
+
+
 class Diffusion(TransportCoefficients):
-    """
-    The diffusion coefficient is calculated from the Green-Kubo formula
+    """Self-diffusion coefficient from the Green-Kubo formula.
 
-    .. math::
+    Reads from the :class:`~sarkas.tools.observables.VelocityAutoCorrelationFunction`
+    zarr store.  The VACF layout is::
 
-            D_{\\alpha} = \\frac{1}{3 N_{\\alpha}} \\sum_{i}^{N_{\\alpha}} \\int_0^{\\tau} dt \\,
-                \\langle \\mathbf v^{(\\alpha)}_{i}(t) \\cdot  \\mathbf v^{(\\alpha)}_{i}(0) \\rangle.
+        acf  (no_species, D+1, block_length, no_slices)
 
-    where :math:`\\mathbf v_{i}^{(\\alpha)}(t)` is the velocity of particle :math:`i` of species
-    :math:`\\alpha`. Notice that the diffusion coefficient is averaged over all :math:`N_{\\alpha}` particles.
-
-    Data is retrievable at :attr:`~.dataframe` and :attr:`~.dataframe_slices`.
-
+    Access pattern: ``acf[isp, -1, :, isl]`` — isotropic VACF for species
+    ``isp``, slice ``isl``.
     """
 
     def __init__(self):
@@ -612,280 +349,123 @@ class Diffusion(TransportCoefficients):
         super().__init__()
 
     def compute(self, observable, plot: bool = True, display_plot: bool = False):
-        """
-        Calculate the transport coefficient from the Green-Kubo formula.
+        """Calculate the diffusion coefficient from the Green-Kubo formula.
 
         Parameters
         ----------
-        observable : :class:`sarkas.tools.observables.VelocityAutoCorrelationFunction`
-            Observable object containing the ACF whose time integral leads to the self diffusion coefficient.
-
-        plot : bool, optional
-            Flag for making the dual plot of the ACF and transport coefficient. Default = True.
-
-        display_plot : bool, optional
-            Flag for displaying the plot if using the IPython. Default = False.
-
+        observable : :class:`~sarkas.tools.observables.VelocityAutoCorrelationFunction`
+        plot : bool
+        display_plot : bool
         """
-        # Write Log File
-        observable.parse_acf()
-        self.initialize_dataframes(observable)
-
-        vacf_str = "VACF"
-        const = 1.0 / self.dimensions
         t0 = self.timer.current()
-        columns_list = []
-        data_list = []
-        columns_list.append("Integration_Interval")
-        data_list.append(self.time_array)
+        const = 1.0 / self.dimensions
 
+        ds_obs = xr.open_zarr(observable.zarr_store_path)
+        acf_da = ds_obs["acf"]  # (species, component, lag, slice)
+
+        quantities = {}
         if not observable.magnetized:
-            # Loop over time slices
-            for isl in tqdm(range(self.no_slices), disable=not observable.verbose):
-                # Iterate over the number of species
-                for i, sp in enumerate(observable.species_names):
-                    # sp_vacf_str = f"{sp} " + vacf_str
-                    # Grab vacf data of each slice
-                    integrand = observable.dataframe_acf_slices[(vacf_str, sp, "Total", f"slice {isl}")].values
-                    df_str = f"{sp} Diffusion_slice {isl}"
-                    data = const * cumulative_trapezoid(
-                        integrand, x=self.time_array, initial=0.0
-                    )  # fast_integral_loop(time=self.time_array, integrand=integrand)
-                    columns_list.append(df_str)
-                    data_list.append(data)
-
-            self.dataframe_slices = DataFrame({col: data for col, data in zip(columns_list, data_list)})
-            columns_list = []
-            data_list = []
-            columns_list.append("Integration_Interval")
-            data_list.append(self.time_array)
-
-            # Average and std of each diffusion coefficient.
-            for isp, sp in enumerate(observable.species_names):
-                col_str = [f"{sp} Diffusion_slice {isl}" for isl in range(observable.no_slices)]
-                # Mean
-                col_data = self.dataframe_slices[col_str].mean(axis=1).values
-                col_name = f"{sp} Diffusion_Mean"
-                columns_list.append(col_name)
-                data_list.append(col_data)
-                # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-                # Std
-                col_data = self.dataframe_slices[col_str].std(axis=1).values
-                col_name = f"{sp} Diffusion_Std"
-                columns_list.append(col_name)
-                data_list.append(col_data)
-                # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-
-            self.dataframe = DataFrame({col: data for col, data in zip(columns_list, data_list)})
-
+            for sp in observable.species_names:
+                slices_arr = np.zeros((self.no_slices, self.block_length))
+                for isl in tqdm(range(self.no_slices), disable=not observable.verbose):
+                    integrand = acf_da.sel(species=sp, component="Total").isel(slice=isl).values
+                    slices_arr[isl] = const * cumulative_trapezoid(integrand, x=self.time_array, initial=0.0)
+                quantities[f"{sp}_Diffusion"] = slices_arr
         else:
-            # Loop over time slices
-            for isl in tqdm(range(observable.no_slices), disable=not observable.verbose):
-                # Iterate over the number of species
-                for i, sp in enumerate(observable.species_names):
-                    # sp_vacf_str = f"{sp} " + vacf_str
-
-                    # Parallel
-                    par_vacf_str = (vacf_str, sp, "Z", f"slice {isl}")
-                    integrand_par = observable.dataframe_acf_slices[par_vacf_str].to_numpy()
-
-                    col_data = cumulative_trapezoid(
-                        integrand_par, x=self.time_array, initial=0.0
-                    )  # fast_integral_loop(time=self.time_array, integrand=integrand_par)
-                    col_name = f"{sp} Diffusion_Parallel_slice {isl}"
-                    self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
-
-                    # Perpendicular
-                    x_vacf_str = (vacf_str, sp, "X", f"slice {isl}")
-                    y_vacf_str = (vacf_str, sp, "Y", f"slice {isl}")
-
+            D = observable.dimensions
+            dim_labels = list(observable.dim_labels)
+            for sp in observable.species_names:
+                sl_par  = np.zeros((self.no_slices, self.block_length))
+                sl_perp = np.zeros((self.no_slices, self.block_length))
+                for isl in tqdm(range(self.no_slices), disable=not observable.verbose):
+                    integrand_par = acf_da.sel(species=sp, component=dim_labels[D - 1]).isel(slice=isl).values
+                    sl_par[isl] = cumulative_trapezoid(integrand_par, x=self.time_array, initial=0.0)
                     integrand_perp = 0.5 * (
-                        observable.dataframe_acf_slices[x_vacf_str].to_numpy()
-                        + observable.dataframe_acf_slices[y_vacf_str].to_numpy()
+                        acf_da.sel(species=sp, component=dim_labels[0]).isel(slice=isl).values
+                        + acf_da.sel(species=sp, component=dim_labels[1]).isel(slice=isl).values
                     )
-                    col_data = cumulative_trapezoid(
-                        integrand_perp, x=self.time_array, initial=0.0
-                    )  # fast_integral_loop(time=self.time_array, integrand=integrand_perp)
-                    col_name = f"{sp} Diffusion_Perpendicular_slice {isl}"
-                    self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
+                    sl_perp[isl] = cumulative_trapezoid(integrand_perp, x=self.time_array, initial=0.0)
+                quantities[f"{sp}_Diffusion_Parallel"]      = sl_par
+                quantities[f"{sp}_Diffusion_Perpendicular"] = sl_perp
 
-            # Add the average and std of perp and par VACF to its dataframe
-            for isp, sp in enumerate(observable.species_names):
-                # sp_vacf_str = f"{sp} " + vacf_str
-                sp_diff_str = f"{sp} " + "Diffusion"
-                par_col_str = [(vacf_str, sp, "Z", f"slice {isl}") for isl in range(self.no_slices)]
-
-                observable.dataframe_acf[(vacf_str, sp, "Parallel", "Mean")] = observable.dataframe_acf_slices[
-                    par_col_str
-                ].mean(axis=1)
-                observable.dataframe_acf[(vacf_str, sp, "Parallel", "Std")] = observable.dataframe_acf_slices[
-                    par_col_str
-                ].std(axis=1)
-
-                x_col_str = [(vacf_str, sp, "X", f"slice {isl}") for isl in range(self.no_slices)]
-                y_col_str = [(vacf_str, sp, "Y", f"slice {isl}") for isl in range(self.no_slices)]
-
-                perp_vacf = 0.5 * (
-                    observable.dataframe_acf_slices[x_col_str].to_numpy()
-                    + observable.dataframe_acf_slices[y_col_str].to_numpy()
-                )
-                observable.dataframe_acf[(vacf_str, sp, "Perpendicular", "Mean")] = perp_vacf.mean(axis=1)
-                observable.dataframe_acf[(vacf_str, sp, "Perpendicular", "Std")] = perp_vacf.std(axis=1)
-
-                # Average and std of each diffusion coefficient.
-                par_col_str = [sp_diff_str + f"_Parallel_slice {isl}" for isl in range(self.no_slices)]
-                perp_col_str = [sp_diff_str + f"_Perpendicular_slice {isl}" for isl in range(self.no_slices)]
-
-                # Mean
-                col_data = self.dataframe_slices[par_col_str].mean(axis=1).values
-                col_name = sp_diff_str + "_Parallel_Mean"
-                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-                # Std
-                col_data = self.dataframe_slices[par_col_str].std(axis=1).values
-                col_name = sp_diff_str + "_Parallel_Std"
-                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-
-                # Mean
-                col_data = self.dataframe_slices[perp_col_str].mean(axis=1).values
-                col_name = sp_diff_str + "_Perpendicular_Mean"
-                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-                # Std
-                col_data = self.dataframe_slices[perp_col_str].std(axis=1).values
-                col_name = sp_diff_str + "_Perpendicular_Std"
-                self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-
-            # Save the updated dataframe
-            observable.save_hdf()
-            # Endif magnetized.
-
-        # Time stamp
         tend = self.timer.current()
         self.time_stamp("Diffusion Calculation", self.timer.time_division(tend - t0))
+        self.save_zarr(quantities)
 
-        # Save
-        self.save_hdf()
-        # Plot
         if plot:
             _, _ = self.plot(observable, display_plot=display_plot)
 
     def plot(self, observable, scaling: tuple = (1.0, 1.0), display_plot: bool = False, **kwargs):
-        """Make a dual plot comparing the ACF and the Transport Coefficient by using the :meth:`plot_tc` method.
+        """Dual plot of VACF and diffusion coefficient."""
+        ds = xr.open_zarr(self.zarr_store_path)
+        ds_obs = xr.open_zarr(observable.zarr_store_path)
 
-        Parameters
-        ----------
-        observable : :class:`sarkas.tools.observables.VelocityAutoCorrelationFunction`
-            Observable object containing the ACF whose time integral leads to the self diffusion coefficient.
-
-        display_plot : bool, optional
-            Flag for displaying the plot if using the IPython. Default = False.
-
-        Return
-        ------
-        figs: dict
-            Dictionary of `matplotlib` figure handles for each species. If the system is magnetized then it returns a nested dictionary.
-            Each `figs[species_name]` is a dictionary with keys `Parallel` and `Perpendicular`.
-
-        axes: dict,
-            Dictionary of tuples containing the axes handles for each element of `figs`. Each element of `axes` is a tuple of four axes handles.
-            'ax1` and `ax2` are the handles for the left and right plots respectively.
-            `ax3` and `ax4` are the handles for the "Index" axes, created from `ax1.twiny()` and `ax2.twiny()` respectively.\n
-            If the system is magnetized, then it returns a nested dictionary.
-            Each `axes[species_name]` is a dictionary with keys `Parallel` and `Perpendicular` each containing a tuple of four axes handles.
-
-        """
-        vacf_str = "VACF"
+        if not isinstance(scaling, tuple):
+            scaling = (scaling, 1.0)
 
         figs = {}
         axes = {}
 
-        # Check if scaling is provided if it is a single value then make it a tuple
-        if not isinstance(scaling, tuple):
-            scaling = (scaling, 1.0)
-
-        if observable.magnetized:
-            for isp, sp in enumerate(observable.species_names):
-                # sp_vacf_str = f"{sp} " + vacf_str
-                sp_diff_str = f"{sp} Diffusion"
-
-                # Parallel
-                acf_avg = observable.dataframe_acf[(vacf_str, sp, "Parallel", "Mean")].to_numpy() / scaling[0]
-                acf_std = observable.dataframe_acf[(vacf_str, sp, "Parallel", "Std")].to_numpy() / scaling[0]
-
-                tc_avg = self.dataframe[(sp_diff_str, "Parallel", "Mean")].to_numpy() / scaling[1]
-                tc_std = self.dataframe[(sp_diff_str, "Parallel", "Std")].to_numpy() / scaling[1]
+        if not observable.magnetized:
+            for sp in observable.species_names:
+                acf_mean = ds_obs["mean_acf"].sel(species=sp, component="Total").values
+                acf_std  = ds_obs["std_acf"].sel(species=sp, component="Total").values
+                tc_mean  = ds[f"mean_{sp}_Diffusion"].values
+                tc_std   = ds[f"std_{sp}_Diffusion"].values
 
                 fig, (ax1, ax2, ax3, ax4) = self.plot_tc(
                     time=self.time_array,
-                    acf_data=column_stack((acf_avg, acf_std)),
-                    tc_data=column_stack((tc_avg, tc_std)),
-                    acf_name=f"{sp} {vacf_str} Parallel",
-                    tc_name=sp_diff_str + " Parallel",
-                    figname=f"{sp}_Parallel_Diffusion_Plot.png",
-                    show=display_plot,
-                )
-                figs[sp] = {"Parallel": fig}
-                axes[sp] = {"Parallel": (ax1, ax2, ax3, ax4)}
-                # Perpendicular
-                acf_avg = observable.dataframe_acf[(vacf_str, sp, "Perpendicular", "Mean")] / scaling[0]
-                acf_std = observable.dataframe_acf[(vacf_str, sp, "Perpendicular", "Std")] / scaling[0]
-
-                tc_avg = self.dataframe[(sp_diff_str, "Perpendicular", "Mean")] / scaling[1]
-                tc_std = self.dataframe[(sp_diff_str, "Perpendicular", "Std")] / scaling[1]
-
-                fig, (ax1, ax2, ax3, ax4) = self.plot_tc(
-                    time=self.time_array,
-                    acf_data=column_stack((acf_avg, acf_std)),
-                    tc_data=column_stack((tc_avg, tc_std)),
-                    acf_name=f"{sp} {vacf_str} Perpendicular",
-                    tc_name=sp_diff_str + " Perpendicular",
-                    figname=f"{sp}_Perpendicular_Diffusion_Plot.png",
-                    show=display_plot,
-                )
-                figs[sp]["Perpendicular"] = fig
-                axes[sp]["Perpendicular"] = (ax1, ax2, ax3, ax4)
-        else:
-            for isp, sp in enumerate(observable.species_names):
-                acf_avg = observable.dataframe_acf[(vacf_str, sp, "Total", "Mean")].to_numpy() / scaling[0]
-                acf_std = observable.dataframe_acf[(vacf_str, sp, "Total", "Std")].to_numpy() / scaling[0]
-
-                d_str = f"{sp} Diffusion"
-                tc_avg = self.dataframe[(d_str, "Mean")].to_numpy() / scaling[1]
-                tc_std = self.dataframe[(d_str, "Std")].to_numpy() / scaling[1]
-
-                fig, (ax1, ax2, ax3, ax4) = self.plot_tc(
-                    time=self.time_array,
-                    acf_data=column_stack((acf_avg, acf_std)),
-                    tc_data=column_stack((tc_avg, tc_std)),
-                    acf_name=f"{sp} {vacf_str}",
-                    tc_name=d_str,
+                    acf_data=column_stack((acf_mean / scaling[0], acf_std / scaling[0])),
+                    tc_data=column_stack((tc_mean / scaling[1], tc_std / scaling[1])),
+                    acf_name=f"{sp} VACF",
+                    tc_name=f"{sp} Diffusion",
                     figname=f"{sp}_Diffusion_Plot.png",
                     show=display_plot,
                 )
                 figs[sp] = fig
                 axes[sp] = (ax1, ax2, ax3, ax4)
-
-        if kwargs.get("figname"):
-            fig.savefig(os_path_join(self.saving_dir, kwargs.get("figname")))
         else:
-            fig.savefig(os_path_join(self.saving_dir, f"{self.__name__}_Plot.png"))
+            D = observable.dimensions
+            dim_labels = list(observable.dim_labels)
+            for sp in observable.species_names:
+                for comp, dim_lbl, key in (
+                    ("Parallel",     dim_labels[D - 1], f"{sp}_Diffusion_Parallel"),
+                    ("Perpendicular", dim_labels[0],    f"{sp}_Diffusion_Perpendicular"),
+                ):
+                    tc_mean  = ds[f"mean_{key}"].values
+                    tc_std   = ds[f"std_{key}"].values
+                    acf_mean = ds_obs["mean_acf"].sel(species=sp, component=dim_lbl).values
+                    acf_std  = ds_obs["std_acf"].sel(species=sp, component=dim_lbl).values
+                    fig, axes_tuple = self.plot_tc(
+                        time=self.time_array,
+                        acf_data=column_stack((acf_mean, acf_std)),
+                        tc_data=column_stack((tc_mean, tc_std)),
+                        acf_name=f"{sp} VACF {comp}",
+                        tc_name=f"{sp} Diffusion {comp}",
+                        figname=f"{sp}_{comp}_Diffusion_Plot.png",
+                        show=display_plot,
+                    )
+                    figs.setdefault(sp, {})[comp] = fig
+                    axes.setdefault(sp, {})[comp] = axes_tuple
+
         return figs, axes
 
 
+# ---------------------------------------------------------------------------
+# InterDiffusion
+# ---------------------------------------------------------------------------
+
+
 class InterDiffusion(TransportCoefficients):
-    """
-    The interdiffusion coefficient is calculated from the Green-Kubo formula
+    """Interdiffusion coefficient from the Green-Kubo formula.
 
-    .. math::
+    Reads from the :class:`~sarkas.tools.observables.DiffusionFlux` zarr store.
+    Layout::
 
-            D_{\\alpha} = \\frac{1}{3Nx_1x_2} \\int_0^\\tau dt
-            \\langle \\mathbf {J}_{\\alpha}(0) \\cdot \\mathbf {J}_{\\alpha}(t) \\rangle,
+        acf  (no_fluxes, no_fluxes, D+1, block_length, no_slices)
 
-    where :math:`x_{1,2}` are the concentration of the two species and
-    :math:`\\mathbf {J}_{\\alpha}(t)` is the diffusion current calculated by the
-    :class:`sarkas.tools.observables.DiffusionFlux` class.
-
-    Data is retrievable at :attr:`~.dataframe` and :attr:`~.dataframe_slices`.
-
+    Access pattern: ``acf[i, j, -1, :, isl]`` — isotropic cross-correlation
+    of flux ``i`` and flux ``j``, slice ``isl``.
     """
 
     def __init__(self):
@@ -895,146 +475,89 @@ class InterDiffusion(TransportCoefficients):
         super().__init__()
 
     def compute(self, observable, plot: bool = True, display_plot: bool = False):
-        """
-        Calculate the transport coefficient from the Green-Kubo formula
+        """Calculate the interdiffusion coefficient.
 
         Parameters
         ----------
-        observable : :class:`sarkas.tools.observables.DiffusionFlux`
-            Observable object containing the ACF whose time integral leads to the interdiffusion coefficient.
-
-        plot : bool, optional
-            Flag for making the dual plot of the ACF and transport coefficient. Default = True.
-
-        display_plot : bool, optional
-            Flag for displaying the plot if using the IPython. Default = False
-
+        observable : :class:`~sarkas.tools.observables.DiffusionFlux`
         """
-        observable.parse_acf()
-        self.initialize_dataframes(observable)
+        t0 = self.timer.current()
 
-        no_fluxes_acf = observable.no_fluxes_acf
-        # Normalization constant
+        no_fluxes = observable.no_fluxes
         const = 1.0 / (3.0 * observable.total_num_ptcls * observable.species_concentrations.prod())
 
-        df_str = "Diffusion Flux ACF"
-        id_str = "Inter Diffusion Flux"
-        # Time
-        t0 = self.timer.current()
-        for isl in tqdm(range(self.no_slices), disable=not self.verbose):
-            # D_ij = zeros((no_fluxes_acf, jc_acf.acf_slice_steps))
+        ds_obs = xr.open_zarr(observable.zarr_store_path)
+        acf_da = ds_obs["acf"]  # (flux_row, flux_col, component, lag, slice)
+        flux_labels = list(acf_da.coords["flux_row"].values)
 
-            for ij in range(no_fluxes_acf):
-                acf_df_str = (df_str + f" {ij}", "Total", f"slice {isl}")
-                integrand = observable.dataframe_acf_slices[acf_df_str].to_numpy()
+        quantities = {}
+        for i in range(no_fluxes):
+            for j in range(no_fluxes):
+                fi = flux_labels[i]
+                fj = flux_labels[j]
+                slices_arr = np.zeros((self.no_slices, self.block_length))
+                for isl in tqdm(range(self.no_slices), disable=not self.verbose):
+                    integrand = acf_da.sel(flux_row=fi, flux_col=fj, component="Total").isel(slice=isl).values
+                    slices_arr[isl] = const * cumulative_trapezoid(integrand, self.time_array, initial=0.0)
+                quantities[f"InterDiffusion_{i}{j}"] = slices_arr
 
-                col_data = const * fast_integral_loop(time=self.time_array, integrand=integrand)
-                col_name = id_str + f" {ij}_slice {isl}"
-                self.dataframe_slices = add_col_to_df(observable, col_data, col_name)
-
-        # Average and Std of slices
-        for ij in range(no_fluxes_acf):
-            col_str = [id_str + f" {ij}_slice {isl}" for isl in range(self.no_slices)]
-            # Mean
-            col_data = self.dataframe_slices[col_str].mean(axis=1).values
-            col_name = id_str + f" {ij}_Mean"
-            self.dataframe = add_col_to_df(observable, col_data, col_name)
-            # Mean
-            col_data = self.dataframe_slices[col_str].std(axis=1).values
-            col_name = id_str + f" {ij}_Std"
-            self.dataframe = add_col_to_df(observable, col_data, col_name)
-
-        # Time stamp
         tend = self.timer.current()
         self.time_stamp("Interdiffusion Calculation", self.timer.time_division(tend - t0))
+        self.save_zarr(quantities)
 
-        # Save
-        self.save_hdf()
-        # Plot
         if plot:
             _, _ = self.plot(observable, display_plot=display_plot)
 
     def plot(self, observable, display_plot: bool = False):
-        """Make a dual plot comparing the ACF and the Transport Coefficient by using the :meth:`plot_tc` method.
-
-        Parameters
-        ----------
-        observable : :class:`sarkas.tools.observables.DiffusionFlux`
-            Observable object containing the ACF whose time integral leads to the self diffusion coefficient.
-
-        display_plot : bool, optional
-            Flag for displaying the plot if using the IPython. Default = False.
-
-        Return
-        ------
-        figs: dict
-            Dictionary of `matplotlib` figure handles for each flux. Keys are `flux_0`, `flux_1`, etc..
-
-        axes: dict
-            Dictionary of tuples containing the axes handles for each element of `figs`. Keys are the same as in `figs`. Each element of `axes` is a tuple of four axes handles. 'ax1` and `ax2` are the handles for the left and right plots respectively.
-            `ax3` and `ax4` are the handles for the "Index" axes, created from `ax1.twiny()` and `ax2.twiny()` respectively.\n
-        """
-
-        df_str = "Diffusion Flux ACF"
-        id_str = "Inter Diffusion Coefficient Flux"
+        no_fluxes = observable.no_fluxes
+        ds = xr.open_zarr(self.zarr_store_path)
+        ds_obs = xr.open_zarr(observable.zarr_store_path)
+        flux_labels = list(ds_obs["acf"].coords["flux_row"].values)
 
         figs = {}
         axes = {}
+        for i in range(no_fluxes):
+            fi = flux_labels[i]
+            key = f"InterDiffusion_{i}{i}"
+            acf_mean = ds_obs["mean_acf"].sel(flux_row=fi, flux_col=fi, component="Total").values
+            acf_std  = ds_obs["std_acf"].sel(flux_row=fi, flux_col=fi, component="Total").values
+            tc_mean  = ds[f"mean_{key}"].values
+            tc_std   = ds[f"std_{key}"].values
 
-        for flux in range(observable.no_fluxes_acf):
-            flux_str = f"{df_str} {flux}"
-            acf_avg = observable.dataframe_acf[(flux_str, "Total", "Mean")].to_numpy()
-            acf_std = observable.dataframe_acf[(flux_str, "Total", "Std")].to_numpy()
-
-            d_str = f"{id_str} {flux}"
-            tc_avg = self.dataframe[(d_str, "Mean")].to_numpy()
-            tc_std = self.dataframe[(d_str, "Std")].to_numpy()
-
-            fig, (ax1, ax2, ax3, ax4) = self.plot_tc(
+            fig, axes_tuple = self.plot_tc(
                 time=self.time_array,
-                acf_data=column_stack((acf_avg, acf_std)),
-                tc_data=column_stack((tc_avg, tc_std)),
-                acf_name=flux_str,
-                tc_name=d_str,
-                figname=f"InterDiffusion_Flux{flux}_Plot.png",
+                acf_data=column_stack((acf_mean, acf_std)),
+                tc_data=column_stack((tc_mean, tc_std)),
+                acf_name=f"Diffusion Flux ACF {i}",
+                tc_name=f"InterDiffusion Flux {i}",
+                figname=f"InterDiffusion_Flux{i}_Plot.png",
                 show=display_plot,
             )
-            figs[f"Flux_{flux}"] = fig
-            axes[f"Flux_{flux}"] = (ax1, ax2, ax3, ax4)
+            figs[f"Flux_{i}"] = fig
+            axes[f"Flux_{i}"] = axes_tuple
 
         return figs, axes
 
 
+# ---------------------------------------------------------------------------
+# Viscosity
+# ---------------------------------------------------------------------------
+
+
 class Viscosity(TransportCoefficients):
-    """Viscosisty coefficients class.
+    """Viscosity coefficients from the Green-Kubo formula.
 
-    The shear viscosity is obtained from the Green-Kubo formula
+    Reads from the :class:`~sarkas.tools.observables.PressureTensor` zarr store.
+    Layout::
 
-    .. math::
+        total/acf_bulk    (block_length, no_slices)
+        total/acf_tensor  (no_comp, no_comp, block_length, no_slices)
+        coords/components (no_comp, 2)  int8
 
-        \\eta = \\frac{\\beta V}{6} \\sum_{\\alpha} \\sum_{\\gamma \\neq \\alpha} \\int_0^{\\tau} dt \\,
-        \\left \\langle \\mathcal P_{\\alpha\\gamma}(t) \\mathcal P_{\\alpha\\gamma}(0) \\right \\rangle
-
-    where :math:`\\beta = 1/k_B T`, :math:`\\alpha,\\gamma = {x, y, z}` and
-    :math:`\\mathcal P_{\\alpha\\gamma}(t)` is the element of the Pressure Tensor calculated with
-    :class:`sarkas.tools.observables.PressureTensor`.
-
-    The bulk viscosity is obtained from
-
-    .. math::
-
-        \\eta_V = \\beta V \\int_0^{\\tau}dt \\,
-            \\left \\langle \\delta \\mathcal P(t) \\delta \\mathcal P(0) \\right \\rangle,
-
-    where
-
-    .. math::
-        \\delta \\mathcal P(t) = \\mathcal P(t) - \\left \\langle \\mathcal P  \\right \\rangle
-
-    is the deviation of the scalar pressure.
-
-    Data is retrievable at :attr:`~.dataframe` and :attr:`~.dataframe_slices`.
-
+    Bulk viscosity uses ``total/acf_bulk[:, isl]``.
+    Shear viscosity uses ``total/acf_tensor[ic, ic, :, isl]`` for each
+    off-diagonal component index ``ic`` (i.e. where ``components[ic, 0] !=
+    components[ic, 1]``).
     """
 
     def __init__(self):
@@ -1044,210 +567,121 @@ class Viscosity(TransportCoefficients):
         super().__init__()
 
     def compute(self, observable, plot: bool = True, display_plot: bool = False):
-        """
-        Calculate the transport coefficient from the Green-Kubo formula.
+        """Calculate bulk and shear viscosity.
 
         Parameters
         ----------
-        observable : :class:`sarkas.tools.observables.PressureTensor`
-            Observable object containing the ACF whose time integral leads to the viscsosity coefficients.
-
-        plot : bool, optional
-            Flag for making the dual plot of the ACF and transport coefficient. Default = True.
-
-        display_plot : bool, optional
-            Flag for displaying the plot if using the IPython. Default = False
-
+        observable : :class:`~sarkas.tools.observables.PressureTensor`
         """
-        observable.parse_acf()
-        self.initialize_dataframes(observable)
-        # Initialize Timer
         t0 = self.timer.current()
 
-        if observable.kinetic_potential_division:
-            pt_str_list = [
-                "Pressure Tensor Kinetic ACF",
-                "Pressure Tensor Potential ACF",
-                "Pressure Tensor Kin-Pot ACF",
-                "Pressure Tensor Pot-Kin ACF",
-                "Pressure Tensor ACF",
-            ]
-            eta_str_list = [
-                "Shear Viscosity Tensor Kinetic",
-                "Shear Viscosity Tensor Potential",
-                "Shear Viscosity Tensor Kin-Pot",
-                "Shear Viscosity Tensor Pot-Kin",
-                "Shear Viscosity Tensor",
-            ]
-        else:
-            pt_str_list = ["Pressure Tensor ACF"]
-            eta_str_list = ["Shear Viscosity Tensor"]
+        ds_obs = xr.open_zarr(observable.zarr_store_path)
+        # acf_bulk: (species, lag, slice), acf_tensor: (species, component_row, component_col, lag, slice)
+        bulk_acf_da = ds_obs["acf_bulk"].sel(species="Total")
+        tensor_acf_da = ds_obs["acf_tensor"].sel(species="Total")
+        comp_labels = list(tensor_acf_da.coords["component_row"].values)
+        # Off-diagonal component labels: those where row != col (e.g. "XY", "XZ", "YZ")
+        off_diag_labels = [c for c in comp_labels if c[0] != c[-1]]
 
-        start_steps = 0
-        end_steps = 0
-        time_steps = len(self.time_array)
-        columns_list = ["Integration_Interval"]
-        data_list = [self.time_array]
+        quantities = {}
 
+        # ----- Bulk viscosity -----
+        sl_bulk = np.zeros((self.no_slices, self.block_length))
         for isl in tqdm(range(self.no_slices), disable=not observable.verbose):
-            end_steps += time_steps
-
             const = observable.box_volume * self.beta_slices[isl]
-            # Calculate Bulk Viscosity
-            # It is calculated from the fluctuations of the pressure eq. 2.124a Allen & Tilsdeley
-            integrand = observable.dataframe_acf_slices[(f"Pressure Bulk ACF", f"slice {isl}")].to_numpy()
+            integrand = bulk_acf_da.isel(slice=isl).values
+            sl_bulk[isl] = const * cumulative_trapezoid(integrand, x=self.time_array, initial=0.0)
+        quantities["Bulk_Viscosity"] = sl_bulk
 
-            col_name = f"Bulk Viscosity_slice {isl}"
-            col_data = const * cumulative_trapezoid(integrand, x=self.time_array, initial=0.0)
-            columns_list.append(col_name)
-            data_list.append(col_data)
-            # self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
+        # ----- Shear viscosity elements -----
+        sl_shear_list = []
+        for comp_label in off_diag_labels:
+            sl = np.zeros((self.no_slices, self.block_length))
+            for isl in tqdm(range(self.no_slices), disable=not observable.verbose):
+                const = observable.box_volume * self.beta_slices[isl]
+                integrand = tensor_acf_da.sel(component_row=comp_label, component_col=comp_label).isel(slice=isl).values
+                sl[isl] = const * cumulative_trapezoid(integrand, x=self.time_array, initial=0.0)
+            quantities[f"Shear_Viscosity_{comp_label}"] = sl
+            sl_shear_list.append(sl)
 
-            # Calculate the Shear Viscosity Elements
-            for iax, ax1 in enumerate(observable.dim_labels):
-                for _, ax2 in enumerate(observable.dim_labels[iax:], iax):
-                    for _, (pt_str, eta_str) in enumerate(zip(pt_str_list, eta_str_list)):
-                        pt_str_temp = (pt_str + f" {ax1}{ax2}{ax1}{ax2}", f"slice {isl}")
-                        integrand = observable.dataframe_acf_slices[pt_str_temp].to_numpy()
-                        col_name = eta_str + f" {ax1}{ax2}_slice {isl}"
-                        col_data = const * cumulative_trapezoid(
-                            integrand, x=self.time_array, initial=0.0
-                        )  # fast_integral_loop(self.time_array, integrand)
-                        columns_list.append(col_name)
-                        data_list.append(col_data)
-                        # self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
+        if sl_shear_list:
+            quantities["Shear_Viscosity"] = np.mean(sl_shear_list, axis=0)
 
-            start_steps += time_steps
-
-        self.dataframe_slices = DataFrame(dict(zip(columns_list, data_list)))
-
-        # Now average the slices and add to the main dataframe
-        col_str = [f"Bulk Viscosity_slice {isl}" for isl in range(observable.no_slices)]
-
-        columns_list = ["Integration_Interval"]
-        data_list = [self.time_array]
-
-        col_name = "Bulk Viscosity_Mean"
-        col_data = self.dataframe_slices[col_str].mean(axis=1).values
-        columns_list.append(col_name)
-        data_list.append(col_data)
-        # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-
-        col_name = "Bulk Viscosity_Std"
-        col_data = self.dataframe_slices[col_str].std(axis=1).values
-        columns_list.append(col_name)
-        data_list.append(col_data)
-        # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-
-        for iax, ax1 in enumerate(observable.dim_labels):
-            for _, ax2 in enumerate(observable.dim_labels[iax + 1 :], iax + 1):
-                for _, eta_str in enumerate(eta_str_list):
-                    col_str = [eta_str + f" {ax1}{ax2}_slice {isl}" for isl in range(observable.no_slices)]
-                    col_name = eta_str + f" {ax1}{ax2}_Mean"
-                    col_data = self.dataframe_slices[col_str].mean(axis=1).values
-                    columns_list.append(col_name)
-                    data_list.append(col_data)
-                    # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-
-                    col_name = eta_str + f" {ax1}{ax2}_Std"
-                    col_data = self.dataframe_slices[col_str].std(axis=1).values
-                    columns_list.append(col_name)
-                    data_list.append(col_data)
-                    # self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-
-        self.dataframe = DataFrame(dict(zip(columns_list, data_list)))
-        list_coord = ["XY", "XZ", "YZ"]
-        col_str = [eta_str + f" {coord}_Mean" for coord in list_coord]
-        # Mean
-        col_data = self.dataframe[col_str].mean(axis=1).values
-        columns_list.append("Shear Viscosity_Mean")
-        data_list.append(col_data)
-        # self.dataframe = add_col_to_df(self.dataframe, col_data, "Shear Viscosity_Mean")
-        # Std
-        col_data = self.dataframe[col_str].std(axis=1).values
-        columns_list.append("Shear Viscosity_Std")
-        data_list.append(col_data)
-        # self.dataframe = add_col_to_df(self.dataframe, col_data, "Shear Viscosity_Std")
-        self.dataframe = DataFrame(dict(zip(columns_list, data_list)))
-        # Time stamp
         tend = self.timer.current()
         self.time_stamp("Viscosities Calculation", self.timer.time_division(tend - t0))
+        self.save_zarr(quantities)
 
-        # Save
-        self.save_hdf()
-        # Plot
         if plot:
             _, _ = self.plot(observable, display_plot=display_plot)
 
     def plot(self, observable, display_plot: bool = False):
-        """Make a dual plot comparing the ACF and the Transport Coefficient by using the :meth:`plot_tc` method.
-
-        Parameters
-        ----------
-        observable : :class:`sarkas.tools.observables.PressureTensor`
-            Observable object containing the ACF whose time integral leads to the self diffusion coefficient.
-
-        display_plot : bool, optional
-            Flag for displaying the plot if using the IPython. Default = False.
-
-        Return
-        ------
-        figs: list, :class:`matplotlib.pyplot.Figure`
-            List of `matplotlib` figure handles for the bulk and shear viscosity respectively.
-
-        axes: list,
-            List of tuples containing the axes handles for each element of `figs`. Each element of `axes` is a tuple of four axes handles. 'ax1` and `ax2` are the handles for the left and right plots respectively.
-            `ax3` and `ax4` are the handles for the "Index" axes, created from `ax1.twiny()` and `ax2.twiny()` respectively.\n
-        """
-
-        # Plot
-        plot_quantities = ["Bulk Viscosity", "Shear Viscosity"]
-        shear_list_coord = ["XYXY", "XZXZ", "YZYZ"]
+        ds = xr.open_zarr(self.zarr_store_path)
+        ds_obs = xr.open_zarr(observable.zarr_store_path)
+        comp_labels = list(ds_obs["acf_tensor"].coords["component_row"].values)
+        off_diag_labels = [c for c in comp_labels if c[0] != c[-1]]
 
         figs = []
-        axes = []
-        # Make the plot
-        for _, pq in enumerate(plot_quantities):
-            if pq == "Bulk Viscosity":
-                acf_str = "Pressure Bulk ACF"
-                acf_avg = observable.dataframe_acf[("Pressure Bulk ACF", "Mean")]
-                acf_std = observable.dataframe_acf[("Pressure Bulk ACF", "Std")]
-            elif pq == "Shear Viscosity":
-                # The axis are the last two elements in the string
-                acf_str = "Stress Tensors ACF"
-                acf_strs = [(f"Pressure Tensor ACF {coord}", "Mean") for coord in shear_list_coord]
-                acf_avg = observable.dataframe_acf[acf_strs].mean(axis=1)
-                acf_std = observable.dataframe_acf[acf_strs].std(axis=1)
+        axes_list = []
 
-            tc_avg = self.dataframe[(pq, "Mean")]
-            tc_std = self.dataframe[(pq, "Std")]
+        # Bulk viscosity
+        bulk_acf_mean = ds_obs["mean_acf_bulk"].sel(species="Total").values
+        bulk_acf_std  = ds_obs["std_acf_bulk"].sel(species="Total").values
+        tc_mean = ds["mean_Bulk_Viscosity"].values
+        tc_std  = ds["std_Bulk_Viscosity"].values
+        fig, ax_tuple = self.plot_tc(
+            time=self.time_array,
+            acf_data=column_stack((bulk_acf_mean, bulk_acf_std)),
+            tc_data=column_stack((tc_mean, tc_std)),
+            acf_name="Pressure Bulk ACF",
+            tc_name="Bulk Viscosity",
+            figname="Bulk_Viscosity_Plot.png",
+            show=display_plot,
+        )
+        figs.append(fig)
+        axes_list.append(ax_tuple)
 
-            fig, (ax1, ax2, ax3, ax4) = self.plot_tc(
+        # Shear viscosity
+        if "mean_Shear_Viscosity" in ds:
+            acf_mean = np.mean([
+                ds_obs["mean_acf_tensor"].sel(species="Total", component_row=c, component_col=c).values
+                for c in off_diag_labels
+            ], axis=0)
+            acf_std = np.mean([
+                ds_obs["std_acf_tensor"].sel(species="Total", component_row=c, component_col=c).values
+                for c in off_diag_labels
+            ], axis=0)
+            tc_mean = ds["mean_Shear_Viscosity"].values
+            tc_std  = ds["std_Shear_Viscosity"].values
+            fig, ax_tuple = self.plot_tc(
                 time=self.time_array,
-                acf_data=column_stack((acf_avg, acf_std)),
-                tc_data=column_stack((tc_avg, tc_std)),
-                acf_name=acf_str,
-                tc_name=pq,
-                figname=f"{pq}_Plot.png",
+                acf_data=column_stack((acf_mean, acf_std)),
+                tc_data=column_stack((tc_mean, tc_std)),
+                acf_name="Shear Stress ACF",
+                tc_name="Shear Viscosity",
+                figname="Shear_Viscosity_Plot.png",
                 show=display_plot,
             )
             figs.append(fig)
-            axes.append((ax1, ax2, ax3, ax4))
+            axes_list.append(ax_tuple)
 
-        return figs, axes
+        return figs, axes_list
+
+
+# ---------------------------------------------------------------------------
+# ElectricalConductivity
+# ---------------------------------------------------------------------------
 
 
 class ElectricalConductivity(TransportCoefficients):
-    """The electrical conductivity is calculated from the Green-Kubo formula
+    """Electrical conductivity from the Green-Kubo formula.
 
-    .. math::
+    Reads from the :class:`~sarkas.tools.observables.ElectricCurrent` zarr store.
+    Layout::
 
-            \\sigma = \\frac{\\beta}{V} \\int_0^{\\tau} dt J(t).
+        acf  (no_sp+1, no_sp+1, D, block_length, no_slices)
 
-    where :math:`\\beta = 1/k_B T` and :math:`V` is the volume of the simulation box.
-
-    Data is retrievable at :attr:`~.dataframe` and :attr:`~.dataframe_slices`.
-
+    Access: ``acf[-1, -1, :, :, isl].sum(axis=0)`` — total current
+    auto-correlation summed over spatial dimensions.
     """
 
     def __init__(self):
@@ -1256,223 +690,116 @@ class ElectricalConductivity(TransportCoefficients):
         self.required_observable = "Electric Current"
         super().__init__()
 
-    def compute(
-        self,
-        observable,
-        plot: bool = True,
-        display_plot: bool = False,
-    ):
-        """
-        Calculate the transport coefficient from the Green-Kubo formula
-
+    def compute(self, observable, plot: bool = True, display_plot: bool = False):
+        """Calculate the electrical conductivity.
 
         Parameters
         ----------
-        observable : :class:`sarkas.tools.observables.ElectricCurrent`
-            Observable object containing the ACF whose time integral leads to the electrical conductivity.
-
-        plot : bool, optional
-            Flag for making the dual plot of the ACF and transport coefficient.\n
-            Default = True.
-
-        display_plot : bool, optional
-            Flag for displaying the plot if using the IPython. Default = False.
+        observable : :class:`~sarkas.tools.observables.ElectricCurrent`
         """
-        observable.parse_acf()
-        self.initialize_dataframes(observable)
-
-        # Time
         t0 = self.timer.current()
 
-        jc_str = "Electric Current ACF"
-        sigma_str = "Electrical Conductivity"
-        const = self.beta_slices / observable.box_volume
+        ds_obs = xr.open_zarr(observable.zarr_store_path)
+        acf_da = ds_obs["acf"]  # (species_row, species_col, component, lag, slice)
+        D = observable.dimensions
+        dim_labels = list(observable.dim_labels)
+
+        quantities = {}
 
         if not observable.magnetized:
+            sl = np.zeros((self.no_slices, self.block_length))
             for isl in tqdm(range(observable.no_slices), disable=not observable.verbose):
-                integrand = array(observable.dataframe_acf_slices[(jc_str, "Total", "slice {}".format(isl))])
-                col_name = sigma_str + "_slice {}".format(isl)
-                col_data = const[isl] * fast_integral_loop(self.time_array, integrand)
-                self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
-
-            col_str = [sigma_str + "_slice {}".format(isl) for isl in range(observable.no_slices)]
-            # Mean
-            col_data = self.dataframe_slices[col_str].mean(axis=1).values
-            col_name = sigma_str + "_Mean"
-            self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-            # Std
-            col_data = self.dataframe_slices[col_str].std(axis=1).values
-            col_name = sigma_str + "_Std"
-            self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-
+                const = self.beta_slices[isl] / observable.box_volume
+                # Total-total ACF averaged over spatial dimensions
+                integrand = acf_da.sel(species_row="Total", species_col="Total").isel(slice=isl).mean("component").values
+                sl[isl] = const * cumulative_trapezoid(integrand, self.time_array, initial=0.0)
+            quantities["ElectricalConductivity"] = sl
         else:
+            sl_par  = np.zeros((self.no_slices, self.block_length))
+            sl_perp = np.zeros((self.no_slices, self.block_length))
             for isl in tqdm(range(observable.no_slices), disable=not observable.verbose):
-                # Parallel
-                par_str = (jc_str, "Z", f"slice {isl}")
-                integrand = observable.dataframe_acf_slices[par_str].to_numpy()
-                col_data = const * fast_integral_loop(self.time_array, integrand)
-                col_name = sigma_str + f"_Parallel_slice {isl}"
-                self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
-
-                # Perpendicular
-                x_col_str = (jc_str, "X", f"slice {isl}")
-                y_col_str = (jc_str, "Y", f"slice {isl}")
-                perp_integrand = 0.5 * (
-                    observable.dataframe_acf_slices[x_col_str].to_numpy()
-                    + observable.dataframe_acf_slices[y_col_str].to_numpy()
+                const = self.beta_slices[isl] / observable.box_volume
+                integrand_par = acf_da.sel(species_row="Total", species_col="Total", component=dim_labels[D - 1]).isel(slice=isl).values
+                sl_par[isl] = const * cumulative_trapezoid(integrand_par, self.time_array, initial=0.0)
+                integrand_perp = 0.5 * (
+                    acf_da.sel(species_row="Total", species_col="Total", component=dim_labels[0]).isel(slice=isl).values
+                    + acf_da.sel(species_row="Total", species_col="Total", component=dim_labels[1]).isel(slice=isl).values
                 )
-                col_name = sigma_str + f"_Perpendicular_slice {isl}"
-                col_data = const * fast_integral_loop(self.time_array, perp_integrand)
-                self.dataframe_slices = add_col_to_df(self.dataframe_slices, col_data, col_name)
+                sl_perp[isl] = const * cumulative_trapezoid(integrand_perp, self.time_array, initial=0.0)
+            quantities["ElectricalConductivity_Parallel"]     = sl_par
+            quantities["ElectricalConductivity_Perpendicular"] = sl_perp
 
-            par_col_str = [(jc_str, "Z", f"slice {isl}") for isl in range(self.no_slices)]
-            observable.dataframe_acf[(jc_str, "Parallel", "Mean")] = observable.dataframe_acf_slices[par_col_str].mean(
-                axis=1
-            )
-            observable.dataframe_acf[(jc_str, "Parallel", "Std")] = observable.dataframe_acf_slices[par_col_str].std(
-                axis=1
-            )
-
-            x_col_str = [(jc_str, "X", f"slice {isl}") for isl in range(self.no_slices)]
-            y_col_str = [(jc_str, "Y", f"slice {isl}") for isl in range(self.no_slices)]
-
-            perp_jc = 0.5 * (
-                observable.dataframe_acf_slices[x_col_str].to_numpy()
-                + observable.dataframe_acf_slices[y_col_str].to_numpy()
-            )
-            observable.dataframe_acf[(jc_str, "Perpendicular", "Mean")] = perp_jc.mean(axis=1)
-            observable.dataframe_acf[(jc_str, "Perpendicular", "Std")] = perp_jc.std(axis=1)
-            # Save the updated dataframe
-            observable.save_hdf()
-
-            # Average and std of transport coefficient.
-            col_str = [sigma_str + f"_Parallel_slice {isl}".format(isl) for isl in range(observable.no_slices)]
-            # Mean
-            col_data = self.dataframe_slices[col_str].mean(axis=1).values
-            col_name = sigma_str + "_Parallel_Mean"
-            self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-            # Std
-            col_data = self.dataframe_slices[col_str].std(axis=1).values
-            col_name = sigma_str + "_Parallel_Std"
-            self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-
-            # Perpendicular
-            col_str = [sigma_str + f"_Perpendicular_slice {isl}" for isl in range(observable.no_slices)]
-            # Mean
-            col_data = sigma_str + "_Perpendicular_Mean"
-            col_name = self.dataframe_slices[col_str].mean(axis=1).values
-            self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-            # Std
-            col_data = sigma_str + "_Perpendicular_Std"
-            col_name = self.dataframe_slices[col_str].std(axis=1).values
-            self.dataframe = add_col_to_df(self.dataframe, col_data, col_name)
-
-            # Endif magnetized.
-        # Time stamp
         tend = self.timer.current()
         self.time_stamp(f"{self.__long_name__} Calculation", self.timer.time_division(tend - t0))
+        self.save_zarr(quantities)
 
-        # Save
-        self.save_hdf()
-        # Plot
         if plot:
             _, _ = self.plot(observable, display_plot=display_plot)
 
     def plot(self, observable, display_plot: bool = False):
-        """Make a dual plot comparing the ACF and the Transport Coefficient by using the :meth:`plot_tc` method.
+        ds = xr.open_zarr(self.zarr_store_path)
+        ds_obs = xr.open_zarr(observable.zarr_store_path)
+        D = observable.dimensions
+        dim_labels = list(observable.dim_labels)
 
-        Parameters
-        ----------
-        observable : :class:`sarkas.tools.observables.VelocityAutoCorrelationFunction`
-            Observable object containing the ACF whose time integral leads to the self diffusion coefficient.
-
-        display_plot : bool, optional
-            Flag for displaying the plot if using the IPython. Default = False.
-
-        Return
-        ------
-        fig (fig_par, fig_perp) : :class:`matplotlib.pyplot.Figure`, tuple
-            Matplotlib figure handle. If the system is magnetized then it return a tuple with the handles for the parallel (`fig_par`) and perpendicular (`fig_perp`) figures.
-
-        (ax1, ax2, ax3, ax4), ((ax1_par, ax2_par, ax3_par, ax4_par), (ax1_perp, ax2_perp, ax3_perp, ax4_perp)): tuple, :class:`matplotlib.axes.Axes`
-            Tuple containing the axes handles for `fig`. 'ax1` and `ax2` are the handles for the left and right plots respectively.
-            `ax3` and `ax4` are the handles for the "Index" axes, created from `ax1.twiny()` and `ax2.twiny()` respectively.\n
-            If the system is magnetized then it returns a tuple of tuples whose elements are the axes handles of each figure.
-
-        """
-        jc_str = "Electric Current ACF"
-        sigma_str = "Electrical Conductivity"
         figs = []
-        axes = []
+        axes_list = []
 
         if not observable.magnetized:
-            acf_avg = observable.dataframe_acf[(jc_str, "Total", "Mean")].to_numpy()
-            acf_std = observable.dataframe_acf[(jc_str, "Total", "Std")].to_numpy()
-
-            tc_avg = self.dataframe[(sigma_str, "Mean")].to_numpy()
-            tc_std = self.dataframe[(sigma_str, "Std")].to_numpy()
-
-            fig, (ax1, ax2, ax3, ax4) = self.plot_tc(
+            acf_mean = ds_obs["mean_acf"].sel(species_row="Total", species_col="Total").mean("component").values
+            acf_std  = ds_obs["std_acf"].sel(species_row="Total", species_col="Total").mean("component").values
+            tc_mean  = ds["mean_ElectricalConductivity"].values
+            tc_std   = ds["std_ElectricalConductivity"].values
+            fig, ax_tuple = self.plot_tc(
                 time=self.time_array,
-                acf_data=column_stack((acf_avg, acf_std)),
-                tc_data=column_stack((tc_avg, tc_std)),
+                acf_data=column_stack((acf_mean, acf_std)),
+                tc_data=column_stack((tc_mean, tc_std)),
                 acf_name="Electric Current ACF",
                 tc_name="Electrical Conductivity",
                 figname="ElectricalConductivity_Plot.png",
                 show=display_plot,
             )
-
-            figs.append[fig]
-            axes.append[(ax1, ax2, ax3, ax4)]
+            figs.append(fig)
+            axes_list.append(ax_tuple)
         else:
-            acf_avg = observable.dataframe_acf[(jc_str, "Parallel", "Mean")].to_numpy()
-            acf_std = observable.dataframe_acf[(jc_str, "Parallel", "Std")].to_numpy()
+            for comp, dim_lbl, key in (
+                ("Parallel",     dim_labels[D - 1], "ElectricalConductivity_Parallel"),
+                ("Perpendicular", dim_labels[0],    "ElectricalConductivity_Perpendicular"),
+            ):
+                acf_mean = ds_obs["mean_acf"].sel(species_row="Total", species_col="Total", component=dim_lbl).values
+                acf_std  = ds_obs["std_acf"].sel(species_row="Total", species_col="Total", component=dim_lbl).values
+                tc_mean  = ds[f"mean_{key}"].values
+                tc_std   = ds[f"std_{key}"].values
+                fig, ax_tuple = self.plot_tc(
+                    time=self.time_array,
+                    acf_data=column_stack((acf_mean, acf_std)),
+                    tc_data=column_stack((tc_mean, tc_std)),
+                    acf_name=f"Electric Current ACF {comp}",
+                    tc_name=f"Electrical Conductivity {comp}",
+                    figname=f"ElectricalConductivity_{comp}_Plot.png",
+                    show=display_plot,
+                )
+                figs.append(fig)
+                axes_list.append(ax_tuple)
 
-            tc_avg = self.dataframe[(sigma_str, "Parallel", "Mean")].to_numpy()
-            tc_std = self.dataframe[(sigma_str, "Parallel", "Std")].to_numpy()
+        return figs, axes_list
 
-            fig, (ax1, ax2, ax3, ax4) = self.plot_tc(
-                time=self.time_array,
-                acf_data=column_stack((acf_avg, acf_std)),
-                tc_data=column_stack((tc_avg, tc_std)),
-                acf_name="Electric Current ACF Parallel",
-                tc_name="Electrical Conductivity Parallel",
-                figname="ElectricalConductivity_Parallel_Plot.png",
-                show=display_plot,
-            )
 
-            figs.append[fig]
-            axes.append[(ax1, ax2, ax3, ax4)]
-
-            acf_avg = observable.dataframe_acf[(jc_str, "Perpendicular", "Mean")].to_numpy()
-            acf_std = observable.dataframe_acf[(jc_str, "Perpendicular", "Std")].to_numpy()
-
-            tc_avg = self.dataframe[(sigma_str, "Perpendicular", "Mean")].to_numpy()
-            tc_std = self.dataframe[(sigma_str, "Perpendicular", "Std")].to_numpy()
-
-            fig, (ax1, ax2, ax3, ax4) = self.plot_tc(
-                time=self.time_array,
-                acf_data=column_stack((acf_avg, acf_std)),
-                tc_data=column_stack((tc_avg, tc_std)),
-                acf_name="Electric Current ACF Perpendicular",
-                tc_name="Electrical Conductivity Perpendicular",
-                figname="ElectricalConductivity_Perpendicular_Plot.png",
-                show=display_plot,
-            )
-            figs.append[fig]
-            axes.append[(ax1, ax2, ax3, ax4)]
-
-        return figs, axes
+# ---------------------------------------------------------------------------
+# ThermalConductivity
+# ---------------------------------------------------------------------------
 
 
 class ThermalConductivity(TransportCoefficients):
-    """The thermal conductivity is calculated from the Green-Kubo formula
+    """Thermal conductivity from the Green-Kubo formula.
 
-    .. math::
-            \\kappa_t = k_B \\frac{\\beta^2}{3 V} \\int_0^{t} d\\tau
-            \\langle \\mathbf {J}_{Q}(0) \\cdot \\mathbf {J}_{Q}(\\tau) \\rangle,
+    Reads from the :class:`~sarkas.tools.observables.HeatFlux` zarr store.
+    Layout::
 
-    where :math:`\\mathbf {J}_{Q}(t)` is the heat flux calculated by the :class:`sarkas.tools.observables.HeatFlux` class.
+        acf  (no_species, no_species, D+1, block_length, no_slices)
+
+    For single-species: ``acf[0, 0, -1, :, isl]``.
+    For multi-species: sum over all ``(i, j)`` cross-correlations.
     """
 
     def __init__(self):
@@ -1481,115 +808,48 @@ class ThermalConductivity(TransportCoefficients):
         self.required_observable = "Heat Flux"
         super().__init__()
 
-    def compute(
-        self,
-        observable,
-        plot: bool = True,
-        display_plot: bool = False,
-    ):
-        """
-        Calculate the transport coefficient from the Green-Kubo formula.
+    def compute(self, observable, plot: bool = True, display_plot: bool = False):
+        """Calculate the thermal conductivity.
 
         Parameters
         ----------
-        observable : :class:`sarkas.tools.observables.PressureTensor`
-            Observable object containing the ACF whose time integral leads to the viscsosity coefficients.
-
-        plot : bool, optional
-            Flag for making the dual plot of the ACF and transport coefficient. Default = True.
-
-        display_plot : bool, optional
-            Flag for displaying the plot if using the IPython. Default = False
-
+        observable : :class:`~sarkas.tools.observables.HeatFlux`
         """
-        observable.load_hdf_acf()
-        self.initialize_dataframes(observable)
-        # Initialize Timer
         t0 = self.timer.current()
 
-        const = self.kB * self.beta_slices**2 / self.box_volume
-        sp_vacf_str = f"{observable.__long_name__} ACF"
+        ds_obs = xr.open_zarr(observable.zarr_store_path)
+        acf_da = ds_obs["acf"]  # (species_row, species_col, component, lag, slice)
 
-        data_dict = {"Integration_Interval": self.time_array}
-
-        # Loop over time slices
+        sl = np.zeros((self.no_slices, self.block_length))
         for isl in tqdm(range(self.no_slices), disable=not observable.verbose):
-            # Grab vacf data of each slice
-            integrand = observable.dataframe_acf_slices[(sp_vacf_str, f"Total", "Total", f"slice {isl}")].values
-            df_str = f"{self.__long_name__}_slice {isl}"
-            # self.dataframe_slices[df_str] = const[isl] * fast_integral_loop(
-            #     time=self.time_array, integrand=integrand
-            # )
-            data = const[isl] * cumulative_trapezoid(integrand, self.time_array, initial=0)
-            # Add to data dict
-            data_dict[df_str] = data
-        self.dataframe_slices = DataFrame(data_dict)
-        data_dict = {"Integration_Interval": self.time_array}
+            const = self.kB * self.beta_slices[isl] ** 2 / observable.box_volume
+            # Total heat flux ACF = sum over species pairs, isotropic component ("Total")
+            integrand = acf_da.sel(component="Total").isel(slice=isl).sum(["species_row", "species_col"]).values
+            sl[isl] = const * cumulative_trapezoid(integrand, self.time_array, initial=0.0)
 
-        # Average and std of each transport coefficient.
-        col_str = [f"{self.__long_name__}_slice {isl}" for isl in range(observable.no_slices)]
-        # Mean
-        col_data = self.dataframe_slices[col_str].mean(axis=1).values
-        col_name = f"{self.__long_name__}_Mean"
-        data_dict[col_name] = col_data
-        # Std
-        col_data = self.dataframe_slices[col_str].std(axis=1).values
-        col_name = f"{self.__long_name__}_Std"
-        data_dict[col_name] = col_data
-
-        self.dataframe = DataFrame(data_dict)
-        # Time stamp
         tend = self.timer.current()
         self.time_stamp(f"{self.__long_name__} Calculation", self.timer.time_division(tend - t0))
+        self.save_zarr({"ThermalConductivity": sl})
 
-        # Save
-        self.save_hdf()
-        # Plot
         if plot:
             _, _ = self.plot(observable, display_plot=display_plot)
 
     def plot(self, observable, display_plot: bool = False):
-        """
-        Make a dual plot comparing the ACF and the Transport Coefficient by using the :meth:`plot_tc` method.
+        ds = xr.open_zarr(self.zarr_store_path)
+        ds_obs = xr.open_zarr(observable.zarr_store_path)
 
-        Parameters
-        ----------
-        observable: :class:`sarkas.tools.observables.HeatFlux`
-            Observable object containing the ACF whose time integral leads to the self diffusion coefficient.
+        acf_mean = ds_obs["mean_acf"].sel(component="Total").sum(["species_row", "species_col"]).values
+        acf_std  = ds_obs["std_acf"].sel(component="Total").sum(["species_row", "species_col"]).values
+        tc_mean  = ds["mean_ThermalConductivity"].values
+        tc_std   = ds["std_ThermalConductivity"].values
 
-        display_plot : bool, optional
-            Flag for displaying the plot if using the IPython. Default = False.
-
-        Return
-        ------
-        fig : :class:`matplotlib.pyplot.Figure`
-            Matplotlib figure handle
-
-        (ax1, ax2, ax3, ax4) : tuple, :class:`matplotlib.axes.Axes`
-            Tuple containing the axes handles for `fig`. 'ax1` and `ax2` are the handles for the left and right plots respectively.
-            `ax3` and `ax4` are the handles for the "Index" axes, created from `ax1.twiny()` and `ax2.twiny()` respectively.
-
-        """
-        sp_vacf_str = f"{observable.__long_name__} ACF"
-
-        species_list = observable.species_names
-
-        acf_avg = observable.dataframe_acf[(sp_vacf_str, f"Total", "Total", "Mean")].to_numpy()
-        acf_std = observable.dataframe_acf[(sp_vacf_str, f"Total", "Total", "Std")].to_numpy()
-
-        col_name = (f"{self.__long_name__}", "Mean")
-        tc_avg = self.dataframe[col_name].to_numpy()
-        col_name = (f"{self.__long_name__}", "Std")
-        tc_std = self.dataframe[col_name].to_numpy()
-
-        fig, (ax1, ax2, ax3, ax4) = self.plot_tc(
+        fig, ax_tuple = self.plot_tc(
             time=self.time_array,
-            acf_data=column_stack((acf_avg, acf_std)),
-            tc_data=column_stack((tc_avg, tc_std)),
-            acf_name=sp_vacf_str,
-            tc_name=f"{self.__long_name__}",
+            acf_data=column_stack((acf_mean, acf_std)),
+            tc_data=column_stack((tc_mean, tc_std)),
+            acf_name="Heat Flux ACF",
+            tc_name="Thermal Conductivity",
             figname=f"{self.__name__}_Plot.png",
             show=display_plot,
         )
-
-        return fig, (ax1, ax2, ax3, ax4)
+        return fig, ax_tuple

@@ -2,7 +2,7 @@
 Module for handling the Particle-Mesh part of the force and potential calculation.
 """
 
-from numba import float64, int64, jit
+from numba import float64, int64, jit, prange
 from numba.core.types import float64, int64
 from numpy import arange, array, exp, mod, pi, rint, sin, sqrt, zeros, zeros_like
 from numpy.fft import fftshift, ifftshift
@@ -10,6 +10,9 @@ from numpy.fft import fftshift, ifftshift
 # from pyfftw.builders import fftn, ifftn
 from pyfftw import empty_aligned, FFTW
 
+import os
+os.environ['KMP_WARNINGS'] = 'off' # To quite the warning 
+# OMP: Info #276: omp_set_nested routine deprecated, please use omp_set_max_active_levels instead.
 
 class FFTWObjects:
     """Optimized FFT objects for reuse across timesteps"""
@@ -325,13 +328,13 @@ def calc_charge_dens(mesh_pos, mesh_points, charges, cao, mesh_sz, mid, pshift):
         base_y = (iy - pshift[1]) % mesh_sz[1]
         base_x = (ix - pshift[0]) % mesh_sz[0]
 
-        for g in range(cao[2]):
-            r_g = (base_z + g) % mesh_sz[2]
-            for i in range(cao[1]):
-                r_i = (base_y + i) % mesh_sz[1]
-                for j in range(cao[0]):
-                    r_j = (base_x + j) % mesh_sz[0]
-                    rho_r[r_g, r_i, r_j] += charges[ipart] * wz[g] * wy[i] * wx[j]
+        for k in range(cao[2]):
+            r_k = (base_z + k) % mesh_sz[2]
+            for j in range(cao[1]):
+                r_j = (base_y + j) % mesh_sz[1]
+                for i in range(cao[0]):
+                    r_i = (base_x + i) % mesh_sz[0]
+                    rho_r[r_k, r_j, r_i] += charges[ipart] * wz[k] * wy[j] * wx[i]
 
     return rho_r
 
@@ -750,7 +753,7 @@ def sum_over_aliases(kx, ky, kz, kx_M, ky_M, kz_M, h_array, p, four_pi, alpha_sq
     return U_G_k, U_k_sq
 
 
-@jit(nopython=True)
+@jit(nopython=True, parallel=True)
 def force_optimized_green_function(box_lengths, h_array, mesh_sizes, aliases, p, constants):
     """
     Calculate the optimized Green's function for the PPPM method.
@@ -827,7 +830,8 @@ def force_optimized_green_function(box_lengths, h_array, mesh_sizes, aliases, p,
 
     kx_M, ky_M, kz_M = create_k_aliases(aliases, mesh_sizes, non_zero_box_lengths)
 
-    for nz, kz in enumerate(kz_v[:, 0, 0]):
+    for nz in prange(kz_v.shape[0]): #enumerate(kz_v[:, 0, 0]):
+        kz = kz_v[nz, 0, 0]
         kz_sq = kz * kz
         for ny, ky in enumerate(ky_v[:, 0]):
             ky_sq = ky * ky

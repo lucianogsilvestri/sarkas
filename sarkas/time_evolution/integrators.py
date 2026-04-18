@@ -1200,19 +1200,6 @@ def enforce_pbc(pos, cntr, box_lengths):
             # Apply the boundary condition in-place
             pos[i, j] -= L * fold_count
 
-    # # Loop over all particles
-    # for p in arange(pos.shape[0]):
-    #     for d in arange(pos.shape[1]):
-    #         # If particle is outside of box in positive direction, wrap to negative side
-    #         # if pos[d,p] > box_vector[d]:
-    #         pos[p, d] -= box_vector[d] * (pos[p, d] > box_vector[d])
-    #         cntr[p, d] += 1 * (pos[p, d] > box_vector[d])
-    #         # If particle is outside of box in negative direction, wrap to positive side
-    #         # if pos[d,p] < 0.0:
-    #         pos[p, d] += box_vector[d] * (pos[p, d] < 0.0)
-    #         cntr[p, d] -= 1 * (pos[p, d] < 0.0)
-
-
 @jit(void(float64[:, :], float64[:, :], float64[:, :], float64[:], float64[:]), nopython=True)
 def enforce_abc(pos, vel, acc, charges, box_vector):
     """

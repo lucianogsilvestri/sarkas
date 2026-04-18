@@ -2,10 +2,13 @@
 Module for handling Particle-Particle interaction.
 """
 
-from numba import jit
+from numba import jit, prange
 from numba.core.types import float64, int64, Tuple
 from numpy import arange, sqrt, zeros, zeros_like
 
+import os
+os.environ['KMP_WARNINGS'] = 'off' # To quite the warning 
+# OMP: Info #276: omp_set_nested routine deprecated, please use omp_set_max_active_levels instead.
 
 @jit(nopython=True)
 def update_0D(pos, vel, p_id, p_mass, box_lengths, rc, potential_matrix, force, measure, rdf_hist):
@@ -450,21 +453,23 @@ def particles_interaction_loop(
 
                                         # Compute distance between particles i and j
                                         r = sqrt(dx**2 + dy**2 + dz**2)
-                                        rdf_bin = int(r / dr_rdf)
+                                        
                                         id_i = p_id[i]
                                         id_j = p_id[j]
 
                                         # These definitions are needed due to numba
                                         # see https://github.com/numba/numba/issues/5881
 
-                                        if measure and rdf_bin < rdf_nbins:
-                                            rdf_hist[id_i, id_j, rdf_bin] += 1
-
                                         # If below the cutoff radius, compute the force
                                         if r < rc:
+                                            rdf_bin = int(r / dr_rdf)
+                                            if measure and rdf_bin < rdf_nbins:
+                                                rdf_hist[id_j, id_i, rdf_bin] += 0.5
+                                                rdf_hist[id_i, id_j, rdf_bin] += 0.5
+
                                             p_matrix = potential_matrix[id_i, id_j]
                                             # neighbors[i, j] = j
-                                            rs = p_matrix[4]
+                                            rs = p_matrix[-1]
                                             # Branchless programming to avoid division by zero
                                             # Note that if rs =0.0 then the problem persist
                                             r_ij = r * (r >= rs) + rs * (r < rs)
@@ -532,6 +537,154 @@ def particles_interaction_loop(
         j_e[i, 0] += (0.5 * p_mass[i] * (vel[i, :] ** 2).sum(axis=-1)) * vel[i, 0]
         j_e[i, 1] += (0.5 * p_mass[i] * (vel[i, :] ** 2).sum(axis=-1)) * vel[i, 1]
         j_e[i, 2] += (0.5 * p_mass[i] * (vel[i, :] ** 2).sum(axis=-1)) * vel[i, 2]
+
+    return (
+        ptcl_pot_energy,
+        acc_s_r,
+        virial_xx_sr,
+        virial_yy_sr,
+        virial_zz_sr,
+        virial_xy_sr,
+        virial_xz_sr,
+        virial_yz_sr,
+        j_e,
+    )
+
+
+@jit(nopython=True, parallel=True)
+def particles_interaction_loop_prange(
+    pos, vel, p_mass, p_id, potential_matrix, rc, measure,
+    force, rdf_hist, head, ls_array, cells_per_dim, box_lengths
+):
+    N = pos.shape[0]
+
+    acc_s_r = zeros_like(pos)
+    ptcl_pot_energy = zeros(N)
+
+    # virials per particle (only i!)
+    virial_xx_sr = zeros(N)
+    virial_xy_sr = zeros(N)
+    virial_xz_sr = zeros(N)
+    virial_yy_sr = zeros(N)
+    virial_yz_sr = zeros(N)
+    virial_zz_sr = zeros(N)
+
+    j_e = zeros_like(pos)
+
+    rdf_nbins = rdf_hist.shape[-1]
+    dr_rdf = rc / float(rdf_nbins)
+
+    # ============================
+    # MAIN PARALLEL PARTICLE LOOP
+    # ============================
+    for i in prange(N):
+
+        xi, yi, zi = pos[i]
+        vi = vel[i]
+        mi = p_mass[i]
+        id_i = p_id[i]
+
+        # find cell of i (you may already have this cached elsewhere)
+        cx = int(xi / box_lengths[0] * cells_per_dim[0])
+        cy = int(yi / box_lengths[1] * cells_per_dim[1])
+        cz = int(zi / box_lengths[2] * cells_per_dim[2])
+
+        for dz in (-1, 0, 1):
+            cz_N = cz + dz
+            zshift = 0.0
+            if cz_N < 0:
+                cz_N += cells_per_dim[2]
+                zshift = -box_lengths[2]
+            elif cz_N >= cells_per_dim[2]:
+                cz_N -= cells_per_dim[2]
+                zshift = box_lengths[2]
+
+            for dy in (-1, 0, 1):
+                cy_N = cy + dy
+                yshift = 0.0
+                if cy_N < 0:
+                    cy_N += cells_per_dim[1]
+                    yshift = -box_lengths[1]
+                elif cy_N >= cells_per_dim[1]:
+                    cy_N -= cells_per_dim[1]
+                    yshift = box_lengths[1]
+
+                for dx in (-1, 0, 1):
+                    cx_N = cx + dx
+                    xshift = 0.0
+                    if cx_N < 0:
+                        cx_N += cells_per_dim[0]
+                        xshift = -box_lengths[0]
+                    elif cx_N >= cells_per_dim[0]:
+                        cx_N -= cells_per_dim[0]
+                        xshift = box_lengths[0]
+
+                    cN = (
+                        cx_N
+                        + cy_N * cells_per_dim[0]
+                        + cz_N * cells_per_dim[0] * cells_per_dim[1]
+                    )
+
+                    j = head[cN]
+                    while j >= 0:
+
+                        if j != i:
+                            dxij = xi - (pos[j, 0] + xshift)
+                            dyij = yi - (pos[j, 1] + yshift)
+                            dzij = zi - (pos[j, 2] + zshift)
+
+                            r2 = dxij*dxij + dyij*dyij + dzij*dzij
+                            if r2 < rc*rc:
+                                r = sqrt(r2)
+
+                                id_j = p_id[j]
+
+                                if measure:
+                                    bin = int(r / dr_rdf)
+                                    if bin < rdf_nbins:
+                                        rdf_hist[id_i, id_j, bin] += 1.0
+
+                                pmat = potential_matrix[id_i, id_j]
+                                rs = pmat[-1]
+                                r_eff = r if r >= rs else rs
+
+                                pot, fr = force(r_eff, pmat)
+                                fr /= r_eff
+
+                                fx = dxij * fr
+                                fy = dyij * fr
+                                fz = dzij * fr
+
+                                acc_s_r[i, 0] += fx / mi
+                                acc_s_r[i, 1] += fy / mi
+                                acc_s_r[i, 2] += fz / mi
+
+                                # full pot goes to i (no 1/2 anymore)
+                                ptcl_pot_energy[i] += 0.5 * pot
+
+                                # virial (only i)
+                                virial_xx_sr[i] += 0.5 * dxij * fx
+                                virial_xy_sr[i] += 0.5 * dxij * fy
+                                virial_xz_sr[i] += 0.5 * dxij * fz
+                                virial_yy_sr[i] += 0.5 * dyij * fy
+                                virial_yz_sr[i] += 0.5 * dyij * fz
+                                virial_zz_sr[i] += 0.5 * dzij * fz
+
+                                vij = vi + vel[j]
+                                fij_vij = vij[0]*fx + vij[1]*fy + vij[2]*fz
+
+                                j_e[i, 0] += 0.25 * (vij[0]*pot - dxij*fij_vij)
+                                j_e[i, 1] += 0.25 * (vij[1]*pot - dyij*fij_vij)
+                                j_e[i, 2] += 0.25 * (vij[2]*pot - dzij*fij_vij)
+
+                        j = ls_array[j]
+
+    # kinetic term (unchanged)
+    for i in range(N):
+        ke = 0.5 * p_mass[i] * (vel[i]**2).sum()
+        j_e[i, 0] += ke * vel[i, 0]
+        j_e[i, 1] += ke * vel[i, 1]
+        j_e[i, 2] += ke * vel[i, 2]
 
     return (
         ptcl_pot_energy,

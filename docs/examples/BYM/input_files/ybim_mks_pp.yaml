@@ -14,7 +14,7 @@ Particles:
         number_density: 1.0e+30       # /m^3
         # mass: 2.6561982e-26         # /kg
         num: 2500
-        Z: 8.0                      # degree of ionization
+        Z: 8.0                     # degree of ionization
         atomic_weight: 16                   # atomic mass
         temperature: 1.02e+5
 
@@ -26,15 +26,15 @@ Potential:
 
 Integrator:
     type: Verlet                  # velocity integrator type
-    dt: 1.074182e-17            # sec
+    dt: 0.574182e-16            # sec
     thermostat_type: Berendsen               # thermostat type
-    berendsen_tau: 182.0
-    relaxation_timestep: 334
+    berendsen_tau: 7.0
+    thermalization_timestep: 50
 
 Parameters:
     units: mks                    # units
-    equilibration_steps: 20_000
-    production_steps: 200_000
+    equilibration_steps: 1_000
+    production_steps: 1_000
     eq_dump_step: 50
     prod_dump_step: 5
     load_method: random_no_reject
@@ -44,7 +44,7 @@ Parameters:
     # (OPTIONAL) This is a list of observable that you want to calculate during the simulation.
     observables_list: ["Diffusion Flux"]
     # (OPTIONAL) The observables_arrays_list is a list of Particles arrays that will be saved during the simulation
-    observables_arrays_list: ["species_diffusion_flux"]  
+    observables_arrays_list: ["diffusion_fluxes"]  
     # This is a list of thermodynamics that you want to calculate during the simulation.
     thermodynamics_list: ["total_energy", "temperature", "kinetic_energy", "potential_energy"]
 

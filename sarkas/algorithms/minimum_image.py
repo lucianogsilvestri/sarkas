@@ -30,7 +30,11 @@ class MinimumImage(InteractionSolverBase):
         """Initialize the Minimum Image solver."""
         super().__init__()
         self.type = "minimum_image"
-        self.cutoff = None
+        self.cutoff_radius = None
+        self.box_lengths = zeros(3, dtype=float)
+        self.dimensions = None 
+        self.a_ws = None
+        self.units_dict = None
 
     def setup(self, params, **kwargs):
         """
@@ -49,7 +53,79 @@ class MinimumImage(InteractionSolverBase):
         """
         self.box_lengths = params.box_lengths
         # Set cutoff to half box length for proper minimum image convention
-        self.cutoff = self.box_lengths * 0.5
+        self.cutoff_radius = self.box_lengths.min() * 0.5
+        self.dimensions = params.dimensions
+        self.total_num_density = params.total_num_density
+        self.units_dict = params.units_dict
+        self.a_ws = params.a_ws
+
+        
+
+    @staticmethod
+    @jit(nopython=True)
+    def calculate_rdf_hist(
+        pos,
+        p_ids,
+        pair_index_map,
+        cutoff,
+        hist_array,
+        box_lengths,
+    ):
+        """
+        Calculate PDF histogram using linked cell-list algorithm.
+
+        Parameters
+        ----------
+        pos : numpy.ndarray
+            Particles' positions.
+        p_ids : numpy.ndarray
+            Species ID of each particle (integer).
+        pair_index_map : numpy.ndarray
+            Map from (species_i, species_j) to pair index. Shape: (num_species, num_species).
+        cutoffs : numpy.ndarray
+            Cutoff distances for each coordinate.
+        hist_array : numpy.ndarray
+            Histogram array with shape (num_pairs, bins_u, bins_v, bins_w).
+        box_lengths : numpy.ndarray
+            Array of box sides' length.
+        
+        Returns
+        -------
+        hist_array : numpy.ndarray
+            Updated histogram array.
+        """
+        # Pre-compute constants for efficiency
+        Lh = 0.5 * box_lengths  # Half box lengths for minimum image
+        N = pos.shape[0]
+        rdf_nbins = hist_array.shape[-1]  # Assuming shape (num_pairs, rdf_bins)
+        # RDF parameters - use minimum cutoff for consistency
+        dr_rdf = cutoff / float(rdf_nbins)
+
+        # Double loop over all particle pairs
+        for i in range(N):
+            for j in range(i + 1, N):
+
+                # Calculate relative position
+                dx = pos[i, 0] - pos[j, 0]
+                dy = pos[i, 1] - pos[j, 1]
+                dz = pos[i, 2] - pos[j, 2]
+
+                # Calculate distance
+                r_squared = dx * dx + dy * dy + dz * dz
+                r_in = sqrt(r_squared)
+
+                # Get species IDs and look up pair index
+                sp1_id = p_ids[i]
+                sp2_id = p_ids[j]
+                pair_idx = pair_index_map[sp1_id, sp2_id]
+
+                # Update RDF histogram
+                
+                if r_in < cutoff:
+                    rdf_bin = int(r_in / dr_rdf)
+                    hist_array[pair_idx, rdf_bin] += 1
+
+        return hist_array
 
     @staticmethod
     @jit(nopython=True)
@@ -99,8 +175,17 @@ class MinimumImage(InteractionSolverBase):
         # Initialize output arrays
         ptcl_pot_energy = zeros(N)
         acc_s_r = zeros(pos.shape)
-        j_e = zeros((3, potential_matrix.shape[0], potential_matrix.shape[0]))
-        virial_species_tensor = zeros((3, 3, potential_matrix.shape[0], potential_matrix.shape[0]))
+
+        # Virial terms
+        virial_xx_sr = zeros(pos.shape[0])
+        virial_xy_sr = zeros(pos.shape[0])
+        virial_xz_sr = zeros(pos.shape[0])
+        virial_yy_sr = zeros(pos.shape[0])
+        virial_yz_sr = zeros(pos.shape[0])
+        virial_zz_sr = zeros(pos.shape[0])
+
+        # heat current
+        j_e = zeros_like(pos)
 
         # RDF parameters - use minimum cutoff for consistency
         rdf_nbins = rdf_hist.shape[0]
@@ -110,10 +195,6 @@ class MinimumImage(InteractionSolverBase):
         # Double loop over all particle pairs
         for i in range(N):
             for j in range(i + 1, N):
-                # Calculate relative velocity
-                vx = vel[i, 0] + vel[j, 0]
-                vy = vel[i, 1] + vel[j, 1]
-                vz = vel[i, 2] + vel[j, 2]
 
                 # Calculate relative position
                 dx = pos[i, 0] - pos[j, 0]
@@ -121,13 +202,14 @@ class MinimumImage(InteractionSolverBase):
                 dz = pos[i, 2] - pos[j, 2]
 
                 # Apply minimum image convention using more efficient method
-                # Use numpy's sign function equivalent for branchless programming
-                dx = dx - box_lengths[0] * ((dx > Lh[0]) - (dx < -Lh[0]))
-                dy = dy - box_lengths[1] * ((dy > Lh[1]) - (dy < -Lh[1]))
-                dz = dz - box_lengths[2] * ((dz > Lh[2]) - (dz < -Lh[2]))
+                dx2 = box_lengths[0] - dx * (dx >= Lh[0]) + dx * (dx <= -Lh[0])
+                dy2 = box_lengths[1] - dy * (dy >= Lh[1]) + dy * (dy <= -Lh[1])
+                dz2 = box_lengths[2] - dz * (dz >= Lh[2]) + dz * (dz <= -Lh[2])
+
 
                 # Calculate distance
-                r_squared = dx * dx + dy * dy + dz * dz
+                r_squared = dx2 * dx2 + dy2 * dy2 + dz2 * dz2
+
                 r_in = sqrt(r_squared)
 
                 # Get particle species information
@@ -140,9 +222,9 @@ class MinimumImage(InteractionSolverBase):
                 r = r_in * (r_in >= rs) + rs * (r_in < rs)  # Branchless programming
 
                 # Update RDF histogram
-                rdf_bin = int(r / dr_rdf)
+                rdf_bin = int(r_in/ dr_rdf)
                 if rdf_bin < rdf_nbins:
-                    rdf_hist[rdf_bin, id_i, id_j] += 1
+                    rdf_hist[id_i, id_j, rdf_bin] += 1
 
                 # For minimum image, we compute all pairs (no cutoff check needed)
                 # But we can add early termination for very distant pairs
@@ -160,52 +242,48 @@ class MinimumImage(InteractionSolverBase):
                     ptcl_pot_energy[i] += 0.5 * pot
                     ptcl_pot_energy[j] += 0.5 * pot
 
-                    # Update the acceleration for i particles in each dimension
+                    fx = dx * fr
+                    fy = dy * fr
+                    fz = dz * fr
 
-                    acc_s_r[i, 0] += dx * fr / p_mass[i]
-                    acc_s_r[i, 1] += dy * fr / p_mass[i]
-                    acc_s_r[i, 2] += dz * fr / p_mass[i]
+                    # Update the acceleration for i particles in each dimension
+                    acc_s_r[i, 0] += fx / p_mass[i]
+                    acc_s_r[i, 1] += fy / p_mass[i]
+                    acc_s_r[i, 2] += fz / p_mass[i]
 
                     # Apply Newton's 3rd law to update acceleration on j particles
-                    acc_s_r[j, 0] -= dx * fr / p_mass[j]
-                    acc_s_r[j, 1] -= dy * fr / p_mass[j]
-                    acc_s_r[j, 2] -= dz * fr / p_mass[j]
+                    acc_s_r[j, 0] -= fx / p_mass[j]
+                    acc_s_r[j, 1] -= fy / p_mass[j]
+                    acc_s_r[j, 2] -= fz / p_mass[j]
 
                     # Since we have the info already calculate the virial_species_tensor
-                    # This factor is to avoid double counting in the case of same species
-                    factor = 0.5  # * (id_i != id_j) + 0.25*( id_i == id_j)
-                    virial_species_tensor[id_i, id_j, 0, 0] += factor * dx * dx * fr
-                    virial_species_tensor[id_i, id_j, 0, 1] += factor * dx * dy * fr
-                    virial_species_tensor[id_i, id_j, 0, 2] += factor * dx * dz * fr
-                    virial_species_tensor[id_i, id_j, 1, 0] += factor * dy * dx * fr
-                    virial_species_tensor[id_i, id_j, 1, 1] += factor * dy * dy * fr
-                    virial_species_tensor[id_i, id_j, 1, 2] += factor * dy * dz * fr
-                    virial_species_tensor[id_i, id_j, 2, 0] += factor * dz * dx * fr
-                    virial_species_tensor[id_i, id_j, 2, 1] += factor * dz * dy * fr
-                    virial_species_tensor[id_i, id_j, 2, 2] += factor * dz * dz * fr
-                    # This is where the double counting could happen.
-                    virial_species_tensor[id_j, id_i, 0, 0] += factor * dx * dx * fr
-                    virial_species_tensor[id_j, id_i, 0, 1] += factor * dx * dy * fr
-                    virial_species_tensor[id_j, id_i, 0, 2] += factor * dx * dz * fr
-                    virial_species_tensor[id_j, id_i, 1, 0] += factor * dy * dx * fr
-                    virial_species_tensor[id_j, id_i, 1, 1] += factor * dy * dy * fr
-                    virial_species_tensor[id_j, id_i, 1, 2] += factor * dy * dz * fr
-                    virial_species_tensor[id_j, id_i, 2, 0] += factor * dz * dx * fr
-                    virial_species_tensor[id_j, id_i, 2, 1] += factor * dz * dy * fr
-                    virial_species_tensor[id_j, id_i, 2, 2] += factor * dz * dz * fr
+                    virial_xx_sr[i] += 0.5 * dx * fx
+                    virial_xy_sr[i] += 0.5 * dx * fy
+                    virial_xz_sr[i] += 0.5 * dx * fz
+                    virial_yy_sr[i] += 0.5 * dy * fy
+                    virial_yz_sr[i] += 0.5 * dy * fz
+                    virial_zz_sr[i] += 0.5 * dz * fz
 
-                    fij_vij = dx * fr * vx + dy * fr * vy + dz * fr * vz
+                    virial_xx_sr[j] += 0.5 * dx * fx
+                    virial_xy_sr[j] += 0.5 * dx * fy
+                    virial_xz_sr[j] += 0.5 * dx * fz
+                    virial_yy_sr[j] += 0.5 * dy * fy
+                    virial_yz_sr[j] += 0.5 * dy * fz
+                    virial_zz_sr[j] += 0.5 * dz * fz
 
-                    # For this further factor of 1/2 see eq.(5) in https://doi.org/10.1016/j.cpc.2013.01.008
-                    factor *= 0.5
+                    # Heat current
+                    vij_x = vel[i, 0] + vel[j, 0]
+                    vij_y = vel[i, 1] + vel[j, 1]
+                    vij_z = vel[i, 2] + vel[j, 2]
+                    fij_vij = vij_x * fx + vij_y * fy + vij_z * fz
 
-                    j_e[id_i, id_j, 0] += factor * dx * fij_vij
-                    j_e[id_i, id_j, 1] += factor * dy * fij_vij
-                    j_e[id_i, id_j, 2] += factor * dz * fij_vij
+                    j_e[i, 0] += 0.25 * (vij_x * pot - dx * fij_vij)
+                    j_e[i, 1] += 0.25 * (vij_y * pot - dy * fij_vij)
+                    j_e[i, 2] += 0.25 * (vij_z * pot - dz * fij_vij)
+                    j_e[j, 0] += 0.25 * (vij_x * pot - dx * fij_vij)
+                    j_e[j, 1] += 0.25 * (vij_y * pot - dy * fij_vij)
+                    j_e[j, 2] += 0.25 * (vij_z * pot - dz * fij_vij)
 
-                    j_e[id_j, id_i, 0] += factor * dx * fij_vij
-                    j_e[id_j, id_i, 1] += factor * dy * fij_vij
-                    j_e[id_j, id_i, 2] += factor * dz * fij_vij
 
         # Add the ideal term of the energy current
         for i in range(pos.shape[0]):
@@ -214,7 +292,17 @@ class MinimumImage(InteractionSolverBase):
             j_e[id_i, id_i, 1] += (0.5 * p_mass[i] * (vel[i] ** 2).sum() + ptcl_pot_energy[i]) * vel[i, 1]
             j_e[id_i, id_i, 2] += (0.5 * p_mass[i] * (vel[i] ** 2).sum() + ptcl_pot_energy[i]) * vel[i, 2]
 
-        return ptcl_pot_energy, acc_s_r, virial_species_tensor, j_e
+        return (
+            ptcl_pot_energy,
+            acc_s_r,
+            virial_xx_sr,
+            virial_yy_sr,
+            virial_zz_sr,
+            virial_xy_sr,
+            virial_xz_sr,
+            virial_yz_sr,
+            j_e,
+        )
 
     def update(self, ptcls, potential):
         """
@@ -238,16 +326,10 @@ class MinimumImage(InteractionSolverBase):
         - Automatically handles periodic boundary conditions
         - Cutoff is set to half the smallest box dimension
         """
-        # Compute interactions
-        (
-            ptcls.potential_energy,
-            ptcls.acc,
-            ptcls.virial_species_tensor,
-            ptcls.heat_flux_species_tensor,
-        ) = self.particles_interaction_loop(
+        U_s_r, acc_s_r, virial_xx, virial_yy, virial_zz, virial_xy, virial_xz, virial_yz, j_e = self.particles_interaction_loop(
             ptcls.pos,
             ptcls.vel,
-            ptcls.masses,
+            ptcls.mass,
             ptcls.id,
             potential.matrix,
             potential.force,
@@ -255,86 +337,21 @@ class MinimumImage(InteractionSolverBase):
             self.box_lengths,
         )
 
+        ptcls.potential_energy = U_s_r
+        ptcls.acceleration = acc_s_r
+        ptcls.virial_xx = virial_xx
+        ptcls.virial_xy = virial_xy
+        ptcls.virial_xz = virial_xz
+        ptcls.virial_yy = virial_yy
+        ptcls.virial_yz = virial_yz
+        ptcls.virial_zz = virial_zz
+        ptcls.heat_flux = j_e
+
     def pretty_print(self):
         """Print algorithm information and parameters."""
         msg = f"\nINTERACTION SOLVER: Minimum Image Convention\n"
 
-        if self.box_lengths is not None:
-            msg += f"Box lengths: {self.box_lengths}\n"
-            msg += f"Cutoff distances (L/2): {self.cutoff}\n"
-            msg += f"Minimum cutoff: {self.cutoff.min():.6e}\n"
-
-        msg += "Computational complexity: O(N²)\n"
-        msg += "Periodic boundary conditions: Minimum image convention\n"
-        msg += "Suitable for: Small to medium systems with periodic boundaries\n"
+        
+        msg += f"Cutoff distances (L/2): {self.cutoff_radius/ self.a_ws:.4f} a_ws = {self.cutoff_radius:.6e} {self.units_dict['length']}\n"
 
         return msg
-
-    def estimate_computational_cost(self, num_particles):
-        """
-        Estimate computational cost for minimum image algorithm.
-
-        Parameters
-        ----------
-        num_particles : int
-            Number of particles in the system
-
-        Returns
-        -------
-        dict
-            Dictionary containing cost estimates:
-            - 'pair_evaluations' : number of pair interactions computed
-            - 'complexity_factor' : O(N²) scaling factor
-            - 'relative_cost' : cost relative to N=1000 system
-        """
-        pair_evaluations = num_particles * (num_particles - 1) // 2
-        complexity_factor = num_particles**2
-
-        # Relative cost compared to 1000-particle system
-        reference_n = 1000
-        relative_cost = (num_particles / reference_n) ** 2
-
-        return {
-            "pair_evaluations": pair_evaluations,
-            "complexity_factor": complexity_factor,
-            "relative_cost": relative_cost,
-        }
-
-    def validate_box_dimensions(self):
-        """
-        Validate that box dimensions are suitable for minimum image convention.
-
-        Raises
-        ------
-        ValueError
-            If any box dimension is zero or negative
-        Warning
-            If box dimensions are very different (highly anisotropic)
-        """
-        if self.box_lengths is None:
-            raise ValueError("Box lengths not set - call setup() first")
-
-        if (self.box_lengths <= 0).any():
-            raise ValueError("All box dimensions must be positive for minimum image")
-
-        # Check for highly anisotropic boxes
-        min_length = self.box_lengths.min()
-        max_length = self.box_lengths.max()
-        anisotropy_ratio = max_length / min_length
-
-        if anisotropy_ratio > 10:
-            print(f"Warning: Highly anisotropic box (ratio: {anisotropy_ratio:.1f})")
-            print("Consider using a different algorithm for better efficiency")
-
-    def get_effective_cutoff(self):
-        """
-        Get the effective cutoff radius for interactions.
-
-        Returns
-        -------
-        float
-            Effective cutoff radius (minimum of half box lengths)
-        """
-        if self.cutoff is None:
-            return None
-        return self.cutoff.min()

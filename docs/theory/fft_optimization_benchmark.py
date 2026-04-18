@@ -167,30 +167,46 @@ def simulate_optimized_fft_approach(rho_r, phi_k, E_kx, E_ky, E_kz, virial_data,
     Simulate the optimized FFT approach - reuses FFT objects
     """
     
+    mesh_sizes = fft_objects.shape
+
+    # Allocate memory for the output arrays of the FFT
+    rho_k = pyfftw.empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    E_x = pyfftw.empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    E_y = pyfftw.empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    E_z = pyfftw.empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    phi_r = pyfftw.empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    virial_r_xx = pyfftw.empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    virial_r_yy = pyfftw.empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    virial_r_zz = pyfftw.empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    virial_r_xy = pyfftw.empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    virial_r_xz = pyfftw.empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+    virial_r_yz = pyfftw.empty_aligned((mesh_sizes[2], mesh_sizes[1], mesh_sizes[0]), dtype=complex)
+
     # Step 1: Forward FFT using reusable object
-    rho_k_fft = fft_objects.forward_transform(rho_r)
-    rho_k = fftshift(rho_k_fft)
+    fft_objects.forward_transform(rho_r, rho_k)
+    rho_k = fftshift(rho_k)
     
     # Step 2: Multiple inverse FFTs using the same reusable object
     # Electric field components
-    E_x = fft_objects.backward_transform(ifftshift(E_kx))
-    E_y = fft_objects.backward_transform(ifftshift(E_ky))
-    E_z = fft_objects.backward_transform(ifftshift(E_kz))
+    fft_objects.backward_transform(ifftshift(E_kx), E_x)
+    fft_objects.backward_transform(ifftshift(E_ky), E_y)
+    fft_objects.backward_transform(ifftshift(E_kz), E_z)
     
     # Potential
-    phi_r_cmplx = fft_objects.backward_transform(ifftshift(phi_k))
+    fft_objects.backward_transform(ifftshift(phi_k), phi_r)
     
     # Virial components (6 more IFFTs using same object)
     results = []
-    for virial_k in virial_data:
-        virial_r = fft_objects.backward_transform(ifftshift(virial_k)).real / mesh_volume
+    for virial_k, virial_r in zip(virial_data, [virial_r_xx, virial_r_yy, virial_r_zz, virial_r_xy, virial_r_xz, virial_r_yz]):
+        fft_objects.backward_transform(ifftshift(virial_k), virial_r)
+        virial_r = virial_r.real / mesh_volume
         results.append(virial_r)
     
     # Normalize
     E_x_r = E_x.real / mesh_volume
     E_y_r = E_y.real / mesh_volume
     E_z_r = E_z.real / mesh_volume
-    phi_r = phi_r_cmplx.real / mesh_volume
+    phi_r = phi_r.real / mesh_volume
     
     return rho_k, E_x_r, E_y_r, E_z_r, phi_r, results
 
@@ -217,7 +233,7 @@ def generate_test_data(mesh_sizes):
     
     return rho_r, phi_k, E_kx, E_ky, E_kz, virial_data
 
-def run_benchmark():
+def run_benchmark(threads=None):
     """Run the complete benchmark comparing original vs optimized approaches"""
     
     # Test different mesh sizes
@@ -250,7 +266,7 @@ def run_benchmark():
         # Create optimized FFT objects ONCE (like in your simulation setup)
         print("  Creating optimized FFT objects...")
         setup_start = time.perf_counter()
-        fft_objects = FFTWObjects(mesh_sizes, threads=None)  # Use the correct class
+        fft_objects = FFTWObjects(mesh_sizes, threads=threads)  # Use the correct class
         setup_time = time.perf_counter() - setup_start
         
         # Benchmark original approach (creates FFT objects every timestep)
@@ -493,6 +509,15 @@ def main():
         print("This benchmark requires pyfftw. Install with: pip install pyfftw")
         return
     
+
+    # Use argparse to allow user to specify number of threads for FFTW
+    import argparse
+    parser = argparse.ArgumentParser(description="Benchmark FFT optimization in Sarkas")
+    parser.add_argument('--threads', type=int, default=None, help='Number of threads to use for FFTW (default: all available)')
+    args = parser.parse_args()
+
+
+
     # First, debug the FFT consistency issue
     print("Debugging FFT consistency before running benchmark...\n")
     debug_fft_differences()
@@ -502,7 +527,7 @@ def main():
     print("="*60)
     
     # Run benchmark
-    results = run_benchmark()
+    results = run_benchmark(threads=args.threads)
     
     # Create visualizations
     create_plots(results)

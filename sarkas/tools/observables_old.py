@@ -1905,120 +1905,157 @@ class Observable:
         plasma_periods_shift: int = None,
     ):
         """
-        Update the attributes related to the block length.
+        Compute all slice/block attributes from the user's choice of slicing mode and units.
 
-        Parameters
-        ----------
-        plasma_periods_per_slice : int, optional
-            Number of plasma periods per block. Default is None.
+        The user can specify the slicing in either timesteps or plasma periods. Exactly one
+        unit system should be provided per quantity — if both are given, timesteps take
+        priority and plasma_periods values are ignored.
 
-        plasma_periods_shift : int, optional
-            Number of plasma periods to skip between blocks. Default is None.
+        Two slicing modes are supported:
+
+        **Independent slices** (``independent_slices=True``, default):
+            Non-overlapping contiguous blocks. Specify either ``no_slices`` to divide
+            the trajectory equally, or ``timesteps_per_slice`` / ``plasma_periods_per_slice``
+            to set the window size explicitly (shift = window size, no overlap).
+
+        **Sliding window** (``independent_slices=False``):
+            Overlapping windows (Welch method). Must specify both the window size
+            (``timesteps_per_slice`` or ``plasma_periods_per_slice``) and the stride
+            (``timesteps_shift`` or ``plasma_periods_shift``).
+
+        Sets
+        ----
+        block_length : int
+            Number of dumps per slice window.
+        no_slices : int
+            Total number of windows.
+        dumps_shift : int
+            Number of dumps between consecutive window starts.
+        timesteps_per_slice : int
+            Window size in timesteps.
+        timesteps_shift : int
+            Stride in timesteps.
+        plasma_periods_per_slice : int
+            Window size in plasma periods.
+        plasma_periods_shift : int
+            Stride in plasma periods.
         """
+        # --- Phase 0: apply any passed-in overrides to self ---
         if independent_slices is not None:
             self.independent_slices = independent_slices
-
         if no_slices is not None:
             self.no_slices = no_slices
-
         if timesteps_per_slice is not None:
             self.timesteps_per_slice = timesteps_per_slice
-
         if timesteps_shift is not None:
             self.timesteps_shift = timesteps_shift
-
         if plasma_periods_per_slice is not None:
             self.plasma_periods_per_slice = plasma_periods_per_slice
-
         if plasma_periods_shift is not None:
             self.plasma_periods_shift = plasma_periods_shift
 
-        # if self.independent_slices and self.timesteps_shift is not None:
-        #     if self.independent_slices and self.plasma_periods_shift is not None:
-        #         raise AttributeError("timesteps_shift and plasma_periods_shift must be None for independent slices.")
+        # --- Phase 1: resolve inputs to canonical timestep units ---
+        # Priority: timesteps > plasma_periods
+        # After this block, self.timesteps_per_slice and self.timesteps_shift are
+        # either an integer or None — no mixed state.
 
         if self.independent_slices:
-            # In the case of independent slices the shift is equal to the number of steps per slice.
-            if self.no_slices == 1:
-                # Default case
-                # Independent blocks = True and no_slices = 1
-                self.timesteps_shift = self.no_steps
-                self.timesteps_per_slice = self.no_steps
-
-                self.plasma_periods_shift = int(self.timesteps_shift // self.timesteps_per_plasma_period)
-                self.plasma_periods_per_slice = int(self.no_steps * self.dt // self.plasma_period)
-
-                self.block_length = int(self.no_steps // self.dump_step) + 1
-
-                self.dumps_per_slice = self.no_dumps
-                self.dumps_shift = self.no_dumps
-                self.dumps_per_block = self.no_dumps
-            else:
-                # Independent blocks = True and no_slices > 1
-                if self.no_slices < 0 or self.no_slices == 0:
-                    raise AttributeError("no_slices must be a positive integer.")
-
-                if self.no_slices > self.no_dumps or self.no_slices == self.no_dumps:
-                    raise AttributeError("no_slices must be less than the number of dumps.")
-
-                self.timesteps_shift = int(self.no_steps // self.no_slices)
-                self.timesteps_per_slice = int(self.no_steps // self.no_slices)
-                self.block_length = int(self.timesteps_per_slice // self.dump_step)
-                self.dumps_per_block = int(self.no_dumps // self.no_slices)
-
-                self.dumps_per_slice = self.timesteps_per_slice // self.dump_step
-                self.dumps_shift = self.timesteps_shift // self.dump_step
-
-                self.plasma_periods_shift = int(self.timesteps_shift // self.timesteps_per_plasma_period)
-                self.plasma_periods_per_slice = int(self.block_length // self.timesteps_per_plasma_period)
-        else:
-            # Sliding fix window case
-            if self.timesteps_per_slice is None and self.plasma_periods_per_slice is None:
+            # Validate: shift parameters are meaningless for independent slices
+            if self.timesteps_shift is not None or self.plasma_periods_shift is not None:
                 raise AttributeError(
-                    "timesteps_per_slice or plasma_periods_per_slice must be defined for sliding blocks."
+                    "timesteps_shift and plasma_periods_shift must be None for "
+                    "independent slices — the shift is always equal to the window size."
                 )
-            if self.timesteps_shift is None and self.plasma_periods_shift is None:
-                raise AttributeError("timesteps_shift or plasma_periods_shift must be defined for sliding blocks.")
 
+            if self.no_slices == 1:
+                # Default: single block = full trajectory
+                self.timesteps_per_slice = self.no_steps
+            elif self.no_slices > 1:
+                if self.no_slices >= self.no_dumps:
+                    raise AttributeError(
+                        f"no_slices ({self.no_slices}) must be less than "
+                        f"no_dumps ({self.no_dumps})."
+                    )
+                if self.timesteps_per_slice is None and self.plasma_periods_per_slice is None:
+                    # Divide trajectory equally
+                    self.timesteps_per_slice = self.no_steps // self.no_slices
+                elif self.timesteps_per_slice is None:
+                    # Convert from plasma periods
+                    self.timesteps_per_slice = int(
+                        self.plasma_periods_per_slice * self.timesteps_per_plasma_period
+                    )
+            else:
+                raise AttributeError("no_slices must be a positive integer.")
+
+            # For independent slices, shift == window size (no overlap by definition)
+            self.timesteps_shift = self.timesteps_per_slice
+
+        else:
+            # Sliding window: both window size and shift must be defined
+            # Resolve window size
             if self.timesteps_per_slice is not None:
-                # Check that timesteps_shift is defined
-                if self.timesteps_shift is None:
-                    raise AttributeError("timesteps_shift must be defined for sliding blocks.")
-
-                # Calculate plasma_periods_per_slice and plasma_periods_shift
-                self.plasma_periods_per_slice = int((self.timesteps_per_slice * self.dt) // self.plasma_period)
-                self.plasma_periods_shift = int((self.timesteps_shift * self.dt) // self.plasma_period)
-
+                pass  # already in timesteps — nothing to do
             elif self.plasma_periods_per_slice is not None:
-                # Check that plasma_periods_shift is defined
-                if self.plasma_periods_shift is None:
-                    raise AttributeError("plasma_periods_shift must be defined for sliding blocks.")
+                self.timesteps_per_slice = int(
+                    self.plasma_periods_per_slice * self.timesteps_per_plasma_period
+                )
+            else:
+                raise AttributeError(
+                    "timesteps_per_slice or plasma_periods_per_slice must be defined "
+                    "for sliding window slicing."
+                )
 
-                self.timesteps_per_slice = int(self.plasma_periods_per_slice * self.timesteps_per_plasma_period)
-                self.timesteps_shift = int(self.plasma_periods_shift * self.timesteps_per_plasma_period)
+            # Resolve shift
+            if self.timesteps_shift is not None:
+                pass  # already in timesteps
+            elif self.plasma_periods_shift is not None:
+                self.timesteps_shift = int(
+                    self.plasma_periods_shift * self.timesteps_per_plasma_period
+                )
+            else:
+                raise AttributeError(
+                    "timesteps_shift or plasma_periods_shift must be defined "
+                    "for sliding window slicing."
+                )
 
+            # Validate shift does not exceed window size
+            if self.timesteps_shift > self.timesteps_per_slice:
+                raise AttributeError(
+                    f"timesteps_shift ({self.timesteps_shift}) cannot be larger than "
+                    f"timesteps_per_slice ({self.timesteps_per_slice}) — windows would not overlap "
+                    f"and some trajectory data would be skipped."
+                )
+
+            # Validate window fits within trajectory
+            if self.timesteps_per_slice > self.no_steps:
+                raise AttributeError(
+                    f"timesteps_per_slice ({self.timesteps_per_slice}) exceeds "
+                    f"the total number of timesteps ({self.no_steps})."
+                )
+
+            # Derive no_slices — Welch formula
             self.no_slices = int(
-                self.no_steps // self.timesteps_shift - self.timesteps_per_slice // self.timesteps_shift + 1
+                (self.no_steps - self.timesteps_per_slice) // self.timesteps_shift + 1
             )
-            self.block_length = int(self.timesteps_per_slice // self.dump_step)
-            self.dumps_per_block = None
 
-        # # Number of timesteps per block
-        # self.timesteps_per_slice = int(self.plasma_periods_per_slice * self.timesteps_per_plasma_period)
-        # # Total number of time samples in each block
-        # self.block_length = rint(self.timesteps_per_slice / self.dump_step).astype(int)
-        # # No of slices the total run is divided into
-        # if self.plasma_periods_shift > 0:
-        #     self.no_slices = (
-        #         int(
-        #             self.no_steps / (self.timesteps_per_plasma_period * self.plasma_periods_shift)
-        #             - self.plasma_periods_per_slice / self.plasma_periods_shift
-        #         )
-        #         + 1
-        #     )
-        # else:
-        #     self.no_slices = 1
+            if self.no_slices < 1:
+                raise AttributeError(
+                    "The combination of timesteps_per_slice and timesteps_shift "
+                    "produces zero valid slices. Reduce the window size or shift."
+                )
 
+        # --- Phase 2: derive all dependent attributes from canonical timestep values ---
+        # Everything from here down uses only self.timesteps_per_slice, self.timesteps_shift,
+        # self.no_slices — all guaranteed to be set integers at this point.
+
+        self.block_length   = self.timesteps_per_slice // self.dump_step
+        self.dumps_shift    = self.timesteps_shift // self.dump_step
+        self.dumps_per_slice = self.block_length  # alias for clarity
+
+        # Back-derive plasma period equivalents for display / logging
+        self.plasma_periods_per_slice = self.timesteps_per_slice / self.timesteps_per_plasma_period
+        self.plasma_periods_shift     = self.timesteps_shift / self.timesteps_per_plasma_period
+        
     def setup_multirun_dirs(self):
         """Set the attributes postprocessing_dir and dump_dirs_list.
 
@@ -2768,10 +2805,10 @@ class DiffusionFlux(Observable):
         data = zeros((self.no_dumps, len(cols)))
 
         with h5py.File(self.h5md_filepath, "r") as h5file:
-            data_ = h5file["observables/species_diffusion_flux"]["value"][
+            data_ = h5file["observables/diffusion_fluxes"]["value"][
                 :, :, :
             ]  # shape = (no_dumps, no_fluxes, no_dim)
-            data[:, 0] = h5file["observables/species_diffusion_flux"]["time"][:]
+            data[:, 0] = h5file["observables/diffusion_fluxes"]["time"][:]
 
         data[:, 1:] = data_.reshape((self.no_dumps, self.no_fluxes * self.dimensions))
 

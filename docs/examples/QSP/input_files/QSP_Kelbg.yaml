@@ -22,12 +22,13 @@ Potential:
     method: pppm
     # force_error: 1.0e-6
     # estimate_parameters: True
-    rc: 3.988129e-08 # 3.325548e-08 # 2.8119964e-08                  # cut-off radius, cm
-    pppm_mesh: [64,64,64]
+    rc: 2.746767e-08 # 3.988129e-08 # 3.325548e-08 # 2.8119964e-08                  # cut-off radius, cm
+    pppm_mesh: [80, 80, 80] #[64, 64, 64]
     pppm_aliases: [3,3,3]
     pppm_cao: 7
-    pppm_alpha_ewald: 8.990740e+07 #1.077928e+08  # 1.401516e+08 #9.466103e+07
-
+    pppm_alpha_ewald: 1.252040e+08 #8.990740e+07 #1.077928e+08  # 1.401516e+08 #9.466103e+07
+    pppm_fftw_threads: 4
+    
 Integrator:
     type: verlet
     dt: 3.5e-19                    # sec
