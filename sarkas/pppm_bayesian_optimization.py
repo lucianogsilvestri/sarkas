@@ -173,7 +173,7 @@ def compute_physical_bounds(
     # The maximum of this is at alpha = sqrt(kappa/(2*rc)) hence we set the alpha bounds to be around this value for the smallest rc 
     kappa = 1.0 / screening_length 
     if kappa > 0:
-        alpha_min = sqrt(kappa / (2 * rc_min))
+        alpha_min = sqrt(kappa / (2 * rc_max))
     else:
         alpha_min = 0.15 * smallest_mesh / box_length
         
