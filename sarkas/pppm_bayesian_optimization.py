@@ -106,7 +106,7 @@ CAO_OPTIONS: List[int] = [1, 2, 3, 4, 5, 6, 7]
 
 # Default FFTW thread counts to explore.  Powers of two up to physical core
 # count are typical sweet spots; the caller may pass a narrower list.
-FFTW_THREAD_OPTIONS: List[int] = [1, 2, 4, 8, 16]
+FFTW_THREAD_OPTIONS: List[int] = range(1, 17)  # 1 to 16 threads
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +115,7 @@ FFTW_THREAD_OPTIONS: List[int] = [1, 2, 4, 8, 16]
 
 
 def compute_physical_bounds(
+    screening_length: float,
     a_ws: float,
     box_length: float,
     mesh_options: List[int],
@@ -128,6 +129,8 @@ def compute_physical_bounds(
 
     Parameters
     ----------
+    screening_length : float
+        Screening length calculated from the plasma parameters, used to set a lower bound on alpha.
     a_ws : float
         Wigner-Seitz radius (length unit).
     box_length : float
@@ -165,7 +168,15 @@ def compute_physical_bounds(
 
     largest_mesh = max(mesh_options)
     smallest_mesh = min(mesh_options)
-    alpha_min = 0.15 * smallest_mesh / box_length
+
+    # The pp error for Yukawa goes like exp(- kappa^2/(4*alpha^2)) exp(-alpha^2 *rc^2) where kappa = 1/screening_length. 
+    # The maximum of this is at alpha = sqrt(kappa/(2*rc)) hence we set the alpha bounds to be around this value for the smallest rc 
+    kappa = 1.0 / screening_length 
+    if kappa > 0:
+        alpha_min = sqrt(kappa / (2 * rc_min))
+    else:
+        alpha_min = 0.15 * smallest_mesh / box_length
+        
     alpha_max = 0.60 * largest_mesh / box_length
 
     cao_list = cao_options if cao_options is not None else CAO_OPTIONS
@@ -413,7 +424,7 @@ def hf_initial_design(
     -------------------------------------
     For the single best (M, cao, threads) combination identified so far,
     evaluates two additional (rc, alpha) points drawn from a 2-D Latin
-    Hypercube Sample.  This gives the GP enough continuous variation to
+    Hypercube Sample (LHS).  This gives the GP enough continuous variation to
     estimate the length-scales in rc and alpha within the best categorical
     cell, preventing the acquisition function from over-exploiting a single
     continuous point.
@@ -1055,17 +1066,7 @@ def make_analytical_error_fn(
     -------
     callable(rc, alpha, M, cao) -> float
     """
-    try:
-        from .utilities.maths import force_error_analytic_pp, force_error_approx_pm
-        _sarkas_available = True
-    except ImportError:
-        _sarkas_available = False
-        warnings.warn(
-            "sarkas.utilities.maths not found. "
-            "Falling back to built-in force error approximations.",
-            ImportWarning,
-            stacklevel=2,
-        )
+    from .utilities.maths import force_error_analytic_pp, force_error_approx_pm
 
     kappa = a_ws / screening_length
 
@@ -1074,18 +1075,8 @@ def make_analytical_error_fn(
         alpha_adim = alpha * a_ws
         h_adim = (box_length / M) / a_ws
 
-        if _sarkas_available:
-            pp_err = force_error_analytic_pp(rc_adim, kappa, alpha_adim, rescaling_constant)
-            pm_err = force_error_approx_pm(kappa, cao, h_adim, alpha_adim, rescaling_constant)
-        else:
-            pp_err = (
-                2.0
-                * exp(-(((0.5 * kappa) / (alpha_adim + 1e-30)) ** 2))
-                * exp(-((alpha_adim * rc_adim) ** 2))
-                / sqrt(rc_adim + 1e-30)
-                * rescaling_constant
-            )
-            pm_err = rescaling_constant * (alpha_adim * h_adim) ** (2 * cao)
+        pp_err = force_error_analytic_pp(rc_adim, kappa, alpha_adim, rescaling_constant)
+        pm_err = force_error_approx_pm(kappa, cao, h_adim, alpha_adim, rescaling_constant)
 
         return float(sqrt(pp_err**2 + pm_err**2))
 
@@ -1222,6 +1213,7 @@ class BayesianPPPMOptimizer:
 
         box_length = self.potential.box_lengths.min()
         a_ws = self.potential.a_ws
+        screening_length = self.potential.screening_length
         N = self.potential.total_num_ptcls
         rescaling_constant = sqrt(3.0 / (4.0 * pi))
 
@@ -1236,6 +1228,7 @@ class BayesianPPPMOptimizer:
             rc_max_override = box_length / float(pp_cells_arr.min())
 
         bounds = compute_physical_bounds(
+            screening_length,
             a_ws,
             box_length,
             mesh_options,
@@ -1245,13 +1238,16 @@ class BayesianPPPMOptimizer:
             rc_max_override=rc_max_override,
         )
 
+
+        msg = f"\nPhysical bounds:"
+        msg += f"  r_c          : [{bounds['rc_min']:.4e}, {bounds['rc_max']:.4e}]"
+        msg += f"  alpha        : [{bounds['alpha_min']:.4e}, {bounds['alpha_max']:.4e}]"
+        msg += f"  M            : {bounds['M_options']}"
+        msg += f"  CAO          : {bounds['cao_options']}"
+        msg += f"  FFTW threads : {bounds['fftw_thread_options']}"
+        self.io.write_to_logger(msg)
         if self.parameters.verbose:
-            print("\nPhysical bounds:")
-            print(f"  r_c          : [{bounds['rc_min']:.4e}, {bounds['rc_max']:.4e}]")
-            print(f"  alpha        : [{bounds['alpha_min']:.4e}, {bounds['alpha_max']:.4e}]")
-            print(f"  M            : {bounds['M_options']}")
-            print(f"  CAO          : {bounds['cao_options']}")
-            print(f"  FFTW threads : {bounds['fftw_thread_options']}")
+            print(msg)
 
         codec = PPPMParameterCodec(bounds)
         self._bo_codec = codec
@@ -1327,8 +1323,6 @@ class BayesianPPPMOptimizer:
         self.io.write_to_logger(msg)
         if self.parameters.verbose:
             print(msg)
-
-        # self._restore_original_pppm_params()
 
         return results_df, best_point
 
@@ -1732,11 +1726,7 @@ class BayesianPPPMOptimizer:
             2. BO convergence curve (best feasible time vs iteration)
             3. Parameter scatter — rc vs alpha, M vs CAO, and thread count histogram
         """
-        try:
-            import matplotlib.pyplot as plt
-        except ImportError:
-            print("matplotlib not available — skipping plots.")
-            return
+        import matplotlib.pyplot as plt
 
         if save_dir is None:
             save_dir = getattr(self, "pppm_plots_dir", ".")
