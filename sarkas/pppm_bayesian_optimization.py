@@ -1573,7 +1573,7 @@ class BayesianPPPMOptimizer:
         """
         for fid in ("high", "initial", "previous", "analytical"):
             subset = results_df[
-                (results_df["fidelity"] == fid) & results_df["feasible"]
+                (results_df["fidelity"] == fid) & results_df["feasible"].astype(bool)
             ]
             if not subset.empty:
                 row = subset.loc[subset["time"].idxmin()]
@@ -1681,7 +1681,7 @@ class BayesianPPPMOptimizer:
 
         n_initial  = int((results_df["fidelity"] == "initial").sum())
         n_bo       = int((results_df["fidelity"] == "high").sum())
-        n_feasible = int(hf["feasible"].sum())
+        n_feasible = int(hf["feasible"].astype(bool).sum())
 
         first_idx        = None
         best_time_so_far = float("inf")
@@ -1734,8 +1734,8 @@ class BayesianPPPMOptimizer:
         an   = results_df[results_df["fidelity"] == "analytical"]
         init = results_df[results_df["fidelity"] == "initial"]
         hf   = results_df[results_df["fidelity"] == "high"]
-        hf_feas   = hf[hf["feasible"]]
-        hf_infeas = hf[~hf["feasible"]]
+        hf_feas   = hf[hf["feasible"].astype(bool)]
+        hf_infeas = hf[~hf["feasible"].astype(bool)]
 
         # ---- Figure 1: Pareto front ------------------------------------
         fig, ax = plt.subplots(figsize=(7, 5))
@@ -1743,8 +1743,8 @@ class BayesianPPPMOptimizer:
             ax.scatter(an["force_error"], an["time"] * 1e3,
                        c="lightblue", alpha=0.3, s=10, label="Analytical warm-start")
         if not init.empty:
-            init_feas   = init[init["feasible"]]
-            init_infeas = init[~init["feasible"]]
+            init_feas   = init[init["feasible"].astype(bool)]
+            init_infeas = init[~init["feasible"].astype(bool)]
             ax.scatter(init_infeas["force_error"], init_infeas["time"] * 1e3,
                        c="lightsalmon", alpha=0.6, s=30, marker="^", label="Initial design infeasible")
             ax.scatter(init_feas["force_error"], init_feas["time"] * 1e3,
@@ -1802,7 +1802,7 @@ class BayesianPPPMOptimizer:
         if not hf.empty:
             fig, axes = plt.subplots(1, 3, figsize=(16, 5))
 
-            edge_colors = ["green" if f else "red" for f in hf["feasible"]]
+            edge_colors = ["green" if f else "red" for f in hf["feasible"].astype(bool)]
             sc = axes[0].scatter(
                 hf["rc"], hf["alpha"],
                 c=hf["M"], cmap="viridis", s=60, alpha=0.8,

@@ -529,7 +529,7 @@ class Species:
         # chemical potential mu/(kB T), obtained by inverting the density equation.
         self.dimensionless_chemical_potential = invfd1h(lambda3 * sqrt(pi) * self.number_density / 4.0)
 
-        # Thomas-Fermi length obtained from compressibility. See eq.(10) in Ref. [3]_
+        # Thomas-Fermi length obtained from compressibility. See eq.(10) in Ref. [1]_
         lambda_TF_sq = lambda3 / self.landau_length
         lambda_TF_sq /= self.spin_degeneracy / sqrt(pi) * fdm1h(self.dimensionless_chemical_potential)
         self.ThomasFermi_wavelength = sqrt(lambda_TF_sq)

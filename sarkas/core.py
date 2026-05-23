@@ -402,7 +402,17 @@ class Parameters:
             self.coupling_constant += sp.concentration * sp.coupling
 
     def calc_electron_properties(self, species: list):
-        """Check whether the electrons are a dynamical species or not."""
+        """
+        Calculate the properties of the electrons if they are not included as a dynamical species.
+        For more information see the theory pages.
+
+        Parameters
+        ----------
+        species: list
+            List of ``sarkas.plasma.Species`` objects.
+        
+        
+        """
         # Check for electrons as dynamical species
         if "e" not in self.species_names:
             electrons = {
